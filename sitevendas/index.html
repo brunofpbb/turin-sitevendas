@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Venda de Passagens Turin</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="main.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Turin Transportes – Venda de Passagens</h1>
+    <nav id="user-nav"></nav>
+  </header>
+  <main>
+    <section class="search-widget">
+      <h2>Encontre sua viagem</h2>
+      <form id="search-form">
+        <div class="form-row">
+          <label for="origin">Origem</label>
+          <!-- A lista de opções é preenchida dinamicamente via JavaScript -->
+          <input type="text" id="origin" name="origin" placeholder="Cidade de origem" list="origin-suggestions" autocomplete="off" required>
+          <datalist id="origin-suggestions"></datalist>
+        </div>
+        <div class="form-row">
+          <label for="destination">Destino</label>
+          <input type="text" id="destination" name="destination" placeholder="Cidade de destino" list="destination-suggestions" autocomplete="off" required>
+          <datalist id="destination-suggestions"></datalist>
+        </div>
+        <div class="form-row">
+          <label for="date">Data de partida</label>
+          <input type="date" id="date" name="date" required>
+        </div>
+        <button type="submit">Pesquisar</button>
+      </form>
+    </section>
+  </main>
+  <footer>
+    <p>&copy; 2025 Turin Transportes</p>
+  </footer>
+</body>
+</html>
