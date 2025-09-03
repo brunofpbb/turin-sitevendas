@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Selecionar poltrona</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="main.js"></script>
+  <script defer src="seats.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Turin Transportes – Seleção de poltrona</h1>
+    <nav id="user-nav"></nav>
+  </header>
+  <main>
+    <h2>Escolha sua poltrona</h2>
+    <p id="trip-info"></p>
+    <!-- Layout do ônibus: imagem da frente e assentos -->
+    <div id="bus-layout" class="bus-layout">
+      <!-- Use the blank bus image as the background -->
+      <img src="bus-blank.png" alt="Layout do ônibus" class="bus-image">
+      <div id="seat-map" class="seat-map"></div>
+    </div>
+    <!-- Contêiner para os formulários dos passageiros -->
+    <div id="passenger-container" class="passenger-container"></div>
+    <p id="selected-seat"></p>
+    <button id="confirm-seat" disabled>Confirmar seleção</button>
+    <button id="back-btn">Voltar</button>
+  </main>
+  <footer>
+    <p>&copy; 2025 Turin Transportes</p>
+  </footer>
+</body>
+</html>

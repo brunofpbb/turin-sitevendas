@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Login</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="main.js"></script>
+  <script defer src="login.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Turin Transportes – Acesso</h1>
+    <nav id="user-nav"></nav>
+  </header>
+  <main>
+    <h2>Acessar conta</h2>
+    <!-- Etapa 1: solicitar email -->
+    <div id="step-email">
+      <form id="email-form" class="login-form">
+        <div class="form-row">
+          <label for="email">Email</label>
+          <input type="email" id="email" required>
+        </div>
+        <button type="submit">Enviar código</button>
+      </form>
+    </div>
+    <!-- Etapa 2: solicitar código -->
+    <div id="step-code" style="display:none;">
+      <p>Enviamos um código de 6 dígitos para seu email.<br>
+      <strong>Para fins de demonstração, o código gerado é mostrado abaixo.</strong></p>
+      <p id="display-code" style="font-size:1.2rem;font-weight:bold;"></p>
+      <form id="code-form" class="login-form">
+        <div class="form-row">
+          <label for="code">Código</label>
+          <input type="text" id="code" maxlength="6" required>
+        </div>
+        <button type="submit">Verificar código</button>
+      </form>
+    </div>
+  </main>
+  <footer>
+    <p>&copy; 2025 Turin Transportes</p>
+  </footer>
+</body>
+</html>

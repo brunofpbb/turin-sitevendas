@@ -1,0 +1,270 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: #f5f5f5;
+  color: #333;
+}
+
+header {
+  background: #005b28; /* verde escuro inspirado na marca Turin */
+  color: #fff;
+  padding: 1rem;
+  text-align: center;
+}
+
+nav {
+  margin-top: 0.5rem;
+}
+
+nav a {
+  color: #fff;
+  margin: 0 0.5rem;
+  text-decoration: none;
+}
+
+main {
+  /* Aumenta a largura máxima do cartão para acomodar mais campos em linha */
+  max-width: 1000px;
+  margin: 2rem auto;
+  background: #fff;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.search-widget h2 {
+  margin-top: 0;
+}
+
+.form-row {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-row label {
+  font-weight: bold;
+  margin-bottom: 0.3rem;
+}
+
+.form-row input {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+button {
+  background: #005b28;
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1.2rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #007a3b;
+}
+
+.bus-list {
+  list-style: none;
+  padding: 0;
+}
+
+.bus-item {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.bus-item button {
+  background: #005b28;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bus-item button:hover {
+  background: #007a3b;
+}
+
+/*
+ * Mapa de assentos
+ *
+ * O novo layout usa a imagem do ônibus como base (bus-layout.png) e
+ * sobrepõe os botões das poltronas em um grid de 4 linhas. Para cada
+ * fileira, posicionamos as poltronas de acordo com a sequência de
+ * numeração apresentada na imagem de referência. O grid possui 11
+ * colunas para acomodar as fileiras mais longas; fileiras com menos
+ * assentos deixam as últimas colunas vazias. A imagem do ônibus
+ * determina a orientação do motorista, evitando a necessidade de
+ * instruções de texto adicionais.
+ */
+.bus-layout {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.bus-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Container para o mapa de assentos sobre a imagem do ônibus */
+.seat-map {
+  position: absolute;
+  /* Ajuste a posição e tamanho em porcentagens para encaixar na área interna do ônibus */
+  top: 11%;
+  /* Aproxima as fileiras das laterais do ônibus, reduzindo margem esquerda e aumentando largura */
+  left: 20%;
+  width: 70%;
+  height: 80%;
+  display: grid;
+  /* 11 colunas: assentos máximos por fileira */
+  grid-template-columns: repeat(11, 1fr);
+  /* 5 linhas: duas fileiras superiores, corredor (menor) e duas fileiras inferiores */
+  grid-template-rows: 1fr 1fr 0.5fr 1fr 1fr;
+  gap: 1%;
+  pointer-events: none;
+}
+
+/* Estilo para cada poltrona */
+.seat {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  background: #e8f5e9; /* tom suave para assentos disponíveis */
+  pointer-events: auto; /* permite cliques nos assentos */
+}
+
+/* Poltronas selecionadas */
+.seat.selected {
+  background: #007a3b;
+  color: #fff;
+}
+
+/* Poltronas ocupadas */
+.seat.occupied {
+  background: #95a5a6;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+/* Espaço do corredor: célula vazia entre os bancos */
+.walkway {
+  background: transparent;
+  pointer-events: none;
+}
+
+/* Contêiner de formulários de passageiros */
+/* Contêiner de formulários de passageiros */
+.passenger-container {
+  margin-top: 2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.passenger-form {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 1rem;
+  background: #fafafa;
+  flex: 1 1 calc(50% - 1rem);
+  box-sizing: border-box;
+}
+
+.passenger-form h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #005b28;
+}
+
+/* Novo estilo para as linhas de passageiros (layout horizontal) */
+.passenger-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap; /* mantém todos os campos na mesma linha */
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.seat-label {
+  font-weight: bold;
+  margin-right: 0.5rem;
+  min-width: 60px;
+}
+
+/* Campos dentro da linha de passageiros */
+.passenger-row input,
+.passenger-row select {
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  flex: 1 1 auto; /* distribui espaço horizontalmente */
+  min-width: 80px; /* largura mínima para evitar encolhimento excessivo */
+}
+
+.passenger-row select {
+  min-width: 70px;
+}
+
+.passenger-form .form-row {
+  margin-bottom: 0.8rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.passenger-form label {
+  font-weight: bold;
+  margin-bottom: 0.3rem;
+}
+
+.passenger-form input,
+.passenger-form select {
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+/* Legenda/indicação do motorista */
+#bus-orientation {
+  text-align: center;
+  font-size: 0.9rem;
+  color: #555;
+  margin-bottom: 0.5rem;
+}
+
+.login-form, .profile {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.login-form .form-row {
+  margin-bottom: 1rem;
+}
+
+.booking-item {
+  border-bottom: 1px solid #ddd;
+  padding: 1rem 0;
+}
