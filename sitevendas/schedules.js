@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
         const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
         // Determine icons: use generic icons for executivo services (AC, WiFi, acessibilidade)
-        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️🛜🚻' : '';
+        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
 
         // Build content container with two rows
         const infoContainer = document.createElement('div');
@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build parts for the second row
         const row2Parts = [];
         if (disponiveis) {
-          row2Parts.push(`Poltronas Disponíveis: ${disponiveis} 💺`);
+          row2Parts.push(`<strong>Poltronas Disponiveis:</strong> ${disponiveis} 💺`);
         }
         if (tipoHorario) {
           row2Parts.push(`${tipoHorario}`);
