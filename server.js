@@ -14,10 +14,15 @@ app.use(express.json());
  *   origemId: number
  *   destinoId: number
  *   data: string (YYYY-MM-DD)
+ *
+ * This endpoint performs the login using credentials stored in
+ * environment variables and then calls the Praxio Partidas API.
  */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
+
+    // Build login payload using environment variables
     const loginBody = {
       Nome: process.env.PRAXIO_USER,
       Senha: process.env.PRAXIO_PASS,
@@ -27,6 +32,8 @@ app.post('/api/partidas', async (req, res) => {
       Cliente: process.env.PRAXIO_CLIENT,
       TipoAplicacao: 0,
     };
+
+    // Authenticate and obtain a session ID
     const loginResp = await fetch(
       'https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin',
       {
@@ -37,23 +44,29 @@ app.post('/api/partidas', async (req, res) => {
     );
     const loginData = await loginResp.json();
     const idSessaoOp = loginData.IdSessaoOp;
+    // Some accounts return establishment info in EstabelecimentoXml
     const idEstabelecimento =
       (loginData.EstabelecimentoXml &&
         loginData.EstabelecimentoXml.IDEstabelecimento) ||
       loginData.IDEstabelecimento ||
       1;
+
+    // Build request body for Partidas API
+    // To mirror the n8n payload exactly, send certain fields as strings and fix
+    // IdEstabelecimento to "1" instead of using the value returned from login.
     const partidasBody = {
       IdSessaoOp: idSessaoOp,
       LocalidadeOrigem: origemId,
       LocalidadeDestino: destinoId,
       DataPartida: data,
-      SugestaoPassagem: 1,
-      ListarTodas: 1,
-      SomenteExtra: 0,
+      SugestaoPassagem: "1",
+      ListarTodas: "1",
+      SomenteExtra: "0",
       TempoPartida: 1,
-      IdEstabelecimento: idEstabelecimento,
+      IdEstabelecimento: "1",
       DescontoAutomatico: 0,
     };
+
     const partResp = await fetch(
       'https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas',
       {
@@ -63,6 +76,7 @@ app.post('/api/partidas', async (req, res) => {
       },
     );
     const partData = await partResp.json();
+    // Return only the data from Praxio; the frontend is responsible for parsing it
     res.json(partData);
   } catch (error) {
     console.error(error);
@@ -72,11 +86,20 @@ app.post('/api/partidas', async (req, res) => {
 
 /**
  * Proxy endpoint to retrieve seat map for a given trip.
- * Expects: idViagem, idTipoVeiculo, idLocOrigem, idLocDestino.
+ * The frontend should POST an object with keys:
+ *   idViagem: number
+ *   idTipoVeiculo: number
+ *   idLocOrigem: number
+ *   idLocDestino: number
+ *
+ * This endpoint logs in to Praxio to obtain a session and then
+ * calls the RetornaPoltronas API to fetch the seat layout.
  */
 app.post('/api/poltronas', async (req, res) => {
   try {
     const { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino } = req.body;
+
+    // Authenticate again (each call must provide a session)
     const loginBody = {
       Nome: process.env.PRAXIO_USER,
       Senha: process.env.PRAXIO_PASS,
@@ -96,6 +119,7 @@ app.post('/api/poltronas', async (req, res) => {
     );
     const loginData = await loginResp.json();
     const idSessaoOp = loginData.IdSessaoOp;
+
     const seatBody = {
       IdSessaoOp: idSessaoOp,
       IdViagem: idViagem,
@@ -104,6 +128,7 @@ app.post('/api/poltronas', async (req, res) => {
       IdLocdestino: idLocDestino,
       VerificarSugestao: 1,
     };
+
     const seatResp = await fetch(
       'https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas',
       {
