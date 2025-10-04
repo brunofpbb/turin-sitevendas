@@ -94,17 +94,62 @@ document.addEventListener('DOMContentLoaded', () => {
       linhas.forEach((linha) => {
         // Extract useful fields with fallbacks. The exact property names may
         // differ depending on API version, so we guard against undefined.
+        // Helper to format times like "0700" into "07:00"
+        function formatHora(h) {
+          if (!h) return '';
+          if (typeof h !== 'string') return h;
+          if (h.includes(':')) return h;
+          // If string length is 4 (e.g. "0700"), insert colon
+          if (h.length === 4) {
+            return h.slice(0, 2) + ':' + h.slice(2);
+          }
+          return h;
+        }
+        // Extract departure time (Saída). Try multiple properties and parse as needed.
         let horario = linha.HorarioPartida || linha.HoraPartida || '';
-        // If no explicit departure time, try to parse from DadosViagem (e.g. "07:00 - R$ 28.45 - Linha: 125 ...")
+        if (!horario && linha.ViagemTFO) {
+          horario = linha.ViagemTFO.HorarioPartida || linha.ViagemTFO.HoraPartida || '';
+          if (!horario) {
+            // Try DataHoraInicio or DataHoraEmbarque (format: YYYY-MM-DDTHH:MM)
+            const dh = linha.ViagemTFO.DataHoraInicio || linha.ViagemTFO.DataHoraEmbarque || '';
+            if (dh) {
+              const t = dh.split('T')[1];
+              if (t) {
+                horario = t.substring(0, 5);
+              }
+            }
+          }
+        }
+        // Fallback: parse from DadosViagem (e.g. "07:00 - R$ 28.45 - Linha: ...")
         if (!horario && typeof linha.DadosViagem === 'string') {
           const parts = linha.DadosViagem.split(' - ');
           if (parts.length > 0) {
             horario = parts[0].trim();
           }
         }
-        const chegada = linha.HorarioChegada || linha.HoraChegada || '';
-        // Tempo de viagem pode vir como TempoViagem ou Duracao (ou DuracaoViagem)
-        const tempoViagem = linha.TempoViagem || linha.Duracao || linha.DuracaoViagem || '';
+        horario = formatHora(horario);
+        // Extract arrival time (Chegada). Try multiple properties and parse dateTime if needed.
+        let chegadaRaw = linha.HorarioChegada || linha.HoraChegada || '';
+        if (!chegadaRaw && linha.DtaHoraChegada) {
+          chegadaRaw = linha.DtaHoraChegada;
+        }
+        if (!chegadaRaw && linha.ViagemTFO) {
+          chegadaRaw = linha.ViagemTFO.DtaHoraChegada || linha.ViagemTFO.DataHoraChegada || '';
+        }
+        let chegada = '';
+        if (chegadaRaw) {
+          if (typeof chegadaRaw === 'string' && chegadaRaw.includes('T')) {
+            const t = chegadaRaw.split('T')[1];
+            chegada = t.substring(0, 5);
+          } else {
+            chegada = formatHora(chegadaRaw);
+          }
+        }
+        // Extract travel duration (Tempo de viagem). Try multiple properties.
+        let tempoViagem = linha.TempoViagem || linha.Duracao || linha.DuracaoViagem || '';
+        if (!tempoViagem && linha.ViagemTFO) {
+          tempoViagem = linha.ViagemTFO.DuracaoViagem || linha.ViagemTFO.TempoViagem || '';
+        }
         // Tarifa pode vir em várias propriedades; tenta ValorTarifa, Tarifa, VlTarifa, ValorMaiorDesconto
         const tarifaRaw =
           linha.Tarifa ??
