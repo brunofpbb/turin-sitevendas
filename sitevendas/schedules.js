@@ -1,3 +1,14 @@
+fetch('/api/partidas', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    origemId: searchParams.originId,
+    destinoId: searchParams.destinationId,
+    data: dateIso,
+  }),
+})
+
+/*
 // schedules.js - exibe horários disponíveis com base na pesquisa
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
