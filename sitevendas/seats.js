@@ -1,3 +1,20 @@
+fetch('/api/poltronas', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    idViagem: schedule.idViagem,
+    idTipoVeiculo: schedule.idTipoVeiculo,
+    idLocOrigem: schedule.originId,
+    idLocDestino: schedule.destinationId,
+  }),
+})
+
+
+
+
+
+/*
+
 // seats.js - exibe mapa de assentos e permite seleção
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
@@ -240,3 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.history.back();
   });
 });
+
+
+  */
