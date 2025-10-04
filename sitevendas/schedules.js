@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
         const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
         // Determine icons: use generic icons for executivo services (AC, WiFi, acessibilidade)
-        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
+        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️🛜🚻' : '';
 
         // Build content container with two rows
         const infoContainer = document.createElement('div');
@@ -195,21 +195,22 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         infoContainer.appendChild(row1);
 
-        // Second row: Assentos disponíveis, tipo de serviço e ícones
+        // Second row: Poltronas disponíveis, tipo de serviço e ícones
         const row2 = document.createElement('div');
         row2.style.display = 'flex';
         row2.style.gap = '10px';
-        let row2Text = '';
+        // Build parts for the second row
+        const row2Parts = [];
         if (disponiveis) {
-          row2Text += `<strong>Assentos:</strong> ${disponiveis} 💺`;
+          row2Parts.push(`Poltronas Disponiveis: ${disponiveis} 💺`);
         }
         if (tipoHorario) {
-          row2Text += `${row2Text ? ' — ' : ''}${tipoHorario}`;
+          row2Parts.push(`${tipoHorario}`);
         }
         if (icons) {
-          row2Text += ` ${icons}`;
+          row2Parts.push(`${icons}`);
         }
-        row2.innerHTML = row2Text;
+        row2.innerHTML = row2Parts.join(' \u2014 ');
         infoContainer.appendChild(row2);
 
         // Create select button
