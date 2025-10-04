@@ -141,3 +141,5 @@ document.addEventListener('DOMContentLoaded', () => {
 // As funções generateSchedules e generateSeatMap foram removidas porque os horários
 // agora são buscados diretamente na API da Praxio. Caso deseje simular dados,
 // recupere uma cópia anterior destas funções.
+
+*/
