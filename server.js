@@ -43,8 +43,6 @@ app.post('/api/partidas', async (req, res) => {
       },
     );
     const loginData = await loginResp.json();
-    // Log login response for debugging (may include IdSessaoOp and establishment info)
-    console.log('loginData:', loginData);
     const idSessaoOp = loginData.IdSessaoOp;
     // Some accounts return establishment info in EstabelecimentoXml
     const idEstabelecimento =
@@ -52,9 +50,6 @@ app.post('/api/partidas', async (req, res) => {
         loginData.EstabelecimentoXml.IDEstabelecimento) ||
       loginData.IDEstabelecimento ||
       1;
-
-    // Log incoming request for debugging
-    console.log('POST /api/partidas payload:', { origemId, destinoId, data });
 
     // Build request body for Partidas API
     // To mirror the n8n payload exactly, send certain fields as strings and fix
@@ -71,7 +66,6 @@ app.post('/api/partidas', async (req, res) => {
       IdEstabelecimento: "1",
       DescontoAutomatico: 0,
     };
-    console.log('partidasBody:', partidasBody);
 
     const partResp = await fetch(
       'https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas',
@@ -82,8 +76,6 @@ app.post('/api/partidas', async (req, res) => {
       },
     );
     const partData = await partResp.json();
-    // Log the response from the Partidas API for debugging
-    console.log('partData:', partData);
     // Return only the data from Praxio; the frontend is responsible for parsing it
     res.json(partData);
   } catch (error) {
@@ -106,8 +98,6 @@ app.post('/api/partidas', async (req, res) => {
 app.post('/api/poltronas', async (req, res) => {
   try {
     const { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino } = req.body;
-    // Log incoming request for debugging
-    console.log('POST /api/poltronas payload:', { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino });
 
     // Authenticate again (each call must provide a session)
     const loginBody = {
@@ -128,8 +118,6 @@ app.post('/api/poltronas', async (req, res) => {
       },
     );
     const loginData = await loginResp.json();
-    // Log login response for debugging
-    console.log('loginData (poltronas):', loginData);
     const idSessaoOp = loginData.IdSessaoOp;
 
     const seatBody = {
@@ -138,9 +126,9 @@ app.post('/api/poltronas', async (req, res) => {
       IdTipoVeiculo: idTipoVeiculo,
       IdLocOrigem: idLocOrigem,
       IdLocdestino: idLocDestino,
+      Andar: 0,
       VerificarSugestao: 1,
     };
-    console.log('seatBody:', seatBody);
 
     const seatResp = await fetch(
       'https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas',
@@ -151,8 +139,6 @@ app.post('/api/poltronas', async (req, res) => {
       },
     );
     const seatData = await seatResp.json();
-    // Log the response from the Poltronas API for debugging
-    console.log('seatData:', seatData);
     res.json(seatData);
   } catch (error) {
     console.error(error);
