@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build parts for the second row
         const row2Parts = [];
         if (disponiveis) {
-          row2Parts.push(`Poltronas Disponiveis: ${disponiveis} 💺`);
+          row2Parts.push(`Poltronas Disponíveis: ${disponiveis} 💺`);
         }
         if (tipoHorario) {
           row2Parts.push(`${tipoHorario}`);
