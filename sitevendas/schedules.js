@@ -52,6 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
   })
     .then((res) => res.json())
     .then((data) => {
+      // Log the raw response from the backend for debugging
+      console.log('API /api/partidas response:', data);
+
       if (noResults) noResults.style.display = 'none';
       if (!busList) return;
 
@@ -70,6 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
           linhas = raw.Linha;
         }
       }
+
+      // Log the parsed list of departures for debugging
+      console.log('Parsed linhas:', linhas);
 
       if (!linhas || linhas.length === 0) {
         if (noResults) {
