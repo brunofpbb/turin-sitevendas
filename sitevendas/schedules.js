@@ -1,145 +1,134 @@
-fetch('/api/partidas', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    origemId: searchParams.originId,
-    destinoId: searchParams.destinationId,
-    data: dateIso,
-  }),
-})
+// schedules.js – lists available departures based on user search
+// This file has been updated to use the backend proxy endpoints instead of
+// calling Praxio directly. It expects the search parameters to be stored
+// in localStorage under the key `searchParams` as an object with
+// `originId`, `destinationId` and `date` (YYYY-MM-DD).
 
-/*
-// schedules.js - exibe horários disponíveis com base na pesquisa
 document.addEventListener('DOMContentLoaded', () => {
-  updateUserNav();
-  const params = JSON.parse(localStorage.getItem('searchParams') || 'null');
-  const busList = document.getElementById('bus-list');
-  const noResults = document.getElementById('no-results');
+  // Attempt to update the navigation bar if the function exists
+  if (typeof updateUserNav === 'function') {
+    updateUserNav();
+  }
+
+  const searchParams = JSON.parse(localStorage.getItem('searchParams') || 'null');
+  const busList = document.getElementById('bus-list') || document.getElementById('busList');
+  const noResults = document.getElementById('no-results') || document.getElementById('noResults');
   const backBtn = document.getElementById('back-btn');
-  backBtn.addEventListener('click', () => {
-    window.location.href = 'index.html';
-  });
-  if (!params) {
-    noResults.style.display = 'block';
-    noResults.textContent = 'Dados de pesquisa ausentes.';
+
+  // Return to the previous page when clicking back
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      window.location.href = 'index.html';
+    });
+  }
+
+  // If search parameters are missing, show a message and stop
+  if (!searchParams) {
+    if (noResults) {
+      noResults.style.display = 'block';
+      noResults.textContent = 'Dados de pesquisa ausentes.';
+    }
     return;
   }
 
-  // Mostra mensagem de carregamento enquanto consulta o serviço
-  noResults.style.display = 'block';
-  noResults.textContent = 'Buscando viagens disponíveis...';
+  // Convert the selected date to ISO format accepted by the API
+  const dateIso = searchParams.date;
 
-  // Converte a data selecionada para o formato ISO aceito pela API (YYYY-MM-DD)
-  // As chamadas da Praxio podem aceitar apenas a data sem horário.
-  const dateIso = params.date;
-
-  // Função assíncrona que efetua o login e busca as partidas.
-  async function fetchSchedules() {
-    try {
-      // Primeiro efetua login para obter a IdSessaoOp
-      const loginPayload = {
-        Nome: 'bot_bruno',
-        Senha: '201020',
-        Sistema: 'WINVR.EXE',
-        TipoBD: 0,
-        Empresa: 'TURIN',
-        Cliente: 'TURIN_VR',
-        TipoAplicacao: 0
-      };
-      const loginRes = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginPayload)
-      });
-      if (!loginRes.ok) throw new Error('Erro ao efetuar login');
-      const loginData = await loginRes.json();
-      const idSessaoOp = loginData.IdSessaoOp;
-      const idEstabelecimento = loginData.EstabelecimentoXml?.IDEstabelecimento || 1;
-
-      // Monta o corpo da requisição de partidas
-      const partidasPayload = {
-        IdSessaoOp: idSessaoOp,
-        LocalidadeOrigem: params.originId,
-        LocalidadeDestino: params.destinationId,
-        DataPartida: dateIso,
-        SugestaoPassagem: 1,
-        ListarTodas: 1,
-        SomenteExtra: 0,
-        TempoPartida: 1,
-        IdEstabelecimento: idEstabelecimento,
-        DescontoAutomatico: 0
-      };
-      const partidasRes = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(partidasPayload)
-      });
-      if (!partidasRes.ok) throw new Error('Erro ao listar partidas');
-      const partidasData = await partidasRes.json();
-      const lista = partidasData.ListaPartidas || partidasData.listaPartidas || [];
-
-      // Oculta a mensagem de carregamento
-      noResults.style.display = 'none';
-
-      if (!Array.isArray(lista) || lista.length === 0) {
-        noResults.style.display = 'block';
-        noResults.textContent = 'Nenhuma viagem encontrada.';
-        return;
-      }
-      // Para cada viagem, cria um item na lista
-      lista.forEach(partida => {
-        const li = document.createElement('li');
-        li.className = 'bus-item';
-        // Extrai dados principais
-        const horaPartida = partida.HoraPartida || partida.DataHoraInicio || partida.DataHoraEmbarque || '';
-        const dataChegada = partida.DtaHoraChegada || partida.DataHoraChegada || '';
-        const duracao = partida.TempoViagem || partida.TempoEstinado || '';
-        const tarifa = partida.Tarifa || partida.ValorTarifa || partida.ValorMaiorDesconto || 0;
-        li.innerHTML = `<div>
-          <strong>Saída:</strong> ${horaPartida} &nbsp; | &nbsp;
-          <strong>Chegada:</strong> ${dataChegada}<br>
-          <span>Duração: ${duracao}</span>
-          <br><span>Tarifa: R$ ${Number(tarifa).toFixed(2)}</span>
-        </div>`;
-        const btn = document.createElement('button');
-        btn.textContent = 'Selecionar';
-        btn.addEventListener('click', () => {
-          // Salva a viagem selecionada no localStorage, incluindo informações necessárias para poltronas
-          const schedule = {
-            idViagem: partida.IdViagem || partida.IdRota,
-            idTipoVeiculo: partida.IdTipoVeiculo,
-            originName: params.originName,
-            destinationName: params.destinationName,
-            date: params.date,
-            departureTime: horaPartida,
-            arrivalTime: dataChegada,
-            duration: duracao,
-            price: tarifa,
-            // salva ids de origem e destino para consulta de poltronas
-            originId: params.originId,
-            destinationId: params.destinationId
-          };
-          localStorage.setItem('selectedSchedule', JSON.stringify(schedule));
-          // Armazena também o idSessaoOp e idEstabelecimento para consulta de poltronas
-          localStorage.setItem('sessionInfo', JSON.stringify({ idSessaoOp, idEstabelecimento }));
-          window.location.href = 'seats.html';
-        });
-        li.appendChild(btn);
-        busList.appendChild(li);
-      });
-    } catch (err) {
-      console.error(err);
-      noResults.style.display = 'block';
-      noResults.textContent = 'Falha ao buscar viagens. Tente novamente mais tarde.';
-    }
+  // Show a loading message while fetching schedules
+  if (noResults) {
+    noResults.style.display = 'block';
+    noResults.textContent = 'Buscando viagens disponíveis...';
   }
 
-  // Chama a função para buscar as partidas
-  fetchSchedules();
+  // Fetch the list of departures from our backend
+  fetch('/api/partidas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      origemId: searchParams.originId,
+      destinoId: searchParams.destinationId,
+      data: dateIso,
+    }),
+  })
+    .then((res) => res.json())
+    .then((data) => {
+      if (noResults) noResults.style.display = 'none';
+      if (!busList) return;
+
+      // Clear previous results
+      busList.innerHTML = '';
+
+      // The Praxio API returns the departures under a nested object. Depending
+      // on the version, it may return `PartidasXmlRetorno.Linhas` or
+      // `PartidasXmlRetorno.Linhas.Linha`. We'll normalise to an array.
+      let linhas = [];
+      if (data && data.PartidasXmlRetorno && data.PartidasXmlRetorno.Linhas) {
+        const raw = data.PartidasXmlRetorno.Linhas;
+        if (Array.isArray(raw)) {
+          linhas = raw;
+        } else if (Array.isArray(raw.Linha)) {
+          linhas = raw.Linha;
+        }
+      }
+
+      if (!linhas || linhas.length === 0) {
+        if (noResults) {
+          noResults.style.display = 'block';
+          noResults.textContent = 'Nenhuma viagem encontrada para os critérios informados.';
+        }
+        return;
+      }
+
+      // Build a card for each departure
+      linhas.forEach((linha) => {
+        // Extract useful fields with fallbacks. The exact property names may
+        // differ depending on API version, so we guard against undefined.
+        const horario = linha.HorarioPartida || linha.HoraPartida || '00:00';
+        const chegada = linha.HorarioChegada || linha.HoraChegada || '';
+        const tempoViagem = linha.TempoViagem || '';
+        const tarifa = linha.Tarifa || linha.ValorTarifa || 0;
+        const idViagem = linha.IdViagem || linha.CodViagem || 0;
+        const idTipoVeiculo = linha.IdTipoVeiculo || linha.IdTipoOnibus || 0;
+
+        const card = document.createElement('div');
+        card.className = 'schedule-card';
+        card.innerHTML = `
+          <div class="schedule-info">
+            <p><strong>Saída:</strong> ${horario}</p>
+            <p><strong>Chegada:</strong> ${chegada}</p>
+            <p><strong>Tempo de viagem:</strong> ${tempoViagem}</p>
+          </div>
+          <div class="schedule-price">
+            <p><strong>R$ ${parseFloat(tarifa).toFixed(2)}</strong></p>
+            <button class="select-btn">Selecionar</button>
+          </div>
+        `;
+
+        // When the user clicks "Selecionar", save the selected schedule and go to seats page
+        card.querySelector('.select-btn').addEventListener('click', () => {
+          const schedule = {
+            idViagem,
+            idTipoVeiculo,
+            originId: searchParams.originId,
+            destinationId: searchParams.destinationId,
+            date: dateIso,
+            departureTime: horario,
+            arrivalTime: chegada,
+            travelTime: tempoViagem,
+            price: tarifa,
+          };
+          localStorage.setItem('selectedSchedule', JSON.stringify(schedule));
+          window.location.href = 'seats.html';
+        });
+
+        busList.appendChild(card);
+      });
+    })
+    .catch((err) => {
+      console.error(err);
+      if (noResults) {
+        noResults.style.display = 'block';
+        noResults.textContent = 'Falha ao buscar viagens. Tente novamente mais tarde.';
+      }
+    });
 });
-
-// As funções generateSchedules e generateSeatMap foram removidas porque os horários
-// agora são buscados diretamente na API da Praxio. Caso deseje simular dados,
-// recupere uma cópia anterior destas funções.
-
-*/
