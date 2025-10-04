@@ -1,85 +1,100 @@
-fetch('/api/poltronas', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    idViagem: schedule.idViagem,
-    idTipoVeiculo: schedule.idTipoVeiculo,
-    idLocOrigem: schedule.originId,
-    idLocDestino: schedule.destinationId,
-  }),
-})
-
-
-
-
-
-/*
-
 // seats.js - exibe mapa de assentos e permite seleção
+// Esta versão consulta o mapa de assentos através do backend
+// (rota /api/poltronas) em vez de acessar diretamente a API
+// da Praxio. Dessa forma, evitamos problemas de CORS e
+// mantemos as credenciais fora do frontend.
+
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
   const schedule = JSON.parse(localStorage.getItem('selectedSchedule') || 'null');
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   const tripInfo = document.getElementById('trip-info');
-  // O container de assentos foi renomeado para seat-map e fica dentro do
-  // layout do ônibus. Ele usa grid para posicionar as poltronas.
   const seatMap = document.getElementById('seat-map');
   const selectedSeatP = document.getElementById('selected-seat');
   const confirmBtn = document.getElementById('confirm-seat');
   const backBtn = document.getElementById('back-btn');
-  if (!schedule) {
-    tripInfo.textContent = 'Nenhuma viagem selecionada.';
-    confirmBtn.disabled = true;
-    return;
-  }
-  tripInfo.textContent = `${schedule.originName || schedule.origin} → ${schedule.destinationName || schedule.destination} em ${schedule.date} às ${schedule.departureTime}`;
-  // Seleção de múltiplas poltronas (até 6)
+  // Contêiner para os formulários de passageiros
   const passengerContainer = document.getElementById('passenger-container');
+  // Limite de assentos que podem ser selecionados por compra
+  const maxSelected = 6;
+  // Lista de poltronas atualmente selecionadas
   let selectedSeats = [];
 
-  // Carrega o mapa de poltronas a partir da API se ainda não estiver definido.
+  if (!schedule) {
+    if (tripInfo) tripInfo.textContent = 'Nenhuma viagem selecionada.';
+    if (confirmBtn) confirmBtn.disabled = true;
+    return;
+  }
+
+  // Exibe a rota e o horário na página
+  if (tripInfo) {
+    const origin = schedule.originName || schedule.origin;
+    const dest = schedule.destinationName || schedule.destination;
+    tripInfo.textContent = `${origin} → ${dest} em ${schedule.date} às ${schedule.departureTime}`;
+  }
+
+  /**
+   * Garante que o mapa de assentos está carregado em schedule.seats.
+   * Caso ainda não exista, faz uma requisição ao backend (/api/poltronas)
+   * informando idViagem, idTipoVeiculo, idLocOrigem e idLocDestino.
+   */
   async function ensureSeatMap() {
     if (schedule.seats && Array.isArray(schedule.seats) && schedule.seats.length > 0) {
       return;
     }
     try {
-      const sessionInfo = JSON.parse(localStorage.getItem('sessionInfo') || 'null');
-      if (!sessionInfo) throw new Error('Informações de sessão ausentes');
+      // Monta o payload com as informações da viagem
       const payload = {
-        IdSessaoOp: sessionInfo.idSessaoOp,
-        IdViagem: schedule.idViagem,
-        IdTipoVeiculo: schedule.idTipoVeiculo,
-        IdLocOrigem: schedule.originId,
-        IdLocdestino: schedule.destinationId,
-        Andar: 0,
-        VerificarSugestao: 1
+        idViagem: schedule.idViagem,
+        idTipoVeiculo: schedule.idTipoVeiculo,
+        idLocOrigem: schedule.originId,
+        idLocDestino: schedule.destinationId
       };
-      const res = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas', {
+      const response = await fetch('/api/poltronas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Falha ao obter poltronas');
-      const data = await res.json();
-      // Extrai a lista de poltronas retornadas. Dependendo da estrutura, pode estar em
-      // data.LaypoltronaXml.PoltronaXmlRetorno ou data.LaypoltronaXml?.PoltronaXmlRetorno.
-      const poltronas = data?.LaypoltronaXml?.PoltronaXmlRetorno || data?.LaypoltronaXml?.poltronaXmlRetorno || [];
-      if (Array.isArray(poltronas) && poltronas.length > 0) {
-        schedule.seats = poltronas.map(p => {
-          const number = parseInt(p.Caption || p.caption || p.Numero || p.NumeroPoltrona);
-          const situacao = parseInt(p.Situacao || p.situacao || 0);
-          // Situação 0 é disponível; qualquer outro valor indica ocupada/reservada etc.
-          return { number, occupied: situacao !== 0 };
+      if (!response.ok) throw new Error('Falha ao obter poltronas');
+      const data = await response.json();
+      // Dependendo da versão da API, as poltronas podem vir em
+      // data.PoltronaXmlRetorno.Poltrona ou diretamente em data.PoltronaXmlRetorno
+      let poltronas = [];
+      if (data && data.PoltronaXmlRetorno) {
+        const pol = data.PoltronaXmlRetorno;
+        if (Array.isArray(pol)) {
+          poltronas = pol;
+        } else if (Array.isArray(pol.Poltrona)) {
+          poltronas = pol.Poltrona;
+        } else {
+          poltronas = [pol];
+        }
+      }
+      // Converte as poltronas em um array de objetos { number, occupied }
+      if (poltronas && poltronas.length > 0) {
+        schedule.seats = poltronas.map((p) => {
+          const number = parseInt(
+            p.Caption || p.caption || p.Numero || p.NumeroPoltrona || p.Poltrona,
+            10
+          );
+          const situacao = parseInt(p.Situacao || p.situacao || 0, 10);
+          return {
+            number,
+            occupied: situacao !== 0
+          };
         });
       }
-    } catch (error) {
-      console.error('Erro ao carregar mapa de poltronas:', error);
-      // Caso a API falhe, gera um mapa estático com ocupação aleatória
+    } catch (err) {
+      console.error('Erro ao carregar mapa de poltronas:', err);
+      // Se ocorrer erro, gera um mapa estático com assentos disponíveis/ocupados aleatórios
       schedule.seats = generateSeatMapFallback();
     }
   }
 
-  // Gera mapa de poltronas estático como fallback (apenas para demonstração)
+  /**
+   * Gera um mapa de poltronas estático como fallback.  
+   * Usa o padrão de numeração (duas fileiras superiores, corredor e duas inferiores).
+   */
   function generateSeatMapFallback() {
     const pattern = [
       [3, 7, 11, 15, 19, 23, 27, 31, 35, 39],
@@ -88,80 +103,88 @@ document.addEventListener('DOMContentLoaded', () => {
       [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41]
     ];
     const seats = [];
-    pattern.forEach(row => {
-      row.forEach(num => {
+    pattern.forEach((row) => {
+      row.forEach((num) => {
         const occupied = num === 1 || num === 2 || Math.random() < 0.2;
         seats.push({ number: num, occupied });
       });
     });
     return seats;
-  }
+    }
 
-  // Função para renderizar o mapa de assentos com corredor
+  /**
+   * Renderiza o mapa de assentos na grade usando o layout horizontal do ônibus.
+   * As fileiras superiores têm 10 assentos, depois vem o corredor (linha vazia)
+   * e então as fileiras inferiores (11 assentos cada).  
+   * Assentos ocupados recebem a classe 'occupied' e ficam desabilitados.
+   * Assentos selecionados recebem a classe 'selected'.
+   */
   async function renderSeatGrid() {
-    // Garante que as poltronas estão carregadas
+    // Garante que as poltronas foram carregadas
     await ensureSeatMap();
+    if (!seatMap) return;
     seatMap.innerHTML = '';
-    // Define o padrão de fileiras para renderizar as poltronas na ordem correta.
-    // Define as fileiras e insere o corredor (representado como null) após o 5º assento
+    // Define as linhas de assentos incluindo um corredor (linha vazia)
     const rows = [
-      // Fileiras superiores (10 assentos cada)
       [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, null],
       [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, null],
-      // Corredor: linha vazia
       [null, null, null, null, null, null, null, null, null, null, null],
-      // Fileiras inferiores (11 assentos cada)
       [2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42],
       [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41]
     ];
     rows.forEach((row, rowIndex) => {
       row.forEach((cell, colIndex) => {
-        // Posição na grade: adicionamos 1 para indexação 1-based
         const rowPos = rowIndex + 1;
         const colPos = colIndex + 1;
         if (cell === null) {
-          // Cria uma célula para o corredor
           const walkwayDiv = document.createElement('div');
           walkwayDiv.className = 'walkway';
           walkwayDiv.style.gridRowStart = rowPos;
           walkwayDiv.style.gridColumnStart = colPos;
           seatMap.appendChild(walkwayDiv);
         } else {
-          // Cria a poltrona normal
-          const seat = schedule.seats?.find((s) => s.number === cell);
-          const div = document.createElement('div');
-          div.className = 'seat';
-          div.textContent = cell;
-          div.style.gridRowStart = rowPos;
-          div.style.gridColumnStart = colPos;
-          if (seat && seat.occupied) div.classList.add('occupied');
-          if (selectedSeats.includes(cell)) {
-            div.classList.add('selected');
+          const seatData = schedule.seats?.find((s) => s.number === cell);
+          const seatDiv = document.createElement('div');
+          seatDiv.className = 'seat';
+          seatDiv.textContent = cell;
+          seatDiv.style.gridRowStart = rowPos;
+          seatDiv.style.gridColumnStart = colPos;
+          if (seatData && seatData.occupied) {
+            seatDiv.classList.add('occupied');
           }
-          div.addEventListener('click', () => {
-            if (seat && seat.occupied) return;
-            const index = selectedSeats.indexOf(cell);
-            if (index !== -1) {
-              selectedSeats.splice(index, 1);
+          if (selectedSeats.includes(cell)) {
+            seatDiv.classList.add('selected');
+          }
+          seatDiv.addEventListener('click', () => {
+            // Ignora clique em assentos ocupados
+            if (seatData && seatData.occupied) return;
+            const idx = selectedSeats.indexOf(cell);
+            if (idx !== -1) {
+              // Desseleciona
+              selectedSeats.splice(idx, 1);
               updatePassengerForms();
               renderSeatGrid();
               return;
             }
-            if (selectedSeats.length >= 6) {
-              alert('É possível selecionar no máximo 6 poltronas por compra.');
+            if (selectedSeats.length >= maxSelected) {
+              alert(`É possível selecionar no máximo ${maxSelected} poltronas por compra.`);
               return;
             }
             selectedSeats.push(cell);
             updatePassengerForms();
             renderSeatGrid();
           });
-          seatMap.appendChild(div);
+          seatMap.appendChild(seatDiv);
         }
       });
     });
   }
 
-  // Função para atualizar os formulários de passageiros
+  /**
+   * Atualiza a área de formulários de passageiros conforme as poltronas
+   * selecionadas. Desabilita o botão de confirmar se nenhuma poltrona
+   * estiver selecionada.
+   */
   function updatePassengerForms() {
     passengerContainer.innerHTML = '';
     if (selectedSeats.length === 0) {
@@ -171,11 +194,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     confirmBtn.disabled = false;
     selectedSeatP.textContent = `Poltronas selecionadas: ${selectedSeats.join(', ')}`;
-    // Para cada poltrona, cria um formulário de passageiro
     selectedSeats.forEach((seatNumber) => {
       const rowDiv = document.createElement('div');
       rowDiv.className = 'passenger-row';
-      rowDiv.dataset.seatNumber = seatNumber;
+      rowDiv.dataset.seatNumber = seatNumber.toString();
       rowDiv.innerHTML = `
         <span class="seat-label">Pol ${seatNumber}:</span>
         <input type="text" name="name" placeholder="Nome" required>
@@ -192,12 +214,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Renderiza o mapa inicialmente e os formulários vazios
   renderSeatGrid();
   updatePassengerForms();
 
+  // Ao confirmar a seleção de poltronas, valida campos e prossegue
   confirmBtn.addEventListener('click', () => {
     if (selectedSeats.length === 0) return;
-    // Valida todos os formulários dos passageiros
     const passengers = [];
     let valid = true;
     const rows = passengerContainer.querySelectorAll('.passenger-row');
@@ -208,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const docNumber = rowDiv.querySelector('input[name="docNumber"]').value.trim();
       const cpf = rowDiv.querySelector('input[name="cpf"]').value.trim();
       const phone = rowDiv.querySelector('input[name="phone"]').value.trim();
-      if (!name || !docType || !docNumber || !cpf || !phone) {
+      if (!name || !docNumber || !cpf || !phone) {
         valid = false;
         return;
       }
@@ -218,10 +241,9 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Preencha todos os dados dos passageiros.');
       return;
     }
-    // Se o usuário não estiver logado, armazena a compra pendente e redireciona para login
+    // Se não houver usuário logado, armazena compra pendente e redireciona para login
     if (!user) {
       alert('Faça login para continuar.');
-      // guarda a compra pendente (assentos, passageiros e horário) e o valor total
       const pending = {
         schedule: schedule,
         seats: selectedSeats.slice(),
@@ -230,12 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
         date: schedule.date
       };
       localStorage.setItem('pendingPurchase', JSON.stringify(pending));
-      // define a página de redirecionamento pós login como pagamento
       localStorage.setItem('postLoginRedirect', 'payment.html');
       window.location.href = 'login.html';
       return;
     }
-    // Se o usuário está logado, cria a reserva imediatamente
+    // Cria reserva e armazena em bookings
     const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
     const newBooking = {
       id: Date.now(),
@@ -248,15 +269,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     bookings.push(newBooking);
     localStorage.setItem('bookings', JSON.stringify(bookings));
-    // Limpa qualquer compra pendente
+    // Remove compra pendente
     localStorage.removeItem('pendingPurchase');
-    // Redireciona para pagamento
     window.location.href = 'payment.html';
   });
+
   backBtn.addEventListener('click', () => {
     window.history.back();
   });
 });
-
-
-  */
