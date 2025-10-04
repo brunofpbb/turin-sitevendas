@@ -165,52 +165,57 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create card element and apply horizontal layout styles
         const card = document.createElement('div');
         card.className = 'schedule-card';
-        // Apply a flex layout inline to avoid relying on external CSS
         card.style.display = 'flex';
         card.style.justifyContent = 'space-between';
         card.style.alignItems = 'center';
         card.style.borderBottom = '1px solid #eee';
         card.style.padding = '10px 0';
 
-        // Build content row with departure details
-        const infoRow = document.createElement('div');
-        infoRow.className = 'schedule-info-row';
-        infoRow.style.display = 'flex';
-        infoRow.style.gap = '10px';
-        // Add spans for each field if available
-        const spanSaida = document.createElement('span');
-        spanSaida.innerHTML = `<strong>Saída:</strong> ${horario || '00:00'}`;
-        infoRow.appendChild(spanSaida);
-        const spanChegada = document.createElement('span');
-        spanChegada.innerHTML = `<strong>Chegada:</strong> ${chegada || '--'}`;
-        infoRow.appendChild(spanChegada);
-        const spanTempo = document.createElement('span');
-        spanTempo.innerHTML = `<strong>Tempo:</strong> ${tempoViagem || '--'}`;
-        infoRow.appendChild(spanTempo);
-        const spanTarifa = document.createElement('span');
-        spanTarifa.innerHTML = `<strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong>`;
-        infoRow.appendChild(spanTarifa);
         // Extract available seats and service type for display
         const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
         const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
         // Determine icons: use generic icons for executivo services (AC, WiFi, acessibilidade)
-        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? ' ❄️ 📶 ♿' : '';
-        if (disponiveis || tipoHorario) {
-          const spanDisp = document.createElement('span');
-          let text = '';
-          if (disponiveis) text += `<strong>Disp.:</strong> ${disponiveis}`;
-          if (tipoHorario) text += `${text ? ' — ' : ''}${tipoHorario}`;
-          if (icons) text += ` ${icons}`;
-          spanDisp.innerHTML = text;
-          infoRow.appendChild(spanDisp);
-        }
+        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
 
-        // Button container
+        // Build content container with two rows
+        const infoContainer = document.createElement('div');
+        infoContainer.style.display = 'flex';
+        infoContainer.style.flexDirection = 'column';
+        infoContainer.style.gap = '4px';
+
+        // First row: Saída, Chegada, Tempo, Tarifa
+        const row1 = document.createElement('div');
+        row1.style.display = 'flex';
+        row1.style.gap = '10px';
+        row1.innerHTML = `
+          <span><strong>Saída:</strong> ${horario || '00:00'}</span>
+          <span><strong>Chegada:</strong> ${chegada || '--'}</span>
+          <span><strong>Tempo:</strong> ${tempoViagem || '--'}</span>
+          <span><strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong></span>
+        `;
+        infoContainer.appendChild(row1);
+
+        // Second row: Assentos disponíveis, tipo de serviço e ícones
+        const row2 = document.createElement('div');
+        row2.style.display = 'flex';
+        row2.style.gap = '10px';
+        let row2Text = '';
+        if (disponiveis) {
+          row2Text += `<strong>Assentos:</strong> ${disponiveis} 💺`;
+        }
+        if (tipoHorario) {
+          row2Text += `${row2Text ? ' — ' : ''}${tipoHorario}`;
+        }
+        if (icons) {
+          row2Text += ` ${icons}`;
+        }
+        row2.innerHTML = row2Text;
+        infoContainer.appendChild(row2);
+
+        // Create select button
         const btn = document.createElement('button');
         btn.className = 'select-btn';
         btn.textContent = 'Selecionar';
-
-        // When the user clicks "Selecionar", save the selected schedule and go to seats page
         btn.addEventListener('click', () => {
           const schedule = {
             idViagem,
@@ -222,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
             arrivalTime: chegada,
             travelTime: tempoViagem,
             price: tarifaRaw,
-            // store seats available and service type for potential future use
             seatsAvailable: disponiveis || null,
             serviceType: tipoHorario || null
           };
@@ -230,8 +234,8 @@ document.addEventListener('DOMContentLoaded', () => {
           window.location.href = 'seats.html';
         });
 
-        // Append info row and button to card
-        card.appendChild(infoRow);
+        // Append info container and button to card
+        card.appendChild(infoContainer);
         card.appendChild(btn);
         busList.appendChild(card);
       });
