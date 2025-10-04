@@ -64,8 +64,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // The Praxio API returns the departures under a nested object. Depending
       // on the version, it may return `PartidasXmlRetorno.Linhas` or
       // `PartidasXmlRetorno.Linhas.Linha`. We'll normalise to an array.
+      // Prepare list of departures. The Praxio API may return
+      // either an array under `ListaPartidas` or under
+      // `PartidasXmlRetorno.Linhas.Linha`.
       let linhas = [];
-      if (data && data.PartidasXmlRetorno && data.PartidasXmlRetorno.Linhas) {
+      if (data && Array.isArray(data.ListaPartidas)) {
+        linhas = data.ListaPartidas;
+      } else if (data && data.PartidasXmlRetorno && data.PartidasXmlRetorno.Linhas) {
         const raw = data.PartidasXmlRetorno.Linhas;
         if (Array.isArray(raw)) {
           linhas = raw;
