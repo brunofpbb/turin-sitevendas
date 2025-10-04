@@ -190,6 +190,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const spanTarifa = document.createElement('span');
         spanTarifa.innerHTML = `<strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong>`;
         infoRow.appendChild(spanTarifa);
+        // Extract available seats and service type for display
+        const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
+        const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
+        // Determine icons: use generic icons for executivo services (AC, WiFi, acessibilidade)
+        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? ' ❄️ 📶 ♿' : '';
+        if (disponiveis || tipoHorario) {
+          const spanDisp = document.createElement('span');
+          let text = '';
+          if (disponiveis) text += `<strong>Disp.:</strong> ${disponiveis}`;
+          if (tipoHorario) text += `${text ? ' — ' : ''}${tipoHorario}`;
+          if (icons) text += ` ${icons}`;
+          spanDisp.innerHTML = text;
+          infoRow.appendChild(spanDisp);
+        }
 
         // Button container
         const btn = document.createElement('button');
@@ -208,6 +222,9 @@ document.addEventListener('DOMContentLoaded', () => {
             arrivalTime: chegada,
             travelTime: tempoViagem,
             price: tarifaRaw,
+            // store seats available and service type for potential future use
+            seatsAvailable: disponiveis || null,
+            serviceType: tipoHorario || null
           };
           localStorage.setItem('selectedSchedule', JSON.stringify(schedule));
           window.location.href = 'seats.html';
