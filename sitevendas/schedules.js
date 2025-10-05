@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
         const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
 
-        // Cria card de layout horizontal
+        // Cria o card que contém as informações da viagem e o botão
         const card = document.createElement('div');
         card.className = 'schedule-card';
         card.style.display = 'flex';
@@ -165,25 +165,45 @@ document.addEventListener('DOMContentLoaded', () => {
         card.style.borderBottom = '1px solid #eee';
         card.style.padding = '10px 0';
 
-        // Linha única com todas as informações
-        const infoRow = document.createElement('div');
-        infoRow.style.display = 'flex';
-        infoRow.style.gap = '10px';
-        const parts = [];
-        parts.push(`<span><strong>Saída:</strong> ${horario || '00:00'}</span>`);
-        parts.push(`<span><strong>Chegada:</strong> ${chegada || '--'}</span>`);
-        parts.push(`<span><strong>Tempo:</strong> ${tempoViagem || '--'}</span>`);
-        parts.push(`<span><strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong></span>`);
+        // Contêiner vertical para duas linhas de informações
+        const infoContainer = document.createElement('div');
+        infoContainer.style.display = 'flex';
+        infoContainer.style.flexDirection = 'column';
+        infoContainer.style.flex = '1';
+        infoContainer.style.gap = '4px';
+
+        // Primeira linha: horário de saída, chegada, tempo e tarifa
+        const firstRow = document.createElement('div');
+        firstRow.style.display = 'flex';
+        firstRow.style.flexWrap = 'wrap';
+        firstRow.style.gap = '10px';
+        const firstParts = [];
+        firstParts.push(`<span><strong>Saída:</strong> ${horario || '00:00'}</span>`);
+        firstParts.push(`<span><strong>Chegada:</strong> ${chegada || '--'}</span>`);
+        firstParts.push(`<span><strong>Tempo:</strong> ${tempoViagem || '--'}</span>`);
+        firstParts.push(`<span><strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong></span>`);
+        firstRow.innerHTML = firstParts.join(' ');
+
+        // Segunda linha: poltronas disponíveis e tipo de serviço
+        const secondRow = document.createElement('div');
+        secondRow.style.display = 'flex';
+        secondRow.style.flexWrap = 'wrap';
+        secondRow.style.gap = '10px';
+        const secondParts = [];
         if (disponiveis) {
-          parts.push(`<span><strong>Poltronas Disponiveis:</strong> ${disponiveis} 💺</span>`);
+          secondParts.push(`<span><strong>Poltronas Disponiveis:</strong> ${disponiveis} 💺</span>`);
         }
         if (tipoHorario || icons) {
           let serviceText = '';
           if (tipoHorario) serviceText += tipoHorario;
           if (icons) serviceText += ` ${icons}`;
-          parts.push(`<span>— ${serviceText}</span>`);
+          // prefix dash when there are preceding parts
+          secondParts.push(`<span>${serviceText}</span>`);
         }
-        infoRow.innerHTML = parts.join(' ');
+        secondRow.innerHTML = secondParts.join(' ');
+
+        infoContainer.appendChild(firstRow);
+        infoContainer.appendChild(secondRow);
 
         // Botão selecionar
         const btn = document.createElement('button');
@@ -209,7 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
           window.location.href = 'seats.html';
         });
 
-        card.appendChild(infoRow);
+        // Monta a estrutura do card
+        card.appendChild(infoContainer);
         card.appendChild(btn);
         busList.appendChild(card);
       });
