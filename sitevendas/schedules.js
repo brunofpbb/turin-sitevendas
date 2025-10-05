@@ -149,7 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const tarifa = parseFloat(tarifaRaw);
 
         const idViagem = linha.IdViagem || linha.CodViagem || 0;
-        const idTipoVeiculo = linha.IdTipoVeiculo || linha.IdTipoOnibus || 0;
+        // A API exige o tipo de veículo; algumas respostas usam TipoVeiculo em vez de IdTipoVeiculo.
+        const idTipoVeiculo =
+          linha.IdTipoVeiculo || linha.TipoVeiculo || linha.IdTipoOnibus || 0;
 
         // Poltronas disponíveis e tipo de serviço
         const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
