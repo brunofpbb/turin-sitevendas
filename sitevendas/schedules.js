@@ -1,11 +1,11 @@
 // schedules.js – lists available departures based on user search
-// This file has been updated to use the backend proxy endpoints instead of
-// calling Praxio directly. It expects the search parameters to be stored
-// in localStorage under the key `searchParams` as an object with
-// `originId`, `destinationId` and `date` (YYYY-MM-DD).
+// This version uses the backend proxy endpoints instead of calling Praxio directly.
+// It expects the search parameters to be stored in localStorage under the key
+// `searchParams` as an object with `originId`, `destinationId`, `originName`,
+// `destinationName` and `date` (YYYY-MM-DD).
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Attempt to update the navigation bar if the function exists
+  // Atualiza a navegação do usuário se a função existir
   if (typeof updateUserNav === 'function') {
     updateUserNav();
   }
@@ -15,14 +15,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const noResults = document.getElementById('no-results') || document.getElementById('noResults');
   const backBtn = document.getElementById('back-btn');
 
-  // Return to the previous page when clicking back
+  // Botão voltar para a página inicial
   if (backBtn) {
     backBtn.addEventListener('click', () => {
       window.location.href = 'index.html';
     });
   }
 
-  // If search parameters are missing, show a message and stop
+  // Se não houver parâmetros de busca, exibe mensagem e sai
   if (!searchParams) {
     if (noResults) {
       noResults.style.display = 'block';
@@ -31,16 +31,16 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  // Convert the selected date to ISO format accepted by the API
+  // A data selecionada já está em formato ISO (YYYY-MM-DD)
   const dateIso = searchParams.date;
 
-  // Show a loading message while fetching schedules
+  // Mostra mensagem de carregamento
   if (noResults) {
     noResults.style.display = 'block';
     noResults.textContent = 'Buscando viagens disponíveis...';
   }
 
-  // Fetch the list of departures from our backend
+  // Chama o backend para obter a lista de partidas
   fetch('/api/partidas', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -52,21 +52,14 @@ document.addEventListener('DOMContentLoaded', () => {
   })
     .then((res) => res.json())
     .then((data) => {
-      // Log the raw response from the backend for debugging
-      console.log('API /api/partidas response:', data);
-
+      // Esconde a mensagem de carregamento
       if (noResults) noResults.style.display = 'none';
       if (!busList) return;
 
-      // Clear previous results
       busList.innerHTML = '';
 
-      // The Praxio API returns the departures under a nested object. Depending
-      // on the version, it may return `PartidasXmlRetorno.Linhas` or
-      // `PartidasXmlRetorno.Linhas.Linha`. We'll normalise to an array.
-      // Prepare list of departures. The Praxio API may return
-      // either an array under `ListaPartidas` or under
-      // `PartidasXmlRetorno.Linhas.Linha`.
+      // Normaliza a lista de partidas. A API Praxio pode retornar
+      // `ListaPartidas` ou `PartidasXmlRetorno.Linhas.Linha`.
       let linhas = [];
       if (data && Array.isArray(data.ListaPartidas)) {
         linhas = data.ListaPartidas;
@@ -79,9 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Log the parsed list of departures for debugging
-      console.log('Parsed linhas:', linhas);
-
       if (!linhas || linhas.length === 0) {
         if (noResults) {
           noResults.style.display = 'block';
@@ -90,27 +80,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Build a card for each departure
-      linhas.forEach((linha) => {
-        // Extract useful fields with fallbacks. The exact property names may
-        // differ depending on API version, so we guard against undefined.
-        // Helper to format times like "0700" into "07:00"
-        function formatHora(h) {
-          if (!h) return '';
-          if (typeof h !== 'string') return h;
-          if (h.includes(':')) return h;
-          // If string length is 4 (e.g. "0700"), insert colon
-          if (h.length === 4) {
-            return h.slice(0, 2) + ':' + h.slice(2);
-          }
-          return h;
+      // Função auxiliar para formatar horas no formato HH:MM
+      function formatHora(h) {
+        if (!h) return '';
+        if (typeof h !== 'string') return h;
+        if (h.includes(':')) return h;
+        if (h.length === 4) {
+          return h.slice(0, 2) + ':' + h.slice(2);
         }
-        // Extract departure time (Saída). Try multiple properties and parse as needed.
+        return h;
+      }
+
+      linhas.forEach((linha) => {
+        // Extrai horário de saída
         let horario = linha.HorarioPartida || linha.HoraPartida || '';
         if (!horario && linha.ViagemTFO) {
           horario = linha.ViagemTFO.HorarioPartida || linha.ViagemTFO.HoraPartida || '';
           if (!horario) {
-            // Try DataHoraInicio or DataHoraEmbarque (format: YYYY-MM-DDTHH:MM)
             const dh = linha.ViagemTFO.DataHoraInicio || linha.ViagemTFO.DataHoraEmbarque || '';
             if (dh) {
               const t = dh.split('T')[1];
@@ -120,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
         }
-        // Fallback: parse from DadosViagem (e.g. "07:00 - R$ 28.45 - Linha: ...")
         if (!horario && typeof linha.DadosViagem === 'string') {
           const parts = linha.DadosViagem.split(' - ');
           if (parts.length > 0) {
@@ -128,7 +113,8 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         horario = formatHora(horario);
-        // Extract arrival time (Chegada). Try multiple properties and parse dateTime if needed.
+
+        // Extrai horário de chegada
         let chegadaRaw = linha.HorarioChegada || linha.HoraChegada || '';
         if (!chegadaRaw && linha.DtaHoraChegada) {
           chegadaRaw = linha.DtaHoraChegada;
@@ -145,12 +131,14 @@ document.addEventListener('DOMContentLoaded', () => {
             chegada = formatHora(chegadaRaw);
           }
         }
-        // Extract travel duration (Tempo de viagem). Try multiple properties.
+
+        // Extrai duração da viagem
         let tempoViagem = linha.TempoViagem || linha.Duracao || linha.DuracaoViagem || '';
         if (!tempoViagem && linha.ViagemTFO) {
           tempoViagem = linha.ViagemTFO.DuracaoViagem || linha.ViagemTFO.TempoViagem || '';
         }
-        // Tarifa pode vir em várias propriedades; tenta ValorTarifa, Tarifa, VlTarifa, ValorMaiorDesconto
+
+        // Tarifa
         const tarifaRaw =
           linha.Tarifa ??
           linha.ValorTarifa ??
@@ -159,10 +147,16 @@ document.addEventListener('DOMContentLoaded', () => {
           linha.ValorMaiorDesconto ??
           0;
         const tarifa = parseFloat(tarifaRaw);
+
         const idViagem = linha.IdViagem || linha.CodViagem || 0;
         const idTipoVeiculo = linha.IdTipoVeiculo || linha.IdTipoOnibus || 0;
 
-        // Create card element and apply horizontal layout styles
+        // Poltronas disponíveis e tipo de serviço
+        const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
+        const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
+        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
+
+        // Cria card de layout horizontal
         const card = document.createElement('div');
         card.className = 'schedule-card';
         card.style.display = 'flex';
@@ -171,17 +165,10 @@ document.addEventListener('DOMContentLoaded', () => {
         card.style.borderBottom = '1px solid #eee';
         card.style.padding = '10px 0';
 
-        // Extract available seats and service type for display
-        const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
-        const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
-        // Determine icons: use generic icons for executivo services (AC, WiFi, acessibilidade)
-        const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
-
-        // Build a single-row info line with all details, including poltronas disponiveis
+        // Linha única com todas as informações
         const infoRow = document.createElement('div');
         infoRow.style.display = 'flex';
         infoRow.style.gap = '10px';
-        // Build line parts
         const parts = [];
         parts.push(`<span><strong>Saída:</strong> ${horario || '00:00'}</span>`);
         parts.push(`<span><strong>Chegada:</strong> ${chegada || '--'}</span>`);
@@ -198,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         infoRow.innerHTML = parts.join(' ');
 
-        // Create select button
+        // Botão selecionar
         const btn = document.createElement('button');
         btn.className = 'select-btn';
         btn.textContent = 'Selecionar';
@@ -216,13 +203,12 @@ document.addEventListener('DOMContentLoaded', () => {
             travelTime: tempoViagem,
             price: tarifaRaw,
             seatsAvailable: disponiveis || null,
-            serviceType: tipoHorario || null
+            serviceType: tipoHorario || null,
           };
           localStorage.setItem('selectedSchedule', JSON.stringify(schedule));
           window.location.href = 'seats.html';
         });
 
-        // Append info row and button to card
         card.appendChild(infoRow);
         card.appendChild(btn);
         busList.appendChild(card);
