@@ -57,6 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!response.ok) throw new Error('Falha ao obter poltronas');
       const rawData = await response.json();
+      // Loga a resposta bruta para depuração
+      console.log('Poltronas API response:', rawData);
       const data = Array.isArray(rawData) ? rawData[0] || {} : rawData;
       let poltronas = [];
       if (data && data.PoltronaXmlRetorno) {
@@ -72,6 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
         poltronas = data.LaypoltronaXml.PoltronaXmlRetorno;
       }
       if (poltronas && poltronas.length > 0) {
+        // Loga a lista de poltronas para depuração
+        console.log('Lista de poltronas recebidas:', poltronas);
         schedule.seats = poltronas
           .map((p) => {
             const number = parseInt(
@@ -86,7 +90,14 @@ document.addEventListener('DOMContentLoaded', () => {
             };
           })
           // Mantém apenas poltronas entre 1 e 42 e descarta corredores (situação 3 ou 7)
-          .filter((s) => s.number && s.number >= 1 && s.number <= 42 && s.situacao !== 3 && s.situacao !== 7);
+          .filter(
+            (s) =>
+              s.number &&
+              s.number >= 1 &&
+              s.number <= 42 &&
+              s.situacao !== 3 &&
+              s.situacao !== 7,
+          );
       }
     } catch (err) {
       console.error('Erro ao carregar mapa de poltronas:', err);
