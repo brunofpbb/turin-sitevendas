@@ -177,41 +177,26 @@ document.addEventListener('DOMContentLoaded', () => {
         // Determine icons: use generic icons for executivo services (AC, WiFi, acessibilidade)
         const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
 
-        // Build content container with two rows
-        const infoContainer = document.createElement('div');
-        infoContainer.style.display = 'flex';
-        infoContainer.style.flexDirection = 'column';
-        infoContainer.style.gap = '4px';
-
-        // First row: Saída, Chegada, Tempo, Tarifa
-        const row1 = document.createElement('div');
-        row1.style.display = 'flex';
-        row1.style.gap = '10px';
-        row1.innerHTML = `
-          <span><strong>Saída:</strong> ${horario || '00:00'}</span>
-          <span><strong>Chegada:</strong> ${chegada || '--'}</span>
-          <span><strong>Tempo:</strong> ${tempoViagem || '--'}</span>
-          <span><strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong></span>
-        `;
-        infoContainer.appendChild(row1);
-
-        // Second row: Poltronas disponíveis, tipo de serviço e ícones
-        const row2 = document.createElement('div');
-        row2.style.display = 'flex';
-        row2.style.gap = '10px';
-        // Build parts for the second row
-        const row2Parts = [];
+        // Build a single-row info line with all details, including poltronas disponiveis
+        const infoRow = document.createElement('div');
+        infoRow.style.display = 'flex';
+        infoRow.style.gap = '10px';
+        // Build line parts
+        const parts = [];
+        parts.push(`<span><strong>Saída:</strong> ${horario || '00:00'}</span>`);
+        parts.push(`<span><strong>Chegada:</strong> ${chegada || '--'}</span>`);
+        parts.push(`<span><strong>Tempo:</strong> ${tempoViagem || '--'}</span>`);
+        parts.push(`<span><strong>R$ ${isNaN(tarifa) ? '0,00' : tarifa.toFixed(2)}</strong></span>`);
         if (disponiveis) {
-          row2Parts.push(`<strong>Poltronas Disponiveis:</strong> ${disponiveis} 💺`);
+          parts.push(`<span><strong>Poltronas Disponiveis:</strong> ${disponiveis} 💺</span>`);
         }
-        if (tipoHorario) {
-          row2Parts.push(`${tipoHorario}`);
+        if (tipoHorario || icons) {
+          let serviceText = '';
+          if (tipoHorario) serviceText += tipoHorario;
+          if (icons) serviceText += ` ${icons}`;
+          parts.push(`<span>— ${serviceText}</span>`);
         }
-        if (icons) {
-          row2Parts.push(`${icons}`);
-        }
-        row2.innerHTML = row2Parts.join(' \u2014 ');
-        infoContainer.appendChild(row2);
+        infoRow.innerHTML = parts.join(' ');
 
         // Create select button
         const btn = document.createElement('button');
@@ -223,6 +208,8 @@ document.addEventListener('DOMContentLoaded', () => {
             idTipoVeiculo,
             originId: searchParams.originId,
             destinationId: searchParams.destinationId,
+            originName: searchParams.originName,
+            destinationName: searchParams.destinationName,
             date: dateIso,
             departureTime: horario,
             arrivalTime: chegada,
@@ -235,8 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
           window.location.href = 'seats.html';
         });
 
-        // Append info container and button to card
-        card.appendChild(infoContainer);
+        // Append info row and button to card
+        card.appendChild(infoRow);
         card.appendChild(btn);
         busList.appendChild(card);
       });
