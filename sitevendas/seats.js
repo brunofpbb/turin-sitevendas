@@ -148,10 +148,102 @@ document.addEventListener('DOMContentLoaded', () => {
     return seats;
   }
 
+
+
+async function renderSeatGrid() {
+  await ensureSeatMap();
+  if (!seatMap) return;
+
+  seatMap.innerHTML = '';
+
+  // Grid fixo (42 posições + corredores)
+  const rows = [
+    [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, null],
+    [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, null],
+    [null, null, null, null, null, null, null, null, null, null, null],
+    [2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42],
+    [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41],
+  ];
+
+  rows.forEach((row, rowIndex) => {
+    row.forEach((cell, colIndex) => {
+      const rowPos = rowIndex + 1;
+      const colPos = colIndex + 1;
+
+      // corredor
+      if (cell === null) {
+        const walkwayDiv = document.createElement('div');
+        walkwayDiv.className = 'walkway';
+        walkwayDiv.style.gridRowStart = rowPos;
+        walkwayDiv.style.gridColumnStart = colPos;
+        seatMap.appendChild(walkwayDiv);
+        return;
+      }
+
+      // assento
+      const seatDiv = document.createElement('div');
+      seatDiv.className = 'seat';
+      seatDiv.textContent = cell;
+      seatDiv.dataset.seat = String(cell);
+      seatDiv.style.gridRowStart = rowPos;
+      seatDiv.style.gridColumnStart = colPos;
+
+      // mantém visual da seleção pré-existente
+      if (Array.isArray(selectedSeats) && selectedSeats.includes(cell)) {
+        seatDiv.classList.add('selected');
+      }
+
+      // dados da API (se existir)
+      const seatData = Array.isArray(schedule?.seats)
+        ? schedule.seats.find(s => Number(s.number) === cell)
+        : undefined;
+
+      // regras de indisponibilidade
+      const isForcedBlocked = (cell === 1 || cell === 2);        // sempre bloqueadas
+      const isInactive      = seatData?.situacao === 3;          // poltrona inexistente/inativa (API)
+      const isOccupied      = !!seatData?.occupied;              // vendida/reservada/etc (API)
+      const isMissing       = !seatData;                         // não veio no retorno da API
+      const isUnavailable   = isForcedBlocked || isInactive || isOccupied || isMissing;
+
+      if (isUnavailable) {
+        seatDiv.classList.add('occupied');
+        seatDiv.setAttribute('aria-disabled', 'true');
+        seatMap.appendChild(seatDiv); // anexa e não registra click
+        return;
+      }
+
+      // disponível: registrar clique normalmente
+      seatDiv.addEventListener('click', () => {
+        // sua lógica de seleção aqui (toggle visual + atualização do selectedSeats)
+        seatDiv.classList.toggle('selected');
+        const n = cell;
+        if (!Array.isArray(selectedSeats)) selectedSeats = [];
+        if (selectedSeats.includes(n)) {
+          selectedSeats = selectedSeats.filter(x => x !== n);
+        } else {
+          selectedSeats.push(n);
+        }
+        // se tiver handler externo (ex.: updateSelectedPanel()), pode chamar aqui
+      });
+
+      seatMap.appendChild(seatDiv);
+    });
+  });
+}
+
+
+
+
+
+  
+
+  
   /**
    * Renderiza o mapa de assentos usando grade com corredor horizontal.
    * Assentos ocupados ganham classe 'occupied'; selecionados, 'selected'.
    */
+
+  /*
   async function renderSeatGrid() {
     await ensureSeatMap();
     if (!seatMap) return;
@@ -211,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
            // Inclusão
 
-/*
+
           
           
         } else {
