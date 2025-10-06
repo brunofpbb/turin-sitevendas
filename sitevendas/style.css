@@ -128,7 +128,7 @@ button:hover {
   /* Ajuste a posição e tamanho em porcentagens para encaixar na área interna do ônibus */
   top: 11%;
   /* Aproxima as fileiras das laterais do ônibus, reduzindo margem esquerda e aumentando largura */
-  left: 20%;
+  left: 30%;
   width: 70%;
   height: 80%;
   display: grid;
