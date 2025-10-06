@@ -69,22 +69,28 @@ button:hover {
   background: #007a3b;
 }
 
+/* ---------- Lista de partidas (schedules) ---------- */
+
 .bus-list {
   list-style: none;
   padding: 0;
 }
 
+/* Layout antigo (bus-item) ainda suportado */
 .bus-item {
   border: 1px solid #ddd;
   border-radius: 4px;
   margin-bottom: 1rem;
   padding: 1rem;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 16px;
 }
-
+.bus-item > *:first-child {
+  flex: 1 1 auto;       /* texto ocupa a largura disponível */
+}
 .bus-item button {
+  margin-left: auto;    /* empurra o botão para a direita */
   background: #005b28;
   color: #fff;
   padding: 0.5rem 1rem;
@@ -92,23 +98,48 @@ button:hover {
   border-radius: 4px;
   cursor: pointer;
 }
-
 .bus-item button:hover {
   background: #007a3b;
 }
 
-/*
- * Mapa de assentos
- *
- * O novo layout usa a imagem do ônibus como base (bus-layout.png) e
- * sobrepõe os botões das poltronas em um grid de 4 linhas. Para cada
- * fileira, posicionamos as poltronas de acordo com a sequência de
- * numeração apresentada na imagem de referência. O grid possui 11
- * colunas para acomodar as fileiras mais longas; fileiras com menos
- * assentos deixam as últimas colunas vazias. A imagem do ônibus
- * determina a orientação do motorista, evitando a necessidade de
- * instruções de texto adicionais.
- */
+/* Novo layout usado pelos scripts (schedule-card/select-btn) */
+.schedule-card {
+  border-bottom: 1px solid #eee;
+  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.schedule-card > :first-child {
+  flex: 1 1 auto;
+}
+.select-btn {
+  margin-left: auto;
+}
+
+/* Permite forçar a quebra de linha quando quisermos isolar "Poltronas disponíveis" */
+.break-line {
+  display: block;
+}
+
+/* Cabeçalho sintético da viagem na listagem */
+.trip-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  line-height: 1.4;
+}
+.trip-summary .pill {
+  background: #eef6ef;
+  border: 1px solid #dfe9e1;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+
+/* ---------- Mapa de assentos ---------- */
+
 .bus-layout {
   position: relative;
   width: 100%;
@@ -125,18 +156,17 @@ button:hover {
 /* Container para o mapa de assentos sobre a imagem do ônibus */
 .seat-map {
   position: absolute;
-  /* Ajuste a posição e tamanho em porcentagens para encaixar na área interna do ônibus */
-  top: 11%;
-  /* Aproxima as fileiras das laterais do ônibus, reduzindo margem esquerda e aumentando largura */
-  left: 20%;
-  width: 70%;
-  height: 80%;
+  /* Ajuste fino para manter todas poltronas dentro da carroceria */
+  top: 13%;
+  left: 18%;
+  width: 64%;
+  height: 72%;
   display: grid;
   /* 11 colunas: assentos máximos por fileira */
   grid-template-columns: repeat(11, 1fr);
   /* 5 linhas: duas fileiras superiores, corredor (menor) e duas fileiras inferiores */
   grid-template-rows: 1fr 1fr 0.5fr 1fr 1fr;
-  gap: 1%;
+  gap: 0.8%;
   pointer-events: none;
 }
 
@@ -145,14 +175,18 @@ button:hover {
   width: 100%;
   height: 100%;
   border: 1px solid #bbb;
-  border-radius: 4px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   cursor: pointer;
-  background: #e8f5e9; /* tom suave para assentos disponíveis */
+  background: #e8f5e9; /* disponível */
   pointer-events: auto; /* permite cliques nos assentos */
+  transition: transform .08s ease-out;
+}
+.seat:hover {
+  transform: scale(1.03);
 }
 
 /* Poltronas selecionadas */
@@ -174,7 +208,29 @@ button:hover {
   pointer-events: none;
 }
 
-/* Contêiner de formulários de passageiros */
+/* Legenda */
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 12px 0 4px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+.legend-swatch {
+  width: 22px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid #bbb;
+}
+.legend-swatch.available { background: #e8f5e9; }
+.legend-swatch.occupied  { background: #95a5a6; }
+.legend-swatch.selected  { background: #007a3b; border-color: #007a3b; }
+
 /* Contêiner de formulários de passageiros */
 .passenger-container {
   margin-top: 2rem;
@@ -247,7 +303,7 @@ button:hover {
   font-size: 0.9rem;
 }
 
-/* Legenda/indicação do motorista */
+/* Legenda/indicação do motorista (mantida para backwards-compat) */
 #bus-orientation {
   text-align: center;
   font-size: 0.9rem;
@@ -255,6 +311,7 @@ button:hover {
   margin-bottom: 0.5rem;
 }
 
+/* Login / profile */
 .login-form, .profile {
   max-width: 400px;
   margin: 0 auto;
@@ -269,4 +326,31 @@ button:hover {
   padding: 1rem 0;
 }
 
-esse é o style atual no github, utilize ele para fazer as alterações necessarias e me retorne o codigo alterado e completo para comitar no git
+/* ---------- Responsividade ---------- */
+
+@media (max-width: 720px) {
+  main {
+    padding: 1.25rem;
+  }
+
+  .schedule-card,
+  .bus-item {
+    align-items: flex-start;
+  }
+
+  .select-btn,
+  .bus-item button {
+    margin-left: 0;
+  }
+
+  /* Mantém poltronas dentro do ônibus em telas menores */
+  .seat-map {
+    top: 14%;
+    left: 17.5%;
+    width: 65%;
+    height: 71%;
+    gap: 1%;
+  }
+
+  .seat { font-size: 0.8rem; }
+}
