@@ -112,6 +112,20 @@ document.addEventListener('DOMContentLoaded', () => {
       schedule.seats = generateSeatMapFallback();
     }
   }
+  
+  // Inclusão para bloquear as poltronas 1 e 2
+
+  schedule.seats.forEach(seat => {
+  if (seat.number === 1 || seat.number === 2) {
+    seat.occupied = true;
+    // opcional: seat.situacao = seat.situacao || 1; // marcar com código de ocupado
+  }
+});
+
+
+
+
+  
 
   /**
    * Gera um mapa de assentos estático de fallback (para erro na API).
