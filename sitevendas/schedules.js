@@ -133,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // ---------- CARD ----------
         const card = document.createElement('div');
         card.className = 'schedule-card';
+        
 
         // header (horários, tempo e preço)
         const header = document.createElement('div');
@@ -159,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // ações (botão)
         const actions = document.createElement('div');
         actions.className = 'schedule-actions';
+        actions.style.gridRow = '1 / -1'; 
         const btn = document.createElement('button');
         btn.className = 'select-btn';
         btn.textContent = 'Selecionar';
