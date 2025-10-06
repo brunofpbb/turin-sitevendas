@@ -69,46 +69,68 @@ button:hover {
   background: #007a3b;
 }
 
-.bus-list {
+/* ---------- LISTA DE VIAGENS EM CARDS ---------- */
+#bus-list, #schedule-list, .bus-list {
   list-style: none;
   padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;                   /* separação visível entre viagens */
 }
 
+.schedule-card {
+  background: #fff;
+  border: 1px solid #ced6de;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 1fr auto; /* info | ações */
+  grid-row-gap: 8px;
+  align-items: center;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
+  transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease;
+}
+
+.schedule-card:hover {
+  border-color: #9fb3c8;
+  box-shadow: 0 6px 16px rgba(0,0,0,.08);
+}
+
+.schedule-header,
+.schedule-body {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-size: 15px;
+}
+
+.schedule-header b { font-weight: 700; }
+
+.schedule-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.select-btn {
+  min-width: 130px;
+}
+
+/* Suporte ao layout antigo (se ainda existir) */
 .bus-item {
   border: 1px solid #ddd;
   border-radius: 4px;
-  margin-bottom: 1rem;
   padding: 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+.bus-item button { background: #005b28; color:#fff; padding:.5rem 1rem; border:none; border-radius:4px; cursor:pointer; }
+.bus-item button:hover { background:#007a3b; }
 
-.bus-item button {
-  background: #005b28;
-  color: #fff;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.bus-item button:hover {
-  background: #007a3b;
-}
-
-/*
- * Mapa de assentos
- *
- * O novo layout usa a imagem do ônibus como base (bus-layout.png) e
- * sobrepõe os botões das poltronas em um grid de 4 linhas. Para cada
- * fileira, posicionamos as poltronas de acordo com a sequência de
- * numeração apresentada na imagem de referência. O grid possui 11
- * colunas para acomodar as fileiras mais longas; fileiras com menos
- * assentos deixam as últimas colunas vazias. A imagem do ônibus
- * determina a orientação do motorista, evitando a necessidade de
- * instruções de texto adicionais.
- */
+/* ---------- MAPA DE ASSENTOS ---------- */
 .bus-layout {
   position: relative;
   width: 100%;
@@ -125,16 +147,12 @@ button:hover {
 /* Container para o mapa de assentos sobre a imagem do ônibus */
 .seat-map {
   position: absolute;
-  /* Ajuste a posição e tamanho em porcentagens para encaixar na área interna do ônibus */
   top: 11%;
-  /* Aproxima as fileiras das laterais do ônibus, reduzindo margem esquerda e aumentando largura */
   left: 22%;
   width: 70%;
   height: 80%;
   display: grid;
-  /* 11 colunas: assentos máximos por fileira */
   grid-template-columns: repeat(11, 1fr);
-  /* 5 linhas: duas fileiras superiores, corredor (menor) e duas fileiras inferiores */
   grid-template-rows: 1fr 1fr 0.5fr 1fr 1fr;
   gap: 1%;
   pointer-events: none;
@@ -151,8 +169,8 @@ button:hover {
   justify-content: center;
   font-size: 0.75rem;
   cursor: pointer;
-  background: #e8f5e9; /* tom suave para assentos disponíveis */
-  pointer-events: auto; /* permite cliques nos assentos */
+  background: #e8f5e9;
+  pointer-events: auto;
 }
 
 /* Poltronas selecionadas */
@@ -168,14 +186,13 @@ button:hover {
   cursor: not-allowed;
 }
 
-/* Espaço do corredor: célula vazia entre os bancos */
+/* Espaço do corredor */
 .walkway {
   background: transparent;
   pointer-events: none;
 }
 
-/* Contêiner de formulários de passageiros */
-/* Contêiner de formulários de passageiros */
+/* Formulários de passageiros */
 .passenger-container {
   margin-top: 2rem;
   display: flex;
@@ -198,11 +215,10 @@ button:hover {
   color: #005b28;
 }
 
-/* Novo estilo para as linhas de passageiros (layout horizontal) */
 .passenger-row {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap; /* mantém todos os campos na mesma linha */
+  flex-wrap: nowrap;
   gap: 0.5rem;
   margin-bottom: 0.8rem;
 }
@@ -213,15 +229,14 @@ button:hover {
   min-width: 60px;
 }
 
-/* Campos dentro da linha de passageiros */
 .passenger-row input,
 .passenger-row select {
   padding: 0.4rem;
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 0.9rem;
-  flex: 1 1 auto; /* distribui espaço horizontalmente */
-  min-width: 80px; /* largura mínima para evitar encolhimento excessivo */
+  flex: 1 1 auto;
+  min-width: 80px;
 }
 
 .passenger-row select {
