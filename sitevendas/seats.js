@@ -173,6 +173,47 @@ document.addEventListener('DOMContentLoaded', () => {
           walkwayDiv.style.gridRowStart = rowPos;
           walkwayDiv.style.gridColumnStart = colPos;
           seatMap.appendChild(walkwayDiv);
+
+    } else {
+  const seatData = schedule.seats?.find(s => s.number === cell);
+  const seatDiv = document.createElement('div');
+  seatDiv.className = 'seat';
+  seatDiv.textContent = cell;
+  seatDiv.style.gridRowStart = rowPos;
+  seatDiv.style.gridColumnStart = colPos;
+
+  // regras de seleção pré-existente (se houver)
+  if (selectedSeats.includes(cell)) {
+    seatDiv.classList.add('selected');
+  }
+
+  // regras de bloqueio
+  const isForcedBlocked = (cell === 1 || cell === 2);
+  const isInactive = seatData?.situacao === 3;       // poltrona inexistente/inativa (API)
+  const isOccupied = !!seatData?.occupied;           // ocupada segundo API
+  const isUnavailable = !seatData || isInactive || isOccupied || isForcedBlocked;
+
+  if (isUnavailable) {
+    seatDiv.classList.add('occupied');
+    seatMap.appendChild(seatDiv); // <-- anexa antes de pular
+    return;                       // <-- evita bind de clique
+  }
+
+  // disponível: registra clique normalmente
+  seatDiv.addEventListener('click', () => {
+    // ... sua lógica de seleção ...
+  });
+
+  seatMap.appendChild(seatDiv);
+}
+
+          
+
+           // Inclusão
+
+/*
+          
+          
         } else {
           const seatData = schedule.seats?.find((s) => s.number === cell);
           const seatDiv = document.createElement('div');
@@ -186,6 +227,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (selectedSeats.includes(cell)) {
             seatDiv.classList.add('selected');
           }
+
+         
+          
+          
+          
           seatDiv.addEventListener('click', () => {
             if (seatData && seatData.occupied) return;
             const idx = selectedSeats.indexOf(cell);
@@ -208,7 +254,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   }
+*/
 
+
+        
   /**
    * Atualiza os formulários de passageiros conforme seleção de assentos.
    */
