@@ -29,9 +29,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Exibe a rota e o horário selecionados
   if (tripInfo) {
+    /*
     const origin = schedule.originName || schedule.origin;
     const dest = schedule.destinationName || schedule.destination;
     tripInfo.textContent = `${origin} → ${dest} em ${schedule.date} às ${schedule.departureTime}`;
+    */
+
+    const [ano, mes, dia] = schedule.date.split('-');
+    const dataBR = `${dia}/${mes}/${ano}`;
+    const horaBR = schedule.departureTime; // já no formato HH:MM 24h
+    tripInfo.innerHTML = `<strong>${origin}</strong> &rarr; <strong>${dest}</strong> – ${dataBR} às ${horaBR}`;
+
   }
 
   /**
