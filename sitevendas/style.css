@@ -268,20 +268,3 @@ button:hover {
   border-bottom: 1px solid #ddd;
   padding: 1rem 0;
 }
-
-
-html, body {
-  height: 100%;
-}
-body {
-  display: flex;
-  flex-direction: column;
-}
-main {
-  flex: 1 0 auto;
-}
-footer {
-  /* já terá text-align: center; */
-  flex: 0 0 auto;
-}
-
