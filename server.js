@@ -24,74 +24,84 @@ app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }))
 
 /* =================== SMTP (login por e-mail) =================== */
 /** cria transporter 465/SSL a partir das variáveis atuais */
+/** 465/SSL */
 function createSSL() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
   return require('nodemailer').createTransport({
     host: SMTP_HOST,
-    port: Number(SMTP_PORT),              // normalmente 465
-    secure: String(SMTP_SECURE || 'true') === 'true', // SSL/TLS
+    port: Number(SMTP_PORT),                      // 465
+    secure: String(SMTP_SECURE || 'true') === 'true',
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
+    family: 4,                // força IPv4
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 4000,
   });
 }
 
-/** cria transporter 587/STARTTLS (fallback típico em PaaS) */
+/** 587/STARTTLS */
 function createSTARTTLS() {
   const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
   return require('nodemailer').createTransport({
-    host: SMTP_HOST,
+    host: SMTP_HOST,                             // ex.: smtp.uhserver.com
     port: 587,
-    secure: false,                         // STARTTLS
+    secure: false,                               // STARTTLS
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
+    family: 4,
+    connectionTimeout: 4000,
+    greetingTimeout: 4000,
+    socketTimeout: 4000,
   });
 }
 
+function verifyWithTimeout(transporter, ms = 4000) {
+  return Promise.race([
+    transporter.verify().then(() => ({ ok: true })),
+    new Promise(resolve => setTimeout(() => resolve({ ok: false, error: 'verify-timeout' }), ms + 200))
+  ]).catch(e => ({ ok: false, error: e?.message || String(e) }));
+}
+
+
+
 /** resolve um transporter pronto para uso (testa SSL e depois STARTTLS) */
 async function ensureTransport() {
-  // 1) tenta o modo definido nas variáveis (ex.: 465/SSL)
+  // tenta SSL(465) conforme variáveis
   let t = createSSL();
   if (t) {
-    try {
-      await t.verify();
-      return { transporter: t, mode: 'SSL(465)' };
-    } catch (e) {
-      // continua para fallback
-    }
+    const r = await verifyWithTimeout(t);
+    if (r.ok) return { transporter: t, mode: 'SSL(465)' };
   }
-  // 2) tenta fallback 587/STARTTLS
+  // fallback: STARTTLS(587)
   t = createSTARTTLS();
   if (t) {
-    try {
-      await t.verify();
-      return { transporter: t, mode: 'STARTTLS(587)' };
-    } catch (e2) {
-      return { transporter: null, mode: null, error: e2.message || String(e2) };
-    }
+    const r = await verifyWithTimeout(t);
+    if (r.ok) return { transporter: t, mode: 'STARTTLS(587)' };
+    return { transporter: null, mode: null, error: r.error || 'falha STARTTLS' };
   }
-  // sem variáveis suficientes
   return { transporter: null, mode: null, error: 'Variáveis SMTP ausentes/incompletas' };
 }
 
+
 /** endpoint de diagnóstico: testa ambos os modos e retorna o erro real */
 app.get('/api/auth/_debug-smtp', async (_req, res) => {
-  const ssl = createSSL();
-  const starttls = createSTARTTLS();
-  const out = { ssl: null, starttls: null, user: !!process.env.SMTP_USER, host: process.env.SMTP_HOST || null };
+  const sslT = createSSL();
+  const stT  = createSTARTTLS();
 
-  if (ssl) {
-    try { await ssl.verify(); out.ssl = { ok: true }; }
-    catch (e) { out.ssl = { ok: false, error: e.message || String(e) }; }
-  } else out.ssl = { ok: false, error: 'vars faltando (SSL)' };
+  const [sslRes, stRes] = await Promise.all([
+    sslT ? verifyWithTimeout(sslT) : Promise.resolve({ ok: false, error: 'vars faltando (SSL)' }),
+    stT  ? verifyWithTimeout(stT)  : Promise.resolve({ ok: false, error: 'vars faltando (STARTTLS)' }),
+  ]);
 
-  if (starttls) {
-    try { await starttls.verify(); out.starttls = { ok: true }; }
-    catch (e) { out.starttls = { ok: false, error: e.message || String(e) }; }
-  } else out.starttls = { ok: false, error: 'vars faltando (STARTTLS)' };
-
-  res.json(out);
+  res.json({
+    host: process.env.SMTP_HOST || null,
+    user: !!process.env.SMTP_USER,
+    ssl: sslRes,            // { ok: true/false, error?: '...' }
+    starttls: stRes
+  });
 });
 
 // memória simples p/ códigos
