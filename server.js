@@ -119,10 +119,13 @@ app.post('/api/auth/request-code', async (req, res) => {
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
     codes.set(email, { code, expiresAt, attempts: 0 });
 
+    // obtém transporter válido (tenta SSL 465; se falhar, STARTTLS 587)
+    const { transporter, mode, error } = await ensureTransport();
     if (!transporter) {
-      // sem SMTP funcional: não tenta enviar; informa indisponibilidade
       const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
-      return res.status(503).json({ ok: false, error: 'SMTP indisponível', ...devPayload });
+      return res
+        .status(503)
+        .json({ ok: false, error: `SMTP indisponível: ${error}`, ...devPayload });
     }
 
     const appName = process.env.APP_NAME || 'Turin Transportes';
@@ -136,27 +139,26 @@ app.post('/api/auth/request-code', async (req, res) => {
         <p style="font-size:28px;letter-spacing:3px;margin:16px 0"><b>${code}</b></p>
         <p>Ele expira em ${CODE_TTL_MIN} minutos.</p>
         <p style="color:#666;font-size:13px">Se não foi você, ignore este e-mail.</p>
+        <p style="color:#999;font-size:12px">Transporte usado: ${mode}</p>
       </div>
     `;
 
-    try {
-      await transporter.sendMail({
-        from, to: email,
-        subject: `Seu código de acesso (${appName})`,
-        text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
-        html,
-      });
-      const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
-      return res.json({ ok: true, message: 'Código enviado.', ...devPayload });
-    } catch (sendErr) {
-      console.error('[SMTP] erro ao enviar:', sendErr?.message || sendErr);
-      return res.status(502).json({ ok: false, error: 'Não foi possível enviar o e-mail agora.' });
-    }
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject: `Seu código de acesso (${appName})`,
+      text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
+      html,
+    });
+
+    const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
+    return res.json({ ok: true, message: `Código enviado via ${mode}.`, ...devPayload });
   } catch (err) {
-    console.error('Erro ao preparar envio:', err);
-    res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
+    console.error('Erro ao preparar/envio do e-mail:', err?.message || err);
+    return res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
   }
 });
+
 
 // verificar código
 app.post('/api/auth/verify-code', (req, res) => {
