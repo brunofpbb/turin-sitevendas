@@ -115,7 +115,7 @@ button:hover {
   flex-wrap: wrap;
   align-items: baseline;
   font-size: 15px;
-  line-height: 1.25;             /* reduz “quebra” alta dentro do card */
+  line-height: 1.5;             /* reduz “quebra” alta dentro do card */
 }
 
 .schedule-header{ grid-area: header; }
