@@ -111,11 +111,11 @@ button:hover {
 
 .schedule-actions{
   grid-row: 1 / -1;               /* ocupa todas as linhas do card */
-  align-self: stretch;            /* estica na vertical = mesma altura do card */
+  align-self: center;            /* estica na vertical = mesma altura do card */
   display: flex;                  /* centraliza o conteúdo verticalmente */
   align-items: center;            /* ← centralização vertical do botão */
   justify-content: flex-end;      /* botão encostado à direita */
-  padding-left: 10px;             /* pequeno respiro da coluna de info */
+  padding-left: 8px;             /* pequeno respiro da coluna de info */
   min-height: 64px;               /* garante boa área mesmo com pouco texto */
 }
 
