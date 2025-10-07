@@ -23,73 +23,75 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }));
 
 /* =================== SMTP (login por e-mail) =================== */
-/** Cria transporte primário conforme variáveis definidas (ex.: 465/SSL) */
-function createPrimaryTransport() {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: String(process.env.SMTP_SECURE || 'true') === 'true', // 465 => true
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+/** cria transporter 465/SSL a partir das variáveis atuais */
+function createSSL() {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
+  return require('nodemailer').createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT),              // normalmente 465
+    secure: String(SMTP_SECURE || 'true') === 'true', // SSL/TLS
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
   });
 }
 
-/** Fallback típico para PaaS: 587/STARTTLS */
-function createFallbackTransport() {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+/** cria transporter 587/STARTTLS (fallback típico em PaaS) */
+function createSTARTTLS() {
+  const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
+  return require('nodemailer').createTransport({
+    host: SMTP_HOST,
     port: 587,
-    secure: false, // STARTTLS
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    secure: false,                         // STARTTLS
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
   });
 }
 
-let transporter = createPrimaryTransport();
-let transporterInfo = { active: false, mode: null, error: null };
-
-// Verifica ao subir; se falhar, tenta fallback 587/STARTTLS
-(async () => {
-  try {
-    if (transporter) {
-      await transporter.verify();
-      transporterInfo = {
-        active: true,
-        mode: `${process.env.SMTP_PORT}/${String(process.env.SMTP_SECURE || 'true') === 'true' ? 'SSL' : 'STARTTLS'}`,
-        error: null
-      };
-      console.log('[SMTP] OK em', transporterInfo.mode);
-    } else {
-      throw new Error('Vars SMTP ausentes');
-    }
-  } catch (e) {
-    console.warn('[SMTP] primário falhou:', e.message);
+/** resolve um transporter pronto para uso (testa SSL e depois STARTTLS) */
+async function ensureTransport() {
+  // 1) tenta o modo definido nas variáveis (ex.: 465/SSL)
+  let t = createSSL();
+  if (t) {
     try {
-      const fb = createFallbackTransport();
-      if (!fb) throw new Error('Sem vars SMTP para fallback');
-      await fb.verify();
-      transporter = fb;
-      transporterInfo = { active: true, mode: '587/STARTTLS', error: null };
-      console.log('[SMTP] Fallback OK em', transporterInfo.mode);
-    } catch (e2) {
-      console.error('[SMTP] fallback também falhou:', e2.message);
-      transporter = null;
-      transporterInfo = { active: false, mode: null, error: e2.message };
+      await t.verify();
+      return { transporter: t, mode: 'SSL(465)' };
+    } catch (e) {
+      // continua para fallback
     }
   }
-})();
+  // 2) tenta fallback 587/STARTTLS
+  t = createSTARTTLS();
+  if (t) {
+    try {
+      await t.verify();
+      return { transporter: t, mode: 'STARTTLS(587)' };
+    } catch (e2) {
+      return { transporter: null, mode: null, error: e2.message || String(e2) };
+    }
+  }
+  // sem variáveis suficientes
+  return { transporter: null, mode: null, error: 'Variáveis SMTP ausentes/incompletas' };
+}
 
-// Endpoint de debug SMTP (não expõe segredos)
-app.get('/api/auth/_debug-smtp', (_req, res) => {
-  res.json({
-    ok: transporterInfo.active,
-    mode: transporterInfo.mode,
-    error: transporterInfo.error,
-    user: process.env.SMTP_USER ? 'set' : 'missing',
-    host: process.env.SMTP_HOST || 'missing'
-  });
+/** endpoint de diagnóstico: testa ambos os modos e retorna o erro real */
+app.get('/api/auth/_debug-smtp', async (_req, res) => {
+  const ssl = createSSL();
+  const starttls = createSTARTTLS();
+  const out = { ssl: null, starttls: null, user: !!process.env.SMTP_USER, host: process.env.SMTP_HOST || null };
+
+  if (ssl) {
+    try { await ssl.verify(); out.ssl = { ok: true }; }
+    catch (e) { out.ssl = { ok: false, error: e.message || String(e) }; }
+  } else out.ssl = { ok: false, error: 'vars faltando (SSL)' };
+
+  if (starttls) {
+    try { await starttls.verify(); out.starttls = { ok: true }; }
+    catch (e) { out.starttls = { ok: false, error: e.message || String(e) }; }
+  } else out.starttls = { ok: false, error: 'vars faltando (STARTTLS)' };
+
+  res.json(out);
 });
 
 // memória simples p/ códigos
