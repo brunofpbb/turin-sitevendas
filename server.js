@@ -23,24 +23,74 @@ app.use(express.json());
 app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }));
 
 /* =================== SMTP (login por e-mail) =================== */
-const smtpVarsOk =
-  !!process.env.SMTP_HOST &&
-  !!process.env.SMTP_PORT &&
-  !!process.env.SMTP_USER &&
-  !!process.env.SMTP_PASS;
-
-let transporter = null;
-if (smtpVarsOk) {
-  transporter = nodemailer.createTransport({
+/** Cria transporte primário conforme variáveis definidas (ex.: 465/SSL) */
+function createPrimaryTransport() {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT),
-    secure: String(process.env.SMTP_SECURE || 'true') === 'true',
+    secure: String(process.env.SMTP_SECURE || 'true') === 'true', // 465 => true
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     tls: { rejectUnauthorized: false },
   });
-} else {
-  console.warn('[WARN] SMTP vars ausentes — envio de e-mail desativado.');
 }
+
+/** Fallback típico para PaaS: 587/STARTTLS */
+function createFallbackTransport() {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: 587,
+    secure: false, // STARTTLS
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    tls: { rejectUnauthorized: false },
+  });
+}
+
+let transporter = createPrimaryTransport();
+let transporterInfo = { active: false, mode: null, error: null };
+
+// Verifica ao subir; se falhar, tenta fallback 587/STARTTLS
+(async () => {
+  try {
+    if (transporter) {
+      await transporter.verify();
+      transporterInfo = {
+        active: true,
+        mode: `${process.env.SMTP_PORT}/${String(process.env.SMTP_SECURE || 'true') === 'true' ? 'SSL' : 'STARTTLS'}`,
+        error: null
+      };
+      console.log('[SMTP] OK em', transporterInfo.mode);
+    } else {
+      throw new Error('Vars SMTP ausentes');
+    }
+  } catch (e) {
+    console.warn('[SMTP] primário falhou:', e.message);
+    try {
+      const fb = createFallbackTransport();
+      if (!fb) throw new Error('Sem vars SMTP para fallback');
+      await fb.verify();
+      transporter = fb;
+      transporterInfo = { active: true, mode: '587/STARTTLS', error: null };
+      console.log('[SMTP] Fallback OK em', transporterInfo.mode);
+    } catch (e2) {
+      console.error('[SMTP] fallback também falhou:', e2.message);
+      transporter = null;
+      transporterInfo = { active: false, mode: null, error: e2.message };
+    }
+  }
+})();
+
+// Endpoint de debug SMTP (não expõe segredos)
+app.get('/api/auth/_debug-smtp', (_req, res) => {
+  res.json({
+    ok: transporterInfo.active,
+    mode: transporterInfo.mode,
+    error: transporterInfo.error,
+    user: process.env.SMTP_USER ? 'set' : 'missing',
+    host: process.env.SMTP_HOST || 'missing'
+  });
+});
 
 // memória simples p/ códigos
 const codes = new Map();
@@ -62,18 +112,20 @@ app.post('/api/auth/request-code', async (req, res) => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ ok: false, error: 'E-mail inválido.' });
     }
+
     const code = genCode();
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
     codes.set(email, { code, expiresAt, attempts: 0 });
 
     if (!transporter) {
+      // sem SMTP funcional: não tenta enviar; informa indisponibilidade
       const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
-      return res.json({ ok: true, message: 'Código gerado (SMTP indisponível).', ...devPayload });
+      return res.status(503).json({ ok: false, error: 'SMTP indisponível', ...devPayload });
     }
 
     const appName = process.env.APP_NAME || 'Turin Transportes';
     const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const from = `"${fromName}" <${process.env.SMTP_USER}>`;
+    const from = `"${fromName}" <${process.env.SMTP_USER}>`; // remetente == usuário SMTP
 
     const html = `
       <div style="font-family:Arial,sans-serif;font-size:16px;color:#222">
@@ -84,17 +136,22 @@ app.post('/api/auth/request-code', async (req, res) => {
         <p style="color:#666;font-size:13px">Se não foi você, ignore este e-mail.</p>
       </div>
     `;
-    await transporter.sendMail({
-      from, to: email,
-      subject: `Seu código de acesso (${appName})`,
-      text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
-      html,
-    });
 
-    const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
-    res.json({ ok: true, message: 'Código enviado.', ...devPayload });
+    try {
+      await transporter.sendMail({
+        from, to: email,
+        subject: `Seu código de acesso (${appName})`,
+        text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
+        html,
+      });
+      const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
+      return res.json({ ok: true, message: 'Código enviado.', ...devPayload });
+    } catch (sendErr) {
+      console.error('[SMTP] erro ao enviar:', sendErr?.message || sendErr);
+      return res.status(502).json({ ok: false, error: 'Não foi possível enviar o e-mail agora.' });
+    }
   } catch (err) {
-    console.error('Erro ao enviar e-mail:', err);
+    console.error('Erro ao preparar envio:', err);
     res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
   }
 });
