@@ -80,17 +80,8 @@ button:hover {
 }
 
 .schedule-card {
-  background: #fff;
-  border: 1px solid #ced6de;
-  border-radius: 12px;
-  padding: 14px 16px;
-  display: grid;
-  grid-template-columns: 1fr auto; /* info | ações */
-  grid-row-gap: 8px;
-  grid-auto-rows: min-content;
   align-items: stretch;
-  box-shadow: 0 0 0 rgba(0,0,0,0);
-  transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease;
+  
 }
 
 .schedule-card:hover {
