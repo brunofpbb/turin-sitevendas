@@ -2,78 +2,78 @@
 require('dotenv').config();
 
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+// use node-fetch v2 (CommonJS) no package.json
 const fetch = require('node-fetch');
 const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* -------------------------------------------------
- * STATIC & PARSERS
- * ------------------------------------------------- */
-app.use(express.static('sitevendas'));
+/* ========= Static: detecta pasta pública e configura fallback ========= */
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
+  ? path.join(__dirname, 'sitevendas')
+  : __dirname;
+
+app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
-/* -------------------------------------------------
- * SMTP (UHServer) - envio do código de login
- * Vars esperadas no .env:
- *   SMTP_HOST=smtps.uhserver.com
- *   SMTP_PORT=465
- *   SMTP_SECURE=true
- *   SMTP_USER=noreply@turintransportes.com.br
- *   SMTP_PASS=********
- *   APP_NAME=Turin Transportes
- *   SUPPORT_FROM_NAME=Turin Transportes
- * ------------------------------------------------- */
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtps.uhserver.com',
-  port: Number(process.env.SMTP_PORT || 465),
-  secure: String(process.env.SMTP_SECURE || 'true') === 'true',
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  tls: { rejectUnauthorized: false }, // compat com provedores que usam cadeia antiga
-});
+// healthcheck p/ Railway
+app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }));
 
-// store simples em memória para códigos de verificação
-const codes = new Map(); // email -> { code, expiresAt, attempts }
+/* =================== SMTP (login por e-mail) =================== */
+const smtpVarsOk =
+  !!process.env.SMTP_HOST &&
+  !!process.env.SMTP_PORT &&
+  !!process.env.SMTP_USER &&
+  !!process.env.SMTP_PASS;
+
+let transporter = null;
+if (smtpVarsOk) {
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: String(process.env.SMTP_SECURE || 'true') === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    tls: { rejectUnauthorized: false },
+  });
+} else {
+  console.warn('[WARN] SMTP vars ausentes — envio de e-mail desativado.');
+}
+
+// memória simples p/ códigos
+const codes = new Map();
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 6;
 
-function genCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-function normalizeEmail(e) {
-  return String(e || '').trim().toLowerCase();
-}
-// limpeza periódica de expirados
+const genCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+const normalizeEmail = e => String(e || '').trim().toLowerCase();
+
 setInterval(() => {
   const now = Date.now();
-  for (const [email, data] of codes.entries()) {
-    if (data.expiresAt <= now) codes.delete(email);
-  }
+  for (const [k, v] of codes.entries()) if (v.expiresAt <= now) codes.delete(k);
 }, 60 * 1000);
 
-/* -------------------------------------------------
- * API: Autenticação por código (email)
- * ------------------------------------------------- */
-
-// Solicitar código
+// solicitar código
 app.post('/api/auth/request-code', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ ok: false, error: 'E-mail inválido.' });
     }
-
     const code = genCode();
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
     codes.set(email, { code, expiresAt, attempts: 0 });
 
+    if (!transporter) {
+      const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
+      return res.json({ ok: true, message: 'Código gerado (SMTP indisponível).', ...devPayload });
+    }
+
     const appName = process.env.APP_NAME || 'Turin Transportes';
     const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const from = `"${fromName}" <${process.env.SMTP_USER || 'noreply@turintransportes.com.br'}>`;
+    const from = `"${fromName}" <${process.env.SMTP_USER}>`;
 
     const html = `
       <div style="font-family:Arial,sans-serif;font-size:16px;color:#222">
@@ -84,66 +84,41 @@ app.post('/api/auth/request-code', async (req, res) => {
         <p style="color:#666;font-size:13px">Se não foi você, ignore este e-mail.</p>
       </div>
     `;
-
     await transporter.sendMail({
-      from,
-      to: email,
+      from, to: email,
       subject: `Seu código de acesso (${appName})`,
-      text: `Seu código de acesso é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
+      text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
       html,
     });
 
-    const devPayload =
-      process.env.NODE_ENV === 'development' ? { demoCode: code } : {};
-
+    const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
     res.json({ ok: true, message: 'Código enviado.', ...devPayload });
   } catch (err) {
     console.error('Erro ao enviar e-mail:', err);
-    res.status(500).json({ ok: false, error: 'Falha ao enviar o e-mail do código.' });
+    res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
   }
 });
 
-// Verificar código
+// verificar código
 app.post('/api/auth/verify-code', (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || '');
-
-  if (!email || !code) {
-    return res.status(400).json({ ok: false, error: 'E-mail e código são obrigatórios.' });
-  }
+  if (!email || !code) return res.status(400).json({ ok: false, error: 'E-mail e código são obrigatórios.' });
 
   const entry = codes.get(email);
   if (!entry) return res.status(400).json({ ok: false, error: 'Solicite um novo código.' });
-
-  if (entry.expiresAt < Date.now()) {
-    codes.delete(email);
-    return res.status(400).json({ ok: false, error: 'Código expirado. Solicite outro.' });
-  }
-
-  if (entry.attempts >= MAX_ATTEMPTS) {
-    codes.delete(email);
-    return res.status(429).json({ ok: false, error: 'Muitas tentativas. Solicite outro código.' });
-  }
+  if (entry.expiresAt < Date.now()) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Código expirado. Solicite outro.' }); }
+  if (entry.attempts >= MAX_ATTEMPTS) { codes.delete(email); return res.status(429).json({ ok: false, error: 'Muitas tentativas. Solicite outro código.' }); }
 
   entry.attempts += 1;
+  if (entry.code !== code) return res.status(400).json({ ok: false, error: 'Código incorreto.' });
 
-  if (entry.code !== code) {
-    return res.status(400).json({ ok: false, error: 'Código incorreto.' });
-  }
-
-  // sucesso
   codes.delete(email);
-  const user = {
-    email,
-    name: email.split('@')[0],
-    createdAt: new Date().toISOString(),
-  };
+  const user = { email, name: email.split('@')[0], createdAt: new Date().toISOString() };
   res.json({ ok: true, user });
 });
 
-/* -------------------------------------------------
- * API: Praxio — Partidas
- * ------------------------------------------------- */
+/* =================== Praxio: Partidas =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
@@ -157,19 +132,12 @@ app.post('/api/partidas', async (req, res) => {
       Cliente: process.env.PRAXIO_CLIENT,
       TipoAplicacao: 0,
     };
-
-    const loginResp = await fetch(
-      'https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginBody),
-      }
-    );
+    const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginBody),
+    });
     const loginData = await loginResp.json();
     const idSessaoOp = loginData.IdSessaoOp;
 
-    // Atenção: IdEstabelecimento fixo "1", conforme seu comentário original
     const partidasBody = {
       IdSessaoOp: idSessaoOp,
       LocalidadeOrigem: origemId,
@@ -182,15 +150,9 @@ app.post('/api/partidas', async (req, res) => {
       IdEstabelecimento: '1',
       DescontoAutomatico: 0,
     };
-
-    const partResp = await fetch(
-      'https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(partidasBody),
-      }
-    );
+    const partResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(partidasBody),
+    });
     const partData = await partResp.json();
     res.json(partData);
   } catch (error) {
@@ -199,30 +161,19 @@ app.post('/api/partidas', async (req, res) => {
   }
 });
 
-/* -------------------------------------------------
- * API: Praxio — RetornaPoltronas
- * ------------------------------------------------- */
+/* =================== Praxio: Poltronas =================== */
 app.post('/api/poltronas', async (req, res) => {
   try {
     const { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino } = req.body;
 
     const loginBody = {
-      Nome: process.env.PRAXIO_USER,
-      Senha: process.env.PRAXIO_PASS,
-      Sistema: 'WINVR.EXE',
-      TipoBD: 0,
-      Empresa: process.env.PRAXIO_EMP,
-      Cliente: process.env.PRAXIO_CLIENT,
-      TipoAplicacao: 0,
+      Nome: process.env.PRAXIO_USER, Senha: process.env.PRAXIO_PASS,
+      Sistema: 'WINVR.EXE', TipoBD: 0, Empresa: process.env.PRAXIO_EMP,
+      Cliente: process.env.PRAXIO_CLIENT, TipoAplicacao: 0,
     };
-    const loginResp = await fetch(
-      'https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginBody),
-      }
-    );
+    const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginBody),
+    });
     const loginData = await loginResp.json();
     const idSessaoOp = loginData.IdSessaoOp;
 
@@ -235,15 +186,9 @@ app.post('/api/poltronas', async (req, res) => {
       Andar: 0,
       VerificarSugestao: 1,
     };
-
-    const seatResp = await fetch(
-      'https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(seatBody),
-      }
-    );
+    const seatResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(seatBody),
+    });
     const seatData = await seatResp.json();
     res.json(seatData);
   } catch (error) {
@@ -252,9 +197,18 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
-/* -------------------------------------------------
- * START
- * ------------------------------------------------- */
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+/* =================== SPA fallback =================== */
+app.get('*', (_req, res) => {
+  const indexPath = fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))
+    ? path.join(PUBLIC_DIR, 'index.html')
+    : path.join(__dirname, 'index.html');
+  res.sendFile(indexPath);
 });
+
+/* =================== Start =================== */
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
+});
+
+process.on('unhandledRejection', r => console.error('UnhandledRejection:', r));
+process.on('uncaughtException', e => console.error('UncaughtException:', e));
