@@ -70,13 +70,14 @@ button:hover {
 }
 
 /* ---------- LISTA DE VIAGENS EM CARDS ---------- */
+/* ---------- LISTA DE VIAGENS EM CARDS ---------- */
 #bus-list, #schedule-list, .bus-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
-  gap: 10px;                   /* separação visível entre viagens */
-  margin-bottom: 16px;    /* afasta do botão Voltar */
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .schedule-card {
@@ -88,7 +89,7 @@ button:hover {
   grid-template-columns: 1fr auto; /* info | ações */
   grid-row-gap: 8px;
   grid-auto-rows: min-content;
-  align-items: center;
+  align-items: stretch;            /* <-- era center */
   box-shadow: 0 0 0 rgba(0,0,0,0);
   transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease;
 }
@@ -109,31 +110,25 @@ button:hover {
 
 .schedule-header b { font-weight: 700; }
 
+/* Coluna de ações ocupa toda a altura do card e centraliza o botão */
 .schedule-actions{
-  grid-row: 1 / -1;               /* ocupa todas as linhas do card */
-  align-self: center;            /* estica na vertical = mesma altura do card */
-  display: flex;                  /* centraliza o conteúdo verticalmente */
-  align-items: center;            /* ← centralização vertical do botão */
-  justify-content: flex-end;      /* botão encostado à direita */
-  padding-left: 8px;             /* pequeno respiro da coluna de info */
-  min-height: 64px;               /* garante boa área mesmo com pouco texto */
-}
-
-.select-btn {
-  min-width: 130px;
-}
-
-/* Suporte ao layout antigo (se ainda existir) */
-.bus-item {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 1rem;
+  grid-row: 1 / -1;               /* ocupa todas as linhas */
+  align-self: stretch;            /* <-- era center */
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: center;            /* centraliza verticalmente o botão */
+  justify-content: flex-end;      /* botão à direita */
+  padding-left: 8px;
+  /* min-height opcional: pode remover se quiser mais compacto */
+  /* min-height: 64px; */
 }
-.bus-item button { background: #005b28; color:#fff; padding:.5rem 1rem; border:none; border-radius:4px; cursor:pointer; }
+
+.select-btn { min-width: 130px; }
+
+/* (legacy) */
+.bus-item { border: 1px solid #ddd; border-radius: 4px; padding: 1rem; display:flex; justify-content:space-between; align-items:center; }
+.bus-item button { background:#005b28; color:#fff; padding:.5rem 1rem; border:none; border-radius:4px; cursor:pointer; }
 .bus-item button:hover { background:#007a3b; }
+
 
 /* ---------- MAPA DE ASSENTOS ---------- */
 .bus-layout {
