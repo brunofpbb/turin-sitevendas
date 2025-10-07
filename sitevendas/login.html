@@ -1,43 +1,61 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Login</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
   <script defer src="main.js"></script>
   <script defer src="login.js"></script>
+  <style>
+    /* pequenos ajustes visuais do formulário */
+    .login-form { max-width: 420px; }
+    .hint { color:#666; font-size: .9rem; margin-top:.5rem }
+    .muted { color:#888 }
+    .inline { display:inline-flex; align-items:center; gap:.5rem }
+  </style>
 </head>
 <body>
   <header>
     <h1>Turin Transportes – Acesso</h1>
     <nav id="user-nav"></nav>
   </header>
+
   <main>
     <h2>Acessar conta</h2>
+
     <!-- Etapa 1: solicitar email -->
     <div id="step-email">
       <form id="email-form" class="login-form">
         <div class="form-row">
           <label for="email">Email</label>
-          <input type="email" id="email" required>
+          <input type="email" id="email" required />
+          <div class="hint">Enviaremos um código de 6 dígitos para seu e-mail.</div>
         </div>
-        <button type="submit">Enviar código</button>
+        <button id="btn-send" type="submit">Enviar código</button>
+        <div id="email-msg" class="hint"></div>
       </form>
     </div>
-    <!-- Etapa 2: solicitar código -->
+
+    <!-- Etapa 2: inserir código -->
     <div id="step-code" style="display:none;">
-      <p>Enviamos um código de 6 dígitos para seu email.<br>
-      <strong>Para fins de demonstração, o código gerado é mostrado abaixo.</strong></p>
-      <p id="display-code" style="font-size:1.2rem;font-weight:bold;"></p>
+      <p class="muted">Digite o código de 6 dígitos que enviamos para <b id="email-mask"></b>.</p>
+      <!-- Em desenvolvimento o backend pode retornar demoCode; mostramos aqui se vier -->
+      <p id="display-code" class="hint"></p>
+
       <form id="code-form" class="login-form">
         <div class="form-row">
           <label for="code">Código</label>
-          <input type="text" id="code" maxlength="6" required>
+          <input type="text" id="code" inputmode="numeric" pattern="[0-9]*" maxlength="6" required />
         </div>
-        <button type="submit">Verificar código</button>
+        <div class="inline" style="gap:10px">
+          <button id="btn-verify" type="submit">Verificar código</button>
+          <button id="btn-resend" type="button">Reenviar código</button>
+        </div>
+        <div id="code-msg" class="hint"></div>
       </form>
     </div>
   </main>
+
   <footer>
     <p>&copy; 2025 Turin Transportes</p>
   </footer>
