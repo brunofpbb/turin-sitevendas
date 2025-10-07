@@ -70,64 +70,72 @@ button:hover {
 }
 
 /* ---------- LISTA DE VIAGENS EM CARDS ---------- */
-/* ---------- LISTA DE VIAGENS EM CARDS ---------- */
-#bus-list, #schedule-list, .bus-list {
+#bus-list, #schedule-list, .bus-list{
   list-style: none;
   padding: 0;
   margin: 0;
   display: grid;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;            /* afasta do Voltar */
 }
 
-.schedule-card {
+/* CARD: grid por áreas para garantir alinhamento do botão */
+.schedule-card{
+  --padY: 12px;                   /* padding vertical do card */
+  --padX: 14px;                   /* padding horizontal do card */
+  --rowGap: 6px;                  /* espaço entre header e body */
+  --inlineGap: 12px;              /* espaço entre campos dentro das linhas */
+
   background: #fff;
   border: 1px solid #ced6de;
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: var(--padY) var(--padX);
   display: grid;
-  grid-template-columns: 1fr auto; /* info | ações */
-  grid-row-gap: 8px;
-  grid-auto-rows: min-content;
-  align-items: stretch;            /* <-- era center */
+  grid-template-columns: 1fr 160px;                /* info | ações */
+  grid-template-rows: auto auto;                   /* header | body */
+  grid-template-areas:
+    "header actions"
+    "body   actions";
+  align-items: center;                              /* alinha o conteúdo das células */
+  row-gap: var(--rowGap);
   box-shadow: 0 0 0 rgba(0,0,0,0);
   transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease;
 }
 
-.schedule-card:hover {
+.schedule-card:hover{
   border-color: #9fb3c8;
   box-shadow: 0 6px 16px rgba(0,0,0,.08);
 }
 
+/* linhas de info */
 .schedule-header,
-.schedule-body {
+.schedule-body{
   display: flex;
-  gap: 18px;
+  gap: var(--inlineGap);
   flex-wrap: wrap;
   align-items: baseline;
   font-size: 15px;
+  line-height: 1.25;             /* reduz “quebra” alta dentro do card */
 }
 
-.schedule-header b { font-weight: 700; }
+.schedule-header{ grid-area: header; }
+.schedule-body{   grid-area: body; }
+.schedule-header b{ font-weight: 700; }
 
-/* Coluna de ações ocupa toda a altura do card e centraliza o botão */
+/* coluna de ações ocupa as DUAS linhas e centraliza o botão */
 .schedule-actions{
-  grid-row: 1 / -1;               /* ocupa todas as linhas */
-  align-self: stretch;            /* <-- era center */
+  grid-area: actions;             /* cola na área 'actions' */
   display: flex;
-  align-items: center;            /* centraliza verticalmente o botão */
-  justify-content: flex-end;      /* botão à direita */
-  padding-left: 8px;
-  /* min-height opcional: pode remover se quiser mais compacto */
-  /* min-height: 64px; */
+  align-items: center;            /* centraliza verticalmente */
+  justify-content: flex-end;      /* alinha à direita */
+  padding-left: 10px;             /* respiro da coluna de info */
 }
 
-.select-btn { min-width: 130px; }
+.select-btn{
+  min-width: 130px;
+  height: 36px;                   /* altura consistente */
+}
 
-/* (legacy) */
-.bus-item { border: 1px solid #ddd; border-radius: 4px; padding: 1rem; display:flex; justify-content:space-between; align-items:center; }
-.bus-item button { background:#005b28; color:#fff; padding:.5rem 1rem; border:none; border-radius:4px; cursor:pointer; }
-.bus-item button:hover { background:#007a3b; }
 
 
 /* ---------- MAPA DE ASSENTOS ---------- */
