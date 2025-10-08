@@ -281,4 +281,13 @@ document.addEventListener('DOMContentLoaded', () => {
   backBtn.addEventListener('click', () => {
     window.history.back();
   });
+
+    // confirmar
+  confirmBtn.addEventListener('click', () => {
+    // NOVO: alerta quando não houver nenhuma poltrona selecionada
+    if (selectedSeats.length === 0) {
+      alert('Primeiro selecione uma poltrona.');
+      return;
+    }};
+  
 });
