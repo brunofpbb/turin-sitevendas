@@ -1,6 +1,4 @@
 // seats.js - exibe mapa de assentos e permite seleção
-// Consulta o mapa via backend (/api/poltronas) para evitar CORS e expor credenciais.
-
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -23,7 +21,17 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  // --------- Cabeçalho da viagem (pt-BR, origem/destino em negrito) ---------
+  // --- fundo do ônibus (cache-buster + razão de aspecto) ---
+  if (seatMap) {
+    const BUS_IMG_URL = 'bus-blank.png?v=3';
+    seatMap.style.aspectRatio = '1000 / 260';       // ajuste se mudar a arte
+    seatMap.style.background = `url("${BUS_IMG_URL}") no-repeat center / contain`;
+    seatMap.style.display = 'grid';
+    seatMap.style.gridTemplateColumns = 'repeat(11, 1fr)';
+    seatMap.style.gridTemplateRows = 'repeat(5, 1fr)';
+  }
+
+  // --- cabeçalho de viagem ---
   if (tripInfo) {
     const origin = schedule.originName || schedule.origin || schedule.origem || '';
     const dest   = schedule.destinationName || schedule.destination || schedule.destino || '';
@@ -37,16 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --------- Carrega mapa de poltronas do backend (não filtra mais 3/7) ---------
+  // --- busca mapa de poltronas pelo backend ---
   async function ensureSeatMap() {
     if (Array.isArray(schedule.seats) && schedule.seats.length > 0) return;
 
     try {
       const payload = {
-        idViagem:        schedule.idViagem,
-        idTipoVeiculo:   schedule.idTipoVeiculo,
-        idLocOrigem:     schedule.originId,
-        idLocDestino:    schedule.destinationId,
+        idViagem:      schedule.idViagem,
+        idTipoVeiculo: schedule.idTipoVeiculo,
+        idLocOrigem:   schedule.originId,
+        idLocDestino:  schedule.destinationId,
       };
 
       const response = await fetch('/api/poltronas', {
@@ -76,7 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return {
           number,
           situacao,
-          // ocupado quando não for 0 (API define vários códigos de ocupado/reservado)
           occupied: situacao !== 0
         };
       }).filter(s => s.number >= 1 && s.number <= 42);
@@ -86,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --------- Fallback estático quando API falhar ---------
   function generateSeatMapFallback() {
     const pattern = [
       [3, 7, 11, 15, 19, 23, 27, 31, 35, 39],
@@ -105,7 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return seats;
   }
 
-  // --------- Render do grid (sempre 42 posições) ---------
   async function renderSeatGrid() {
     await ensureSeatMap();
     if (!seatMap) return;
@@ -125,7 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const rowPos = rowIndex + 1;
         const colPos = colIndex + 1;
 
-        // corredor
         if (cell === null) {
           const walkwayDiv = document.createElement('div');
           walkwayDiv.className = 'walkway';
@@ -135,7 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        // assento
         const seatDiv = document.createElement('div');
         seatDiv.className = 'seat';
         seatDiv.textContent = cell;
@@ -151,11 +154,10 @@ document.addEventListener('DOMContentLoaded', () => {
           ? schedule.seats.find(s => Number(s.number) === cell)
           : undefined;
 
-        // Regras de indisponibilidade (inclusive 1 e 2)
         const isForcedBlocked = (cell === 1 || cell === 2);
-        const isInactive      = seatData?.situacao === 3;     // inativa / inexistente
-        const isOccupied      = !!seatData?.occupied;         // vendida / reservada
-        const isMissing       = !seatData;                    // não veio da API
+        const isInactive      = seatData?.situacao === 3;
+        const isOccupied      = !!seatData?.occupied;
+        const isMissing       = !seatData;
         const isUnavailable   = isForcedBlocked || isInactive || isOccupied || isMissing;
 
         if (isUnavailable) {
@@ -165,7 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        // disponível: clique para selecionar
         seatDiv.addEventListener('click', () => {
           seatDiv.classList.toggle('selected');
           const n = cell;
@@ -187,7 +188,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --------- Atualiza formulários conforme seleção ---------
   function updatePassengerForms() {
     passengerContainer.innerHTML = '';
     if (selectedSeats.length === 0) {
@@ -218,13 +218,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --------- Inicialização ---------
+  // inicializa
   renderSeatGrid();
   updatePassengerForms();
 
-  // --------- Confirmação ---------
+  // confirmar
   confirmBtn.addEventListener('click', () => {
-    if (selectedSeats.length === 0) return;
+    // NOVO: alerta quando não houver nenhuma poltrona selecionada
+    if (selectedSeats.length === 0) {
+      alert('Primeiro selecione uma poltrona.');
+      return;
+    }
 
     const passengers = [];
     let valid = true;
@@ -242,6 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       passengers.push({ seatNumber, name, docType, docNumber, cpf, phone });
     });
+
     if (!valid) {
       alert('Preencha todos os dados dos passageiros.');
       return;
@@ -278,6 +283,5 @@ document.addEventListener('DOMContentLoaded', () => {
     window.location.href = 'payment.html';
   });
 
-  // --------- Voltar ---------
   backBtn.addEventListener('click', () => window.history.back());
 });
