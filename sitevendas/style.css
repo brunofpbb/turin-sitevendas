@@ -158,7 +158,7 @@ button:hover {
   top: 11%;
   left: 22%;
   width: 70%;
-  height: 69%;
+  height: 68%;
   display: grid;
   grid-template-columns: repeat(11, 1fr);
   grid-template-rows: 1fr 1fr 0.5fr 1fr 1fr;
