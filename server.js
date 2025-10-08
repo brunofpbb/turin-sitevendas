@@ -4,89 +4,80 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-// use node-fetch v2 (CommonJS) no package.json
-const fetch = require('node-fetch');
+const fetch = require('node-fetch');            // v2 (CommonJS)
 const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* ========= Static: detecta pasta pública e configura fallback ========= */
+/* =================== Static / Health =================== */
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
   ? path.join(__dirname, 'sitevendas')
   : __dirname;
 
 app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
-
-// healthcheck p/ Railway
 app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }));
 
-/* =================== SMTP (login por e-mail) =================== */
-/** cria transporter 465/SSL a partir das variáveis atuais */
-/** 465/SSL */
+/* =================== SMTP (opcional / fallback) =================== */
+// timeouts curtos e IPv4 p/ evitar travas
 function createSSL() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
-  return require('nodemailer').createTransport({
+  return nodemailer.createTransport({
     host: SMTP_HOST,
-    port: Number(SMTP_PORT),                      // 465
+    port: Number(SMTP_PORT),                 // 465
     secure: String(SMTP_SECURE || 'true') === 'true',
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
-    family: 4,                // força IPv4
-    connectionTimeout: 4000,
-    greetingTimeout: 4000,
-    socketTimeout: 4000,
+    family: 4,
+    connectionTimeout: 3500,
+    greetingTimeout: 3500,
+    socketTimeout: 3500,
   });
 }
 
-/** 587/STARTTLS */
 function createSTARTTLS() {
   const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  return require('nodemailer').createTransport({
-    host: SMTP_HOST,                             // ex.: smtp.uhserver.com
+  return nodemailer.createTransport({
+    host: SMTP_HOST,                         // ex.: smtp.uhserver.com ou smtp-relay.brevo.com
     port: 587,
-    secure: false,                               // STARTTLS
+    secure: false,                           // STARTTLS
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
     family: 4,
-    connectionTimeout: 4000,
-    greetingTimeout: 4000,
-    socketTimeout: 4000,
+    connectionTimeout: 3500,
+    greetingTimeout: 3500,
+    socketTimeout: 3500,
   });
 }
 
-function verifyWithTimeout(transporter, ms = 4000) {
+function verifyWithTimeout(transporter, ms = 3500) {
   return Promise.race([
     transporter.verify().then(() => ({ ok: true })),
-    new Promise(resolve => setTimeout(() => resolve({ ok: false, error: 'verify-timeout' }), ms + 200))
+    new Promise(r => setTimeout(() => r({ ok: false, error: 'verify-timeout' }), ms + 200)),
   ]).catch(e => ({ ok: false, error: e?.message || String(e) }));
 }
 
-
-
-/** resolve um transporter pronto para uso (testa SSL e depois STARTTLS) */
 async function ensureTransport() {
-  // tenta SSL(465) conforme variáveis
+  // tenta SSL (465) se variáveis estiverem setadas como secure
   let t = createSSL();
   if (t) {
     const r = await verifyWithTimeout(t);
     if (r.ok) return { transporter: t, mode: 'SSL(465)' };
   }
-  // fallback: STARTTLS(587)
+  // fallback: STARTTLS (587)
   t = createSTARTTLS();
   if (t) {
     const r = await verifyWithTimeout(t);
     if (r.ok) return { transporter: t, mode: 'STARTTLS(587)' };
     return { transporter: null, mode: null, error: r.error || 'falha STARTTLS' };
   }
-  return { transporter: null, mode: null, error: 'Variáveis SMTP ausentes/incompletas' };
+  return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
 }
 
-
-/** endpoint de diagnóstico: testa ambos os modos e retorna o erro real */
+// Debug SMTP (não envia e-mail)
 app.get('/api/auth/_debug-smtp', async (_req, res) => {
   const sslT = createSSL();
   const stT  = createSTARTTLS();
@@ -99,20 +90,20 @@ app.get('/api/auth/_debug-smtp', async (_req, res) => {
   res.json({
     host: process.env.SMTP_HOST || null,
     user: !!process.env.SMTP_USER,
-    ssl: sslRes,            // { ok: true/false, error?: '...' }
-    starttls: stRes
+    ssl: sslRes,
+    starttls: stRes,
   });
 });
 
-// ====== Brevo HTTP API fallback (porta 443) ======
+/* =================== Brevo API (primário) =================== */
 async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName }) {
-  const apiKey = process.env.BREVO_API_KEY || null;
+  const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
 
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      'accept': 'application/json',
+      accept: 'application/json',
       'content-type': 'application/json',
       'api-key': apiKey,
     },
@@ -132,11 +123,11 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName })
   return resp.json();
 }
 
-// endpoint de debug da API do Brevo (não envia e-mail)
+// Debug Brevo API (não envia e-mail)
 app.get('/api/auth/_debug-brevo', async (_req, res) => {
   try {
     const r = await fetch('https://api.brevo.com/v3/account', {
-      headers: { 'api-key': process.env.BREVO_API_KEY || '' }
+      headers: { 'api-key': process.env.BREVO_API_KEY || '' },
     });
     const j = await r.json().catch(() => ({}));
     res.json({ ok: r.ok, status: r.status, company: j.companyName || null, plan: j.planType || null });
@@ -145,10 +136,7 @@ app.get('/api/auth/_debug-brevo', async (_req, res) => {
   }
 });
 
-
-
-
-// memória simples p/ códigos
+/* =================== Auth: códigos por e-mail =================== */
 const codes = new Map();
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 6;
@@ -175,7 +163,7 @@ app.post('/api/auth/request-code', async (req, res) => {
 
     const appName   = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER; // usa noreply@ se definido
+    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
     const from      = `"${fromName}" <${fromEmail}>`;
 
     const html = `
@@ -189,9 +177,9 @@ app.post('/api/auth/request-code', async (req, res) => {
     `;
     const text = `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`;
 
-    let via = null;
+    let via;
 
-    // 1) tenta SMTP
+    // 1) tenta SMTP (se disponível)
     try {
       const got = await ensureTransport();
       if (!got.transporter) throw new Error('smtp-indisponivel');
@@ -201,14 +189,9 @@ app.post('/api/auth/request-code', async (req, res) => {
         html, text,
       });
       via = got.mode || 'SMTP';
-    } catch (_smtpErr) {
-      // 2) fallback: Brevo API (porta 443)
-      await sendViaBrevoApi({
-        to: email,
-        subject: `Seu código de acesso (${appName})`,
-        html, text,
-        fromEmail, fromName
-      });
+    } catch {
+      // 2) fallback: Brevo API (HTTPS 443)
+      await sendViaBrevoApi({ to: email, subject: `Seu código de acesso (${appName})`, html, text, fromEmail, fromName });
       via = 'Brevo API';
     }
 
@@ -220,8 +203,6 @@ app.post('/api/auth/request-code', async (req, res) => {
     return res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
   }
 });
-
-
 
 // verificar código
 app.post('/api/auth/verify-code', (req, res) => {
@@ -242,40 +223,41 @@ app.post('/api/auth/verify-code', (req, res) => {
   res.json({ ok: true, user });
 });
 
-/* =================== Praxio: Partidas =================== */
+/* =================== Praxio =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
 
-    const loginBody = {
-      Nome: process.env.PRAXIO_USER,
-      Senha: process.env.PRAXIO_PASS,
-      Sistema: 'WINVR.EXE',
-      TipoBD: 0,
-      Empresa: process.env.PRAXIO_EMP,
-      Cliente: process.env.PRAXIO_CLIENT,
-      TipoAplicacao: 0,
-    };
     const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginBody),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        Nome: process.env.PRAXIO_USER,
+        Senha: process.env.PRAXIO_PASS,
+        Sistema: 'WINVR.EXE',
+        TipoBD: 0,
+        Empresa: process.env.PRAXIO_EMP,
+        Cliente: process.env.PRAXIO_CLIENT,
+        TipoAplicacao: 0,
+      }),
     });
     const loginData = await loginResp.json();
-    const idSessaoOp = loginData.IdSessaoOp;
 
-    const partidasBody = {
-      IdSessaoOp: idSessaoOp,
-      LocalidadeOrigem: origemId,
-      LocalidadeDestino: destinoId,
-      DataPartida: data,
-      SugestaoPassagem: '1',
-      ListarTodas: '1',
-      SomenteExtra: '0',
-      TempoPartida: 1,
-      IdEstabelecimento: '1',
-      DescontoAutomatico: 0,
-    };
     const partResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(partidasBody),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        IdSessaoOp: loginData.IdSessaoOp,
+        LocalidadeOrigem: origemId,
+        LocalidadeDestino: destinoId,
+        DataPartida: data,
+        SugestaoPassagem: '1',
+        ListarTodas: '1',
+        SomenteExtra: '0',
+        TempoPartida: 1,
+        IdEstabelecimento: '1',
+        DescontoAutomatico: 0,
+      }),
     });
     const partData = await partResp.json();
     res.json(partData);
@@ -285,33 +267,37 @@ app.post('/api/partidas', async (req, res) => {
   }
 });
 
-/* =================== Praxio: Poltronas =================== */
 app.post('/api/poltronas', async (req, res) => {
   try {
     const { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino } = req.body;
 
-    const loginBody = {
-      Nome: process.env.PRAXIO_USER, Senha: process.env.PRAXIO_PASS,
-      Sistema: 'WINVR.EXE', TipoBD: 0, Empresa: process.env.PRAXIO_EMP,
-      Cliente: process.env.PRAXIO_CLIENT, TipoAplicacao: 0,
-    };
     const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(loginBody),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        Nome: process.env.PRAXIO_USER,
+        Senha: process.env.PRAXIO_PASS,
+        Sistema: 'WINVR.EXE',
+        TipoBD: 0,
+        Empresa: process.env.PRAXIO_EMP,
+        Cliente: process.env.PRAXIO_CLIENT,
+        TipoAplicacao: 0,
+      }),
     });
     const loginData = await loginResp.json();
-    const idSessaoOp = loginData.IdSessaoOp;
 
-    const seatBody = {
-      IdSessaoOp: idSessaoOp,
-      IdViagem: idViagem,
-      IdTipoVeiculo: idTipoVeiculo,
-      IdLocOrigem: idLocOrigem,
-      IdLocdestino: idLocDestino,
-      Andar: 0,
-      VerificarSugestao: 1,
-    };
     const seatResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(seatBody),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        IdSessaoOp: loginData.IdSessaoOp,
+        IdViagem: idViagem,
+        IdTipoVeiculo: idTipoVeiculo,
+        IdLocOrigem: idLocOrigem,
+        IdLocdestino: idLocDestino,
+        Andar: 0,
+        VerificarSugestao: 1,
+      }),
     });
     const seatData = await seatResp.json();
     res.json(seatData);
@@ -333,6 +319,5 @@ app.get('*', (_req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
 });
-
 process.on('unhandledRejection', r => console.error('UnhandledRejection:', r));
 process.on('uncaughtException', e => console.error('UncaughtException:', e));
