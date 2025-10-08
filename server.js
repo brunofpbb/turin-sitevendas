@@ -138,9 +138,12 @@ app.post('/api/auth/request-code', async (req, res) => {
         .json({ ok: false, error: `SMTP indisponível: ${error}`, ...devPayload });
     }
 
-    const appName = process.env.APP_NAME || 'Turin Transportes';
+    const appName  = process.env.APP_NAME || 'Turin Transportes';
     const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const from = `"${fromName}" <${process.env.SMTP_USER}>`; // remetente == usuário SMTP
+    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER; // usa noreply@ se definido
+    const from = `"${fromName}" <${fromEmail}>`;
+
+
 
     const html = `
       <div style="font-family:Arial,sans-serif;font-size:16px;color:#222">
@@ -156,10 +159,12 @@ app.post('/api/auth/request-code', async (req, res) => {
     await transporter.sendMail({
       from,
       to: email,
+      replyTo: fromEmail,             // respostas vão para o mesmo remetente
       subject: `Seu código de acesso (${appName})`,
       text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
       html,
     });
+
 
     const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
     return res.json({ ok: true, message: `Código enviado via ${mode}.`, ...devPayload });
