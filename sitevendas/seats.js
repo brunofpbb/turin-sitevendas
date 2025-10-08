@@ -288,6 +288,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectedSeats.length === 0) {
       alert('Primeiro selecione uma poltrona.');
       return;
-    }};
+    };
   
 });
