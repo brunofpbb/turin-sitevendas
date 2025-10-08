@@ -104,6 +104,50 @@ app.get('/api/auth/_debug-smtp', async (_req, res) => {
   });
 });
 
+// ====== Brevo HTTP API fallback (porta 443) ======
+async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName }) {
+  const apiKey = process.env.BREVO_API_KEY || null;
+  if (!apiKey) throw new Error('BREVO_API_KEY ausente');
+
+  const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'api-key': apiKey,
+    },
+    body: JSON.stringify({
+      sender: { email: fromEmail, name: fromName },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Brevo API ${resp.status}: ${body.slice(0, 300)}`);
+  }
+  return resp.json();
+}
+
+// endpoint de debug da API do Brevo (não envia e-mail)
+app.get('/api/auth/_debug-brevo', async (_req, res) => {
+  try {
+    const r = await fetch('https://api.brevo.com/v3/account', {
+      headers: { 'api-key': process.env.BREVO_API_KEY || '' }
+    });
+    const j = await r.json().catch(() => ({}));
+    res.json({ ok: r.ok, status: r.status, company: j.companyName || null, plan: j.planType || null });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+
+
+
 // memória simples p/ códigos
 const codes = new Map();
 const CODE_TTL_MIN = 10;
@@ -138,41 +182,42 @@ app.post('/api/auth/request-code', async (req, res) => {
         .json({ ok: false, error: `SMTP indisponível: ${error}`, ...devPayload });
     }
 
-    const appName  = process.env.APP_NAME || 'Turin Transportes';
-    const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER; // usa noreply@ se definido
-    const from = `"${fromName}" <${fromEmail}>`;
+const appName  = process.env.APP_NAME || 'Turin Transportes';
+const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER; // usa noreply@ se definido
+const from = `"${fromName}" <${fromEmail}>`;
 
+const html = `
+  <div style="font-family:Arial,sans-serif;font-size:16px;color:#222">
+    <p>Olá,</p>
+    <p>Seu código de acesso ao <b>${appName}</b> é:</p>
+    <p style="font-size:28px;letter-spacing:3px;margin:16px 0"><b>${code}</b></p>
+    <p>Ele expira em ${CODE_TTL_MIN} minutos.</p>
+    <p style="color:#666;font-size:13px">Se não foi você, ignore este e-mail.</p>
+  </div>
+`;
+const text = `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`;
 
+let via = null;
 
-    const html = `
-      <div style="font-family:Arial,sans-serif;font-size:16px;color:#222">
-        <p>Olá,</p>
-        <p>Seu código de acesso ao <b>${appName}</b> é:</p>
-        <p style="font-size:28px;letter-spacing:3px;margin:16px 0"><b>${code}</b></p>
-        <p>Ele expira em ${CODE_TTL_MIN} minutos.</p>
-        <p style="color:#666;font-size:13px">Se não foi você, ignore este e-mail.</p>
-        <p style="color:#999;font-size:12px">Transporte usado: ${mode}</p>
-      </div>
-    `;
-
-    await transporter.sendMail({
-      from,
-      to: email,
-      replyTo: fromEmail,             // respostas vão para o mesmo remetente
-      subject: `Seu código de acesso (${appName})`,
-      text: `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`,
-      html,
-    });
-
-
-    const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
-    return res.json({ ok: true, message: `Código enviado via ${mode}.`, ...devPayload });
-  } catch (err) {
-    console.error('Erro ao preparar/envio do e-mail:', err?.message || err);
-    return res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
+// 1) tenta SMTP (se conectar, ótimo)
+try {
+  const { transporter, mode } = await ensureTransport();
+  if (transporter) {
+    await transporter.sendMail({ from, to: email, replyTo: fromEmail, subject: `Seu código de acesso (${appName})`, html, text });
+    via = mode || 'SMTP';
+  } else {
+    throw new Error('smtp-indisponivel');
   }
-});
+} catch (_smtpErr) {
+  // 2) fallback: Brevo API (porta 443)
+  await sendViaBrevoApi({ to: email, subject: `Seu código de acesso (${appName})`, html, text, fromEmail, fromName });
+  via = 'Brevo API';
+}
+
+const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
+return res.json({ ok: true, message: `Código enviado via ${via}.`, ...devPayload });
+
 
 
 // verificar código
