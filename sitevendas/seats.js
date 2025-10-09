@@ -1,4 +1,4 @@
-// seats.js - seleção de poltronas (versão robusta com validação de clique/submit)
+// seats.js - seleção de poltronas (sem tipo/doc; validação robusta)
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -10,11 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const selectedSeatP      = document.getElementById('selected-seat');
   const passengerContainer = document.getElementById('passenger-container');
 
-  // Botão de pagar (pega por id e com fallback)
+  // Botão de pagar (id + fallback por data-attr/classe)
   let confirmBtn = document.getElementById('confirm-seat') ||
                    document.querySelector('[data-confirm], button.confirm-seat');
 
-  // Form (se existir; usamos para interceptar submit silencioso)
+  // Form envolvente (se houver) para interceptar submit mudo
   const formEl = (confirmBtn && confirmBtn.closest('form')) || document.querySelector('#passenger-form');
 
   const backBtn            = document.getElementById('back-btn');
@@ -90,10 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function render() {
     const ok = await loadSeatsFromApi();
 
-    if (seatMap) {
-      seatMap.innerHTML = '';
-      // se a arte do ônibus for CSS de fundo, não mexemos aqui
-    }
+    if (seatMap) seatMap.innerHTML = '';
     if (passengerContainer) passengerContainer.innerHTML = '';
     if (selectedSeatP) selectedSeatP.textContent = '';
 
@@ -115,10 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (confirmBtn) {
-      // importante: botão habilitado mesmo sem seleção (para exibir alerta no clique)
-      confirmBtn.disabled = false;
-    }
+    if (confirmBtn) confirmBtn.disabled = false; // habilitado para exibir alerta se não houver seleção
 
     const rows = [
       [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, null],
@@ -202,14 +196,8 @@ document.addEventListener('DOMContentLoaded', () => {
       rowDiv.innerHTML = `
         <span class="seat-label">Pol ${n}:</span>
         <input type="text" name="name" placeholder="Nome" required>
-        <select name="docType" required>
-          <option value="RG">RG</option>
-          <option value="CNH">CNH</option>
-          <option value="Passaporte">Passaporte</option>
-        </select>
-        <input type="text" name="docNumber" placeholder="Documento" required>
         <input type="text" name="cpf" placeholder="CPF" required>
-        <input type="tel" name="phone" placeholder="Telefone" required>
+        <input type="tel"  name="phone" placeholder="Telefone" required>
       `;
       passengerContainer.appendChild(rowDiv);
     });
@@ -225,19 +213,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return false;
     }
 
-    // 2) Validar campos dos passageiros
+    // 2) Validar campos dos passageiros (agora apenas Nome, CPF, Telefone)
     const rows = passengerContainer ? passengerContainer.querySelectorAll('.passenger-row') : [];
     let valid = true;
     const passengers = [];
     rows.forEach((rowDiv) => {
-      const name      = rowDiv.querySelector('input[name="name"]')?.value.trim();
-      const docType   = rowDiv.querySelector('select[name="docType"]')?.value;
-      const docNumber = rowDiv.querySelector('input[name="docNumber"]')?.value.trim();
-      const cpf       = rowDiv.querySelector('input[name="cpf"]')?.value.trim();
-      const phone     = rowDiv.querySelector('input[name="phone"]')?.value.trim();
+      const name   = rowDiv.querySelector('input[name="name"]')?.value.trim();
+      const cpf    = rowDiv.querySelector('input[name="cpf"]')?.value.trim();
+      const phone  = rowDiv.querySelector('input[name="phone"]')?.value.trim();
       const seatNumber = parseInt(rowDiv.dataset.seatNumber, 10);
-      if (!name || !docNumber || !cpf || !phone) valid = false;
-      passengers.push({ seatNumber, name, docType, docNumber, cpf, phone });
+      if (!name || !cpf || !phone) valid = false;
+      passengers.push({ seatNumber, name, cpf, phone });
     });
 
     if (!valid) {
@@ -281,17 +267,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // ====== Bind único (evita duplicidade de listeners) ======
   if (confirmBtn) {
     confirmBtn.setAttribute('type', 'button');  // evita submit mudo
-    const clone = confirmBtn.cloneNode(true);   // remove possíveis listeners antigos
+    const clone = confirmBtn.cloneNode(true);   // remove listeners antigos
     confirmBtn.parentNode.replaceChild(clone, confirmBtn);
     confirmBtn = clone;
     confirmBtn.addEventListener('click', handleCheckout);
   }
-  if (formEl) {
-    formEl.addEventListener('submit', handleCheckout);
-  }
+  if (formEl) formEl.addEventListener('submit', handleCheckout);
 
   // ====== Inicializa ======
   render();
-
   backBtn?.addEventListener('click', () => window.history.back());
 });
