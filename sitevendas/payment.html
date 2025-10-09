@@ -12,32 +12,43 @@
     <h1>Turin Transportes – Pagamento</h1>
     <nav id="user-nav"></nav>
   </header>
+
   <main>
     <h2>Resumo do Pedido</h2>
     <div id="order-summary"></div>
+
     <h3>Informações de Pagamento</h3>
-    <p>Este é um protótipo. Integrações reais com Mercado Pago devem utilizar tokenização e chamadas ao backend.</p>
-    <form id="payment-form">
+    <p>Este é um protótipo. Integrações reais com Mercado Pago devem utilizar tokenização e chamadas ao backend.</p>
+
+    <form id="payment-form" class="payment-form">
       <div class="form-row">
         <label for="card-number">Número do cartão</label>
         <input type="text" id="card-number" placeholder="0000 0000 0000 0000" required>
       </div>
+
       <div class="form-row">
         <label for="card-holder">Nome no cartão</label>
         <input type="text" id="card-holder" required>
       </div>
-      <div class="form-row">
-        <label for="expiry">Validade (MM/AA)</label>
-        <input type="text" id="expiry" placeholder="MM/AA" required>
+
+      <div class="form-row two-cols">
+        <div>
+          <label for="expiry">Validade (MM/AA)</label>
+          <input type="text" id="expiry" placeholder="MM/AA" required>
+        </div>
+        <div>
+          <label for="cvv">CVV</label>
+          <input type="text" id="cvv" placeholder="000" required>
+        </div>
       </div>
-      <div class="form-row">
-        <label for="cvv">CVV</label>
-        <input type="text" id="cvv" placeholder="000" required>
+
+      <div class="pay-actions">
+        <button type="submit" class="btn btn-primary btn-pay">Pagar</button>
+        <button type="button" id="cancel-btn" class="btn btn-ghost">Cancelar</button>
       </div>
-      <button type="submit">Pagar</button>
     </form>
-    <button id="cancel-btn">Cancelar</button>
   </main>
+
   <footer>
     <p>&copy; 2025 Turin Transportes</p>
   </footer>
