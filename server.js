@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');            // v2 (CommonJS)
 const nodemailer = require('nodemailer');
-const mercadopago = require('mercadopago');  // Mercado Pago SDK
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
