@@ -198,6 +198,10 @@ button:hover {
   pointer-events: none;
 }
 
+.passenger-container {
+  margin-top: 16px;   /* ajuste para 20/24px se quiser mais */
+}
+
 /* ---------- PASSAGEIROS (linha única) ---------- */
 .passenger-row {
   display: flex;
