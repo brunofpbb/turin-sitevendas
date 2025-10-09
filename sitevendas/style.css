@@ -198,37 +198,36 @@ button:hover {
   pointer-events: none;
 }
 
-/* ---------- PASSAGEIROS ---------- */
-.passenger-container {
-  margin-top: 2rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.passenger-form {
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 1rem;
-  background: #fafafa;
-  flex: 1 1 calc(50% - 1rem);
-  box-sizing: border-box;
-}
-
-.passenger-form h3 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  color: #005b28;
-}
-
-/* → AQUI os ajustes pedidos */
+/* ---------- PASSAGEIROS (linha única) ---------- */
 .passenger-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;          /* permite quebrar em 2 linhas em telas menores */
-  gap: 1rem;                /* ↑ mais espaço entre os campos */
-  margin-bottom: 1rem;      /* ↑ mais espaço entre linhas */
+  gap: 1rem;               /* respiro entre campos */
+  margin-bottom: 1rem;
+  flex-wrap: nowrap;       /* <- NÃO quebrar de linha */
+  width: 100%;
 }
+
+.seat-label {
+  font-weight: bold;
+  margin-right: 0.5rem;
+  min-width: 60px;
+}
+
+/* regras base dos inputs */
+.passenger-row input {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  min-width: 0;            /* <- permite encolher dentro do flex */
+}
+
+/* Nome maior; CPF e Telefone com o MESMO tamanho */
+.passenger-row input[name="name"]   { flex: 2 1 0; }  /* maior */
+.passenger-row input[name="cpf"]    { flex: 1 1 0; }  /* mesmo tamanho */
+.passenger-row input[name="phone"]  { flex: 1 1 0; }  /* mesmo tamanho */
+
 
 .seat-label {
   font-weight: bold;
