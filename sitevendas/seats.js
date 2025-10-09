@@ -8,21 +8,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const tripInfo           = document.getElementById('trip-info');
   const seatMap            = document.getElementById('seat-map');
   const selectedSeatP      = document.getElementById('selected-seat');
-  const confirmBtn         = document.getElementById('confirm-seat');
+  const confirmBtnOriginal = document.getElementById('confirm-seat');
   const backBtn            = document.getElementById('back-btn');
   const passengerContainer = document.getElementById('passenger-container');
 
   const maxSelected = 6;
   let selectedSeats = [];
 
-  // --- sem viagem ---
+  // ---- Sem viagem selecionada
   if (!schedule) {
     if (tripInfo) tripInfo.textContent = 'Nenhuma viagem selecionada.';
-    if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmBtnOriginal) confirmBtnOriginal.disabled = true;
     return;
   }
 
-  // --- cabeçalho ---
+  // ---- Cabeçalho da viagem
   if (tripInfo) {
     const origin = schedule.originName || schedule.origin || schedule.origem || '';
     const dest   = schedule.destinationName || schedule.destination || schedule.destino || '';
@@ -36,11 +36,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- busca poltronas da API. retorna true/false ---
+  // ---- Busca poltronas (true/false)
   async function ensureSeatMap() {
-    // se já veio de outra tela, reaproveita
     if (Array.isArray(schedule.seats) && schedule.seats.length > 0) return true;
-
     try {
       const payload = {
         idViagem:      schedule.idViagem,
@@ -48,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
         idLocOrigem:   schedule.originId,
         idLocDestino:  schedule.destinationId,
       };
-
       const response = await fetch('/api/poltronas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,17 +84,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- render do grid (42 posições) ---
+  // ---- Render do grid
   async function renderSeatGrid() {
     const ok = await ensureSeatMap();
 
-    // limpa
     seatMap.innerHTML = '';
     passengerContainer.innerHTML = '';
     selectedSeatP.textContent = '';
-    confirmBtn.disabled = true;
 
-    // falha: mostra mensagem no lugar do mapa
     if (!ok || !Array.isArray(schedule.seats)) {
       const msg = document.createElement('div');
       msg.className = 'seat-error';
@@ -109,8 +103,12 @@ document.addEventListener('DOMContentLoaded', () => {
       msg.style.textAlign = 'center';
       msg.textContent = 'Não foi possível carregar o mapa de poltronas. Tente novamente mais tarde.';
       seatMap.appendChild(msg);
+      // nesse caso específico, desabilita o botão (não há como pagar)
+      if (confirmBtnOriginal) confirmBtnOriginal.disabled = true;
       return;
     }
+
+    if (confirmBtnOriginal) confirmBtnOriginal.disabled = false; // deixa habilitado SEMPRE que o mapa existe
 
     const rows = [
       [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, null],
@@ -145,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const seatData = schedule.seats.find(s => Number(s.number) === cell);
 
-        const isForcedBlocked = (cell === 1 || cell === 2); // 1 e 2 sempre indisponíveis
+        const isForcedBlocked = (cell === 1 || cell === 2);
         const isInactive      = seatData?.situacao === 3;
         const isOccupied      = !!seatData?.occupied;
         const isMissing       = !seatData;
@@ -159,7 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         seatDiv.addEventListener('click', () => {
-          // toggle seleção
           seatDiv.classList.toggle('selected');
           if (selectedSeats.includes(cell)) {
             selectedSeats = selectedSeats.filter(x => x !== cell);
@@ -179,17 +176,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ---- UI dos passageiros
   function updatePassengerForms() {
     passengerContainer.innerHTML = '';
 
-    if (selectedSeats.length === 0) {
-      confirmBtn.disabled = true;
-      selectedSeatP.textContent = '';
-      return;
-    }
-
-    confirmBtn.disabled = false;
-    selectedSeatP.textContent = `Poltronas selecionadas: ${selectedSeats.join(', ')}`;
+    // **não** desabilite o botão quando zero seleção; queremos mostrar alerta no clique
+    selectedSeatP.textContent = selectedSeats.length
+      ? `Poltronas selecionadas: ${selectedSeats.join(', ')}`
+      : '';
 
     selectedSeats.forEach((seatNumber) => {
       const rowDiv = document.createElement('div');
@@ -211,69 +205,78 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // inicializa
+  // ---- Inicializa
   renderSeatGrid();
 
-  // clique do botão – versão única (não duplica)
-  confirmBtn.addEventListener('click', (e) => {
-    e?.preventDefault?.();
+  // ---- Listener ÚNICO do botão (remove handlers antigos duplicados)
+  let confirmBtn = confirmBtnOriginal;
+  if (confirmBtn) {
+    confirmBtn.setAttribute('type', 'button');            // evita submit silencioso
+    const clone = confirmBtn.cloneNode(true);             // remove event listeners antigos
+    confirmBtn.parentNode.replaceChild(clone, confirmBtn);
+    confirmBtn = clone;
 
-    if (!Array.isArray(selectedSeats) || selectedSeats.length === 0) {
-      alert('Primeiro selecione uma poltrona.');
-      return;
-    }
+    confirmBtn.addEventListener('click', (e) => {
+      e?.preventDefault?.();
 
-    // valida passageiros
-    const rows = passengerContainer.querySelectorAll('.passenger-row');
-    const passengers = [];
-    let valid = true;
-    rows.forEach((rowDiv) => {
-      const seatNumber = parseInt(rowDiv.dataset.seatNumber, 10);
-      const name      = rowDiv.querySelector('input[name="name"]').value.trim();
-      const docType   = rowDiv.querySelector('select[name="docType"]').value;
-      const docNumber = rowDiv.querySelector('input[name="docNumber"]').value.trim();
-      const cpf       = rowDiv.querySelector('input[name="cpf"]').value.trim();
-      const phone     = rowDiv.querySelector('input[name="phone"]').value.trim();
-      if (!name || !docNumber || !cpf || !phone) valid = false;
-      passengers.push({ seatNumber, name, docType, docNumber, cpf, phone });
-    });
+      // 1) Sem seleção? Notifica.
+      if (!Array.isArray(selectedSeats) || selectedSeats.length === 0) {
+        alert('Primeiro selecione uma poltrona.');
+        return;
+      }
 
-    if (!valid) {
-      alert('Preencha todos os dados dos passageiros.');
-      return;
-    }
+      // 2) Valida passageiros
+      const rows = passengerContainer.querySelectorAll('.passenger-row');
+      const passengers = [];
+      let valid = true;
+      rows.forEach((rowDiv) => {
+        const seatNumber = parseInt(rowDiv.dataset.seatNumber, 10);
+        const name      = rowDiv.querySelector('input[name="name"]').value.trim();
+        const docType   = rowDiv.querySelector('select[name="docType"]').value;
+        const docNumber = rowDiv.querySelector('input[name="docNumber"]').value.trim();
+        const cpf       = rowDiv.querySelector('input[name="cpf"]').value.trim();
+        const phone     = rowDiv.querySelector('input[name="phone"]').value.trim();
+        if (!name || !docNumber || !cpf || !phone) valid = false;
+        passengers.push({ seatNumber, name, docType, docNumber, cpf, phone });
+      });
 
-    // força login se necessário
-    if (!user) {
-      alert('Faça login para continuar.');
-      const pending = {
+      if (!valid) {
+        alert('Preencha todos os dados dos passageiros.');
+        return;
+      }
+
+      // 3) Exige login
+      if (!user) {
+        alert('Faça login para continuar.');
+        const pending = {
+          schedule,
+          seats: selectedSeats.slice(),
+          passengers,
+          price: schedule.price * selectedSeats.length,
+          date: schedule.date,
+        };
+        localStorage.setItem('pendingPurchase', JSON.stringify(pending));
+        localStorage.setItem('postLoginRedirect', 'payment.html');
+        window.location.href = 'login.html';
+        return;
+      }
+
+      // 4) Persiste e segue pra pagamento
+      const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+      bookings.push({
+        id: Date.now(),
         schedule,
         seats: selectedSeats.slice(),
         passengers,
         price: schedule.price * selectedSeats.length,
         date: schedule.date,
-      };
-      localStorage.setItem('pendingPurchase', JSON.stringify(pending));
-      localStorage.setItem('postLoginRedirect', 'payment.html');
-      window.location.href = 'login.html';
-      return;
-    }
-
-    // persiste compra e segue para pagamento
-    const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
-    bookings.push({
-      id: Date.now(),
-      schedule,
-      seats: selectedSeats.slice(),
-      passengers,
-      price: schedule.price * selectedSeats.length,
-      date: schedule.date,
-      paid: false,
+        paid: false,
+      });
+      localStorage.setItem('bookings', JSON.stringify(bookings));
+      localStorage.removeItem('pendingPurchase');
+      window.location.href = 'payment.html';
     });
-    localStorage.setItem('bookings', JSON.stringify(bookings));
-    localStorage.removeItem('pendingPurchase');
-    window.location.href = 'payment.html';
-  });
+  }
 
-  backBtn.addEventListener('click', () => window.history.back());
+  backBtn?.addEventListener('click', () => window.history.back());
 });
