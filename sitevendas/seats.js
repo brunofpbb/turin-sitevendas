@@ -1,41 +1,28 @@
-// seats.js - exibe mapa de assentos e permite seleção
+// seats.js - seleção de poltronas
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
-  const schedule = JSON.parse(localStorage.getItem('selectedSchedule') || 'null');
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const schedule           = JSON.parse(localStorage.getItem('selectedSchedule') || 'null');
+  const user               = JSON.parse(localStorage.getItem('user') || 'null');
 
-  const tripInfo = document.getElementById('trip-info');
-  const seatMap = document.getElementById('seat-map');
-  const selectedSeatP = document.getElementById('selected-seat');
-  const confirmBtn = document.getElementById('confirm-seat');
-  const backBtn = document.getElementById('back-btn');
+  const tripInfo           = document.getElementById('trip-info');
+  const seatMap            = document.getElementById('seat-map');
+  const selectedSeatP      = document.getElementById('selected-seat');
+  const confirmBtn         = document.getElementById('confirm-seat');
+  const backBtn            = document.getElementById('back-btn');
   const passengerContainer = document.getElementById('passenger-container');
 
   const maxSelected = 6;
   let selectedSeats = [];
 
+  // --- sem viagem ---
   if (!schedule) {
     if (tripInfo) tripInfo.textContent = 'Nenhuma viagem selecionada.';
     if (confirmBtn) confirmBtn.disabled = true;
     return;
   }
 
-  // Clique no botão "Realizar Pagamento"
-confirmBtn.addEventListener('click', (e) => {
-  // Se o botão estiver em um <form>, evita submit “mudo”
-  if (e && typeof e.preventDefault === 'function') e.preventDefault();
-
-  // Nenhuma poltrona selecionada? Avisa e sai.
-  if (!Array.isArray(selectedSeats) || selectedSeats.length === 0) {
-    alert('Primeiro selecione uma poltrona.');
-    return;
-  }
-  
-});
-
-
-  // --- Cabeçalho da viagem ---
+  // --- cabeçalho ---
   if (tripInfo) {
     const origin = schedule.originName || schedule.origin || schedule.origem || '';
     const dest   = schedule.destinationName || schedule.destination || schedule.destino || '';
@@ -49,9 +36,10 @@ confirmBtn.addEventListener('click', (e) => {
     }
   }
 
-  // --- Busca mapa de poltronas pelo backend ---
+  // --- busca poltronas da API. retorna true/false ---
   async function ensureSeatMap() {
-    if (Array.isArray(schedule.seats) && schedule.seats.length > 0) return;
+    // se já veio de outra tela, reaproveita
+    if (Array.isArray(schedule.seats) && schedule.seats.length > 0) return true;
 
     try {
       const payload = {
@@ -66,61 +54,63 @@ confirmBtn.addEventListener('click', (e) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error('Falha ao obter poltronas');
+      if (!response.ok) throw new Error('HTTP ' + response.status);
 
-      const raw = await response.json();
+      const raw  = await response.json();
       const data = Array.isArray(raw) ? (raw[0] || {}) : raw;
 
       let poltronas = [];
       if (data?.PoltronaXmlRetorno) {
-        const pol = data.PoltronaXmlRetorno;
-        poltronas = Array.isArray(pol) ? pol : Array.isArray(pol?.Poltrona) ? pol.Poltrona : [pol];
+        const p = data.PoltronaXmlRetorno;
+        poltronas = Array.isArray(p) ? p : (Array.isArray(p?.Poltrona) ? p.Poltrona : [p]);
       } else if (data?.LaypoltronaXml?.PoltronaXmlRetorno) {
         poltronas = data.LaypoltronaXml.PoltronaXmlRetorno;
       }
 
-      schedule.seats = (poltronas || []).map(p => {
+      const seats = (poltronas || []).map(p => {
         const number = parseInt(
           p.Caption || p.caption || p.Numero || p.NumeroPoltrona || p.Poltrona,
           10
         );
         const situacao = parseInt(p.Situacao ?? p.situacao ?? 0, 10);
-        return {
-          number,
-          situacao,
-          occupied: situacao !== 0
-        };
-      }).filter(s => s.number >= 1 && s.number <= 42);
+        return { number, situacao, occupied: situacao !== 0 };
+      }).filter(s => Number.isFinite(s.number) && s.number >= 1 && s.number <= 42);
+
+      if (!seats.length) throw new Error('Mapa vazio');
+
+      schedule.seats = seats;
+      return true;
     } catch (err) {
       console.error('Erro ao carregar mapa de poltronas:', err);
-      schedule.seats = generateSeatMapFallback();
+      schedule.seats = null;
+      return false;
     }
   }
 
-  function generateSeatMapFallback() {
-    const pattern = [
-      [3, 7, 11, 15, 19, 23, 27, 31, 35, 39],
-      [4, 8, 12, 16, 20, 24, 28, 32, 36, 40],
-      [2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42],
-      [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41],
-    ];
-    const seats = [];
-    pattern.forEach(row => {
-      row.forEach(num => {
-        const forced = (num === 1 || num === 2);
-        const occupied = forced || Math.random() < 0.2;
-        seats.push({ number: num, occupied, situacao: occupied ? 1 : 0 });
-      });
-    });
-    return seats;
-  }
-
-  // --- Render do grid (sempre 42 posições) ---
+  // --- render do grid (42 posições) ---
   async function renderSeatGrid() {
-    await ensureSeatMap();
-    if (!seatMap) return;
+    const ok = await ensureSeatMap();
 
+    // limpa
     seatMap.innerHTML = '';
+    passengerContainer.innerHTML = '';
+    selectedSeatP.textContent = '';
+    confirmBtn.disabled = true;
+
+    // falha: mostra mensagem no lugar do mapa
+    if (!ok || !Array.isArray(schedule.seats)) {
+      const msg = document.createElement('div');
+      msg.className = 'seat-error';
+      msg.style.padding = '16px';
+      msg.style.background = '#fff7f7';
+      msg.style.border = '1px solid #f2c7c7';
+      msg.style.borderRadius = '8px';
+      msg.style.color = '#8a1f1f';
+      msg.style.textAlign = 'center';
+      msg.textContent = 'Não foi possível carregar o mapa de poltronas. Tente novamente mais tarde.';
+      seatMap.appendChild(msg);
+      return;
+    }
 
     const rows = [
       [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, null],
@@ -151,15 +141,11 @@ confirmBtn.addEventListener('click', (e) => {
         seatDiv.style.gridRowStart = rowPos;
         seatDiv.style.gridColumnStart = colPos;
 
-        if (Array.isArray(selectedSeats) && selectedSeats.includes(cell)) {
-          seatDiv.classList.add('selected');
-        }
+        if (selectedSeats.includes(cell)) seatDiv.classList.add('selected');
 
-        const seatData = Array.isArray(schedule?.seats)
-          ? schedule.seats.find(s => Number(s.number) === cell)
-          : undefined;
+        const seatData = schedule.seats.find(s => Number(s.number) === cell);
 
-        const isForcedBlocked = (cell === 1 || cell === 2);
+        const isForcedBlocked = (cell === 1 || cell === 2); // 1 e 2 sempre indisponíveis
         const isInactive      = seatData?.situacao === 3;
         const isOccupied      = !!seatData?.occupied;
         const isMissing       = !seatData;
@@ -173,17 +159,17 @@ confirmBtn.addEventListener('click', (e) => {
         }
 
         seatDiv.addEventListener('click', () => {
+          // toggle seleção
           seatDiv.classList.toggle('selected');
-          const n = cell;
-          if (!Array.isArray(selectedSeats)) selectedSeats = [];
-          if (selectedSeats.includes(n)) {
-            selectedSeats = selectedSeats.filter(x => x !== n);
+          if (selectedSeats.includes(cell)) {
+            selectedSeats = selectedSeats.filter(x => x !== cell);
           } else {
             if (selectedSeats.length >= maxSelected) {
               alert(`É possível selecionar no máximo ${maxSelected} poltronas por compra.`);
+              seatDiv.classList.remove('selected');
               return;
             }
-            selectedSeats.push(n);
+            selectedSeats.push(cell);
           }
           updatePassengerForms();
         });
@@ -195,11 +181,13 @@ confirmBtn.addEventListener('click', (e) => {
 
   function updatePassengerForms() {
     passengerContainer.innerHTML = '';
+
     if (selectedSeats.length === 0) {
       confirmBtn.disabled = true;
       selectedSeatP.textContent = '';
       return;
     }
+
     confirmBtn.disabled = false;
     selectedSeatP.textContent = `Poltronas selecionadas: ${selectedSeats.join(', ')}`;
 
@@ -223,29 +211,30 @@ confirmBtn.addEventListener('click', (e) => {
     });
   }
 
+  // inicializa
   renderSeatGrid();
-  updatePassengerForms();
 
-  confirmBtn.addEventListener('click', () => {
-    if (selectedSeats.length === 0) {
+  // clique do botão – versão única (não duplica)
+  confirmBtn.addEventListener('click', (e) => {
+    e?.preventDefault?.();
+
+    if (!Array.isArray(selectedSeats) || selectedSeats.length === 0) {
       alert('Primeiro selecione uma poltrona.');
       return;
     }
 
+    // valida passageiros
+    const rows = passengerContainer.querySelectorAll('.passenger-row');
     const passengers = [];
     let valid = true;
-    const rows = passengerContainer.querySelectorAll('.passenger-row');
     rows.forEach((rowDiv) => {
       const seatNumber = parseInt(rowDiv.dataset.seatNumber, 10);
-      const name = rowDiv.querySelector('input[name="name"]').value.trim();
-      const docType = rowDiv.querySelector('select[name="docType"]').value;
+      const name      = rowDiv.querySelector('input[name="name"]').value.trim();
+      const docType   = rowDiv.querySelector('select[name="docType"]').value;
       const docNumber = rowDiv.querySelector('input[name="docNumber"]').value.trim();
-      const cpf = rowDiv.querySelector('input[name="cpf"]').value.trim();
-      const phone = rowDiv.querySelector('input[name="phone"]').value.trim();
-      if (!name || !docNumber || !cpf || !phone) {
-        valid = false;
-        return;
-      }
+      const cpf       = rowDiv.querySelector('input[name="cpf"]').value.trim();
+      const phone     = rowDiv.querySelector('input[name="phone"]').value.trim();
+      if (!name || !docNumber || !cpf || !phone) valid = false;
       passengers.push({ seatNumber, name, docType, docNumber, cpf, phone });
     });
 
@@ -254,12 +243,13 @@ confirmBtn.addEventListener('click', (e) => {
       return;
     }
 
+    // força login se necessário
     if (!user) {
       alert('Faça login para continuar.');
       const pending = {
-        schedule: schedule,
+        schedule,
         seats: selectedSeats.slice(),
-        passengers: passengers,
+        passengers,
         price: schedule.price * selectedSeats.length,
         date: schedule.date,
       };
@@ -269,17 +259,17 @@ confirmBtn.addEventListener('click', (e) => {
       return;
     }
 
+    // persiste compra e segue para pagamento
     const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
-    const newBooking = {
+    bookings.push({
       id: Date.now(),
-      schedule: schedule,
+      schedule,
       seats: selectedSeats.slice(),
-      passengers: passengers,
+      passengers,
       price: schedule.price * selectedSeats.length,
       date: schedule.date,
       paid: false,
-    };
-    bookings.push(newBooking);
+    });
     localStorage.setItem('bookings', JSON.stringify(bookings));
     localStorage.removeItem('pendingPurchase');
     window.location.href = 'payment.html';
