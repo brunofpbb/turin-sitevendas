@@ -15,20 +15,24 @@ app.use((req, res, next) => {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      // Bricks usam inline + new Function
+      // SDK/Bricks precisam inline+eval
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // inclui api-static (secure-fields) e mlstatic
-      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com https://api-static.mercadopago.com",
-      // imagens (QR em data:, assets mlstatic e algumas imagens *.mercadolibre.com)
-      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com",
-      // se o SDK abrir algum frame do wallet/api
-      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com",
+      // XHR/fetch
+      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com https://api-static.mercadopago.com https://www.mercadolivre.com",
+      // imagens (QR base64 + assets mlstatic + domínios ML BR/Global)
+      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      // iframes necessários (wallet + secure-fields + ML BR quando usado)
+      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://www.mercadolivre.com",
+      // alguns navegadores ainda olham child-src – replica as fontes
+      "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://www.mercadolivre.com",
+      // estilos
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
     ].join('; ')
   );
   next();
 });
+
 
 const PORT = process.env.PORT || 3000;
 
