@@ -4,23 +4,24 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const fetch = require('node-fetch');            // v2 (CommonJS)
+const fetch = require('node-fetch'); // pode remover se preferir usar o fetch nativo do Node 18+
 const nodemailer = require('nodemailer');
-
 
 const app = express();
 
-
+/* =================== CSP compatível com MP Bricks =================== */
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
+      // Bricks usam inline + new Function
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // + api-static (secure-fields) + mlstatic
+      // inclui api-static (secure-fields) e mlstatic
       "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com https://api-static.mercadopago.com",
+      // imagens (QR em data:, assets mlstatic e algumas imagens *.mercadolibre.com)
       "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com",
-      // + api.mercadopago.com
+      // se o SDK abrir algum frame do wallet/api
       "frame-src https://wallet.mercadopago.com https://api.mercadopago.com",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
@@ -28,7 +29,6 @@ app.use((req, res, next) => {
   );
   next();
 });
-
 
 const PORT = process.env.PORT || 3000;
 
@@ -39,16 +39,16 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
 
 app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
+
 app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }));
 
-/* =================== SMTP (opcional / fallback) =================== */
-// timeouts curtos e IPv4 p/ evitar travas
+/* =================== SMTP / Brevo (como estava) =================== */
 function createSSL() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
   return nodemailer.createTransport({
     host: SMTP_HOST,
-    port: Number(SMTP_PORT),                 // 465
+    port: Number(SMTP_PORT),
     secure: String(SMTP_SECURE || 'true') === 'true',
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
@@ -58,14 +58,13 @@ function createSSL() {
     socketTimeout: 3500,
   });
 }
-
 function createSTARTTLS() {
   const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
   return nodemailer.createTransport({
-    host: SMTP_HOST,                         // ex.: smtp.uhserver.com ou smtp-relay.brevo.com
+    host: SMTP_HOST,
     port: 587,
-    secure: false,                           // STARTTLS
+    secure: false,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: false },
     family: 4,
@@ -74,22 +73,18 @@ function createSTARTTLS() {
     socketTimeout: 3500,
   });
 }
-
 function verifyWithTimeout(transporter, ms = 3500) {
   return Promise.race([
     transporter.verify().then(() => ({ ok: true })),
     new Promise(r => setTimeout(() => r({ ok: false, error: 'verify-timeout' }), ms + 200)),
   ]).catch(e => ({ ok: false, error: e?.message || String(e) }));
 }
-
 async function ensureTransport() {
-  // tenta SSL (465) se variáveis estiverem setadas como secure
   let t = createSSL();
   if (t) {
     const r = await verifyWithTimeout(t);
     if (r.ok) return { transporter: t, mode: 'SSL(465)' };
   }
-  // fallback: STARTTLS (587)
   t = createSTARTTLS();
   if (t) {
     const r = await verifyWithTimeout(t);
@@ -99,16 +94,13 @@ async function ensureTransport() {
   return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
 }
 
-// Debug SMTP (não envia e-mail)
 app.get('/api/auth/_debug-smtp', async (_req, res) => {
   const sslT = createSSL();
   const stT  = createSTARTTLS();
-
   const [sslRes, stRes] = await Promise.all([
     sslT ? verifyWithTimeout(sslT) : Promise.resolve({ ok: false, error: 'vars faltando (SSL)' }),
     stT  ? verifyWithTimeout(stT)  : Promise.resolve({ ok: false, error: 'vars faltando (STARTTLS)' }),
   ]);
-
   res.json({
     host: process.env.SMTP_HOST || null,
     user: !!process.env.SMTP_USER,
@@ -117,11 +109,9 @@ app.get('/api/auth/_debug-smtp', async (_req, res) => {
   });
 });
 
-/* =================== Brevo API (primário) =================== */
 async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName }) {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
-
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -136,7 +126,6 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName })
       textContent: text,
     }),
   });
-
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
     throw new Error(`Brevo API ${resp.status}: ${body.slice(0, 300)}`);
@@ -144,7 +133,6 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName })
   return resp.json();
 }
 
-// Debug Brevo API (não envia e-mail)
 app.get('/api/auth/_debug-brevo', async (_req, res) => {
   try {
     const r = await fetch('https://api.brevo.com/v3/account', {
@@ -157,7 +145,7 @@ app.get('/api/auth/_debug-brevo', async (_req, res) => {
   }
 });
 
-/* =================== Auth: códigos por e-mail =================== */
+/* =================== Auth: códigos por e-mail (como estava) =================== */
 const codes = new Map();
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 6;
@@ -170,14 +158,12 @@ setInterval(() => {
   for (const [k, v] of codes.entries()) if (v.expiresAt <= now) codes.delete(k);
 }, 60 * 1000);
 
-// solicitar código
 app.post('/api/auth/request-code', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ ok: false, error: 'E-mail inválido.' });
     }
-
     const code = genCode();
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
     codes.set(email, { code, expiresAt, attempts: 0 });
@@ -199,8 +185,6 @@ app.post('/api/auth/request-code', async (req, res) => {
     const text = `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`;
 
     let via;
-
-    // 1) tenta SMTP (se disponível)
     try {
       const got = await ensureTransport();
       if (!got.transporter) throw new Error('smtp-indisponivel');
@@ -211,7 +195,6 @@ app.post('/api/auth/request-code', async (req, res) => {
       });
       via = got.mode || 'SMTP';
     } catch {
-      // 2) fallback: Brevo API (HTTPS 443)
       await sendViaBrevoApi({ to: email, subject: `Seu código de acesso (${appName})`, html, text, fromEmail, fromName });
       via = 'Brevo API';
     }
@@ -225,7 +208,6 @@ app.post('/api/auth/request-code', async (req, res) => {
   }
 });
 
-// verificar código
 app.post('/api/auth/verify-code', (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || '');
@@ -244,7 +226,7 @@ app.post('/api/auth/verify-code', (req, res) => {
   res.json({ ok: true, user });
 });
 
-/* =================== Praxio =================== */
+/* =================== Praxio (como estava) =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
@@ -327,9 +309,17 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
+/* =================== Mercado Pago v2 =================== */
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
 
+// Entrega a Public Key para o front (JSON sempre!)
+app.get('/api/mp/pubkey', (req, res) => {
+  res.type('application/json');
+  res.send(JSON.stringify({ publicKey: process.env.MP_PUBLIC_KEY || '' }));
+});
+
+// Cria pagamento (cartão/débito/Pix)
 app.post('/api/mp/pay', async (req, res) => {
   const payments = new Payment(mpClient);
   try {
@@ -360,7 +350,7 @@ app.post('/api/mp/pay', async (req, res) => {
         email: payer?.email || '',
         first_name: payer?.first_name || '',
         last_name: payer?.last_name || '',
-        identification: payer?.identification // { type: 'CPF', number: '...' }
+        identification: payer?.identification
       },
       metadata: {
         app: 'Turin SiteVendas',
@@ -368,7 +358,7 @@ app.post('/api/mp/pay', async (req, res) => {
       }
     };
 
-    // PIX
+    // Pix
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
       if (!base.payer.email) {
         return res.status(400).json({ error: true, message: 'Informe um e-mail para Pix.' });
@@ -395,7 +385,7 @@ app.post('/api/mp/pay', async (req, res) => {
     // Cartão (crédito/débito)
     const body = {
       ...base,
-      token, // obrigatório p/ cartão
+      token,
       installments: Number(installments || 1),
       payment_method_id: paymentMethodId,
       capture: true,
@@ -414,7 +404,6 @@ app.post('/api/mp/pay', async (req, res) => {
     });
 
   } catch (err) {
-    // Extrai mensagem útil do SDK v2
     const details =
       err?.cause?.[0]?.description ||
       err?.cause?.[0]?.message ||
@@ -425,18 +414,18 @@ app.post('/api/mp/pay', async (req, res) => {
   }
 });
 
-// (Opcional) Webhook – v2
+// Webhook (opcional)
 app.post('/api/mp/webhook', async (req, res) => {
   res.sendStatus(200);
   // const id = req.body?.data?.id;
   // if (id) {
   //   const payments = new Payment(mpClient);
   //   const det = await payments.get({ id });
-  //   // TODO: conciliação pelo det.status
+  //   // TODO: conciliação conforme det.status
   // }
 });
 
-/* =================== SPA fallback =================== */
+/* =================== SPA fallback (deixa por último!) =================== */
 app.get('*', (_req, res) => {
   const indexPath = fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))
     ? path.join(PUBLIC_DIR, 'index.html')
