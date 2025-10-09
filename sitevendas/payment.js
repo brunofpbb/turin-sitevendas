@@ -1,6 +1,5 @@
 // payment.js — Mercado Pago Payment Brick (crédito, débito e Pix)
 document.addEventListener('DOMContentLoaded', async () => {
-  // Se existir, mantém seu header/topo
   if (typeof updateUserNav === 'function') updateUserNav();
 
   // 1) Checagem de login
@@ -57,7 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
   `;
 
-  // 3) Busca a Public Key no back
+  // 3) Public Key do back
   const pubRes = await fetch('/api/mp/pubkey');
   const { publicKey } = await pubRes.json();
   if (!publicKey) {
@@ -65,11 +64,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // 4) Instancia SDK e bricks
+  // 4) SDK v2
   const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
   const bricksBuilder = mp.bricks();
 
-  // 5) Caixa para QR Pix (aparece só quando necessário)
+  // 5) Caixa para QR Pix (aparece apenas quando necessário)
   function ensurePixBox() {
     let box = document.getElementById('pix-box');
     if (!box) {
@@ -101,89 +100,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     return box;
   }
 
-  // 6) Render do Payment Brick (com callbacks exigidos)
+  // 6) Render do Payment Brick
   async function renderPaymentBrick() {
     const settings = {
       initialization: {
         amount: total,                     // number
-        payer: { email: user.email || '' }
+        payer: { email: user.email || '' } // ajuda no Pix
       },
       customization: {
         paymentMethods: {
           creditCard: 'all',
           debitCard: 'all',
-          bankTransfer: ['pix'],          // habilita Pix
+          bankTransfer: ['pix'],
         },
         visual: { style: { theme: 'default' } },
       },
       callbacks: {
-        // **obrigatórios**
         onReady: () => console.log('[MP] Brick pronto'),
         onError: (error) => {
           console.error('[MP] Brick error:', error);
           alert('Erro ao carregar o meio de pagamento (veja o console).');
         },
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
-  try {
-    const payload = {
-      ...formData,                                  // token/issuer/parcelas (cartão) ou payer.email (pix)
-      transactionAmount: total,                     // number
-      paymentMethodId: selectedPaymentMethod,       // 'visa' | 'pix' etc.
-      description: 'Compra Turin Transportes'
-    };
+          try {
+            const payload = {
+              ...formData,                                  // token/issuer/parcelas (cartão) ou payer.email (pix)
+              transactionAmount: total,                     // number
+              paymentMethodId: selectedPaymentMethod,       // 'visa' | 'pix' etc.
+              description: 'Compra Turin Transportes'
+            };
 
-    const resp = await fetch('/api/mp/pay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+            const resp = await fetch('/api/mp/pay', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
 
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
 
-    if (data.status === 'approved') {
-      const b = JSON.parse(localStorage.getItem('bookings') || '[]');
-      if (b.length) { b[b.length - 1].paid = true; localStorage.setItem('bookings', JSON.stringify(b)); }
-      alert('Pagamento aprovado! (ID: ' + data.id + ')');
-      window.location.href = 'profile.html';
-      return;
-    }
+            // Cartão aprovado
+            if (data.status === 'approved') {
+              const b = JSON.parse(localStorage.getItem('bookings') || '[]');
+              if (b.length) { b[b.length - 1].paid = true; localStorage.setItem('bookings', JSON.stringify(b)); }
+              alert('Pagamento aprovado! (ID: ' + data.id + ')');
+              window.location.href = 'profile.html';
+              return;
+            }
 
-    const s = String(data.status || '').toLowerCase();
-    if (s === 'pending' || s === 'in_process') {
-      // PIX pendente: exibir QR e cópia-e-cola
-      const box = ensurePixBox();
-      document.getElementById('pix-qr').innerHTML =
-        data?.pix?.qr_base64 ? `<img src="data:image/png;base64,${data.pix.qr_base64}" alt="QR Pix">` : '';
-      document.getElementById('pix-code').value = data?.pix?.qr_text || '';
-      alert('Use o QR ou o código Pix para concluir o pagamento.');
-      return;
-    }
-
-    alert('Status do pagamento: ' + (data.status || 'desconhecido'));
-  } catch (e) {
-    console.error('Pagamento falhou:', e);
-    alert(e.message || 'Não foi possível concluir o pagamento.');
-  }
-},
-
-            // Pix pendente → mostra QR e cópia-e-cola
+            // Pix pendente → exibe QR e copia-e-cola
             const s = String(data.status || '').toLowerCase();
             if (s === 'pending' || s === 'in_process') {
               const box = ensurePixBox();
-              const qrB64 = data?.pix?.qr_base64 || '';
-              const qrTxt = data?.pix?.qr_text || '';
               document.getElementById('pix-qr').innerHTML =
-                qrB64 ? `<img src="data:image/png;base64,${qrB64}" alt="QR Pix">` : '';
-              document.getElementById('pix-code').value = qrTxt;
-              alert('Use o QR ou código Pix para concluir o pagamento.');
+                data?.pix?.qr_base64 ? `<img src="data:image/png;base64,${data.pix.qr_base64}" alt="QR Pix">` : '';
+              document.getElementById('pix-code').value = data?.pix?.qr_text || '';
+              alert('Use o QR ou o código Pix para concluir o pagamento.');
               return;
             }
 
             alert('Status do pagamento: ' + (data.status || 'desconhecido'));
           } catch (e) {
             console.error('Pagamento falhou:', e);
-            alert('Não foi possível concluir o pagamento. Verifique os dados e tente novamente.');
+            alert(e.message || 'Não foi possível concluir o pagamento.');
           }
         },
       },
