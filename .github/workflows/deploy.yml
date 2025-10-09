@@ -1,0 +1,35 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [ main ]   # troque se a branch de prod não for "main"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Link project/service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway link \
+            --project "${{ secrets.PROJECT_ID }}" \
+            --service "${{ secrets.SERVICE_ID }}"
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ secrets.SERVICE_ID }}
+          ENVIRONMENT_ID: ${{ secrets.ENVIRONMENT_ID }}
+        run: |
+          EXTRA=""
+          if [ -n "$ENVIRONMENT_ID" ]; then
+            EXTRA="--environment $ENVIRONMENT_ID"
+          fi
+          railway up --service "$SERVICE_ID" $EXTRA --detach
