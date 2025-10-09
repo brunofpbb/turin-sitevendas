@@ -56,13 +56,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
   `;
 
-  // 3) Public Key do back
-  const pubRes = await fetch('/api/mp/pubkey');
-  const { publicKey } = await pubRes.json();
-  if (!publicKey) {
-    alert('Chave pública do Mercado Pago não configurada no servidor.');
-    return;
-  }
+const pubRes = await fetch('/api/mp/pubkey');
+if (!pubRes.ok) {
+  const txt = await pubRes.text();
+  console.error('Erro ao obter pubkey:', pubRes.status, txt.slice(0,200));
+  alert('Falha ao obter chave pública do MP. Veja o console.');
+  return;
+}
+const { publicKey } = await pubRes.json();
+if (!publicKey) {
+  alert('Chave pública do Mercado Pago não configurada no servidor.');
+  return;
+}
+
 
   // 4) SDK v2
   const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
