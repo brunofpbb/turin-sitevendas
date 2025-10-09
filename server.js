@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');            // v2 (CommonJS)
 const nodemailer = require('nodemailer');
+const mercadopago = require('mercadopago');  // Mercado Pago SDK
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -103,7 +104,6 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName })
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      accept: 'application/json',
       'content-type': 'application/json',
       'api-key': apiKey,
     },
@@ -213,7 +213,7 @@ app.post('/api/auth/verify-code', (req, res) => {
   const entry = codes.get(email);
   if (!entry) return res.status(400).json({ ok: false, error: 'Solicite um novo código.' });
   if (entry.expiresAt < Date.now()) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Código expirado. Solicite outro.' }); }
-  if (entry.attempts >= MAX_ATTEMPTS) { codes.delete(email); return res.status(429).json({ ok: false, error: 'Muitas tentativas. Solicite outro código.' }); }
+  if (entry.attempts >= MAX_ATTEMPTS) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Muitas tentativas. Solicite outro código.' }); }
 
   entry.attempts += 1;
   if (entry.code !== code) return res.status(400).json({ ok: false, error: 'Código incorreto.' });
@@ -295,7 +295,6 @@ app.post('/api/poltronas', async (req, res) => {
         IdTipoVeiculo: idTipoVeiculo,
         IdLocOrigem: idLocOrigem,
         IdLocdestino: idLocDestino,
-        Andar: 0,
         VerificarSugestao: 1,
       }),
     });
@@ -304,6 +303,99 @@ app.post('/api/poltronas', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao consultar poltronas' });
+  }
+});
+
+/* =================== Mercado Pago (Checkout Transparente) =================== */
+// Requer: MP_PUBLIC_KEY e MP_ACCESS_TOKEN nas env vars
+try {
+  mercadopago.configure({ access_token: process.env.MP_ACCESS_TOKEN || '' });
+} catch (e) {
+  console.warn('MercadoPago configure() falhou (verifique MP_ACCESS_TOKEN):', e?.message || e);
+}
+
+// Public key para o front (Payment Brick)
+app.get('/api/mp/pubkey', (_req, res) => {
+  res.json({ publicKey: process.env.MP_PUBLIC_KEY || '' });
+});
+
+// Endpoint para processar o pagamento (cartão/débito/Pix)
+app.post('/api/mp/pay', async (req, res) => {
+  try {
+    const {
+      transactionAmount,
+      description,
+      token,
+      installments,
+      paymentMethodId,
+      issuerId,
+      payer
+    } = req.body || {};
+
+    const base = {
+      transaction_amount: Number(transactionAmount),
+      description: description || 'Compra Turin Transportes',
+      payer: {
+        email: payer?.email,
+        first_name: payer?.first_name,
+        last_name: payer?.last_name,
+        identification: payer?.identification // { type: 'CPF', number: '...' }
+      }
+    };
+
+    // PIX
+    if ((paymentMethodId || '').toLowerCase() === 'pix') {
+      base.payment_method_id = 'pix';
+      base.date_of_expiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      const r = await mercadopago.payment.create(base);
+      const td = r?.body?.point_of_interaction?.transaction_data;
+      return res.json({
+        id: r?.body?.id,
+        status: r?.body?.status,
+        status_detail: r?.body?.status_detail,
+        pix: {
+          qr_base64: td?.qr_code_base64,
+          qr_text: td?.qr_code,
+          expires_at: td?.expiration_date
+        }
+      });
+    }
+
+    // Cartão (crédito/débito)
+    base.token = token;
+    base.installments = Number(installments || 1);
+    base.payment_method_id = paymentMethodId;
+    if (issuerId) base.issuer_id = issuerId;
+    base.capture = true;
+
+    const r = await mercadopago.payment.create(base);
+    return res.json({
+      id: r?.body?.id,
+      status: r?.body?.status,
+      status_detail: r?.body?.status_detail
+    });
+  } catch (err) {
+    console.error('MP /pay error', err?.response?.data || err);
+    res.status(400).json({
+      error: true,
+      message: err?.response?.data?.message || err?.message || 'Falha ao processar pagamento'
+    });
+  }
+});
+
+// Webhook (opcional) para notificações e conciliação
+app.post('/api/mp/webhook', async (req, res) => {
+  try {
+    // Mercado Pago exige 200 rápido
+    res.sendStatus(200);
+    // Exemplo: consultar pagamento
+    // const id = req.body?.data?.id;
+    // if (id) {
+    //   const det = await mercadopago.payment.findById(id);
+    //   // TODO: atualizar pedido na sua base conforme det.body.status
+    // }
+  } catch (e) {
+    console.error('Webhook MP erro:', e?.message || e);
   }
 });
 
