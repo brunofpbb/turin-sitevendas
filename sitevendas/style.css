@@ -281,3 +281,72 @@ button:hover {
   border-bottom: 1px solid #ddd;
   padding: 1rem 0;
 }
+
+/* ===== Resumo do pedido – destaque do total ===== */
+.total-line {
+  margin-top: .5rem;
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+}
+.total-label {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.total-amount {
+  font-weight: 800;
+  font-size: 1.4rem;   /* maior para dar ênfase */
+}
+
+/* ===== Form de pagamento ===== */
+.payment-form .two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.payment-form .two-cols > div {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Botões lado a lado */
+.pay-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Botões base */
+.btn {
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  line-height: 1;
+  padding: .9rem 1.2rem;
+  cursor: pointer;
+}
+.btn-primary {
+  background: #005b28;
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #007a3b;
+}
+/* Pagar um pouco mais comprido */
+.btn-pay {
+  min-width: 160px;
+}
+.btn-ghost {
+  background: #e9ecef;
+  color: #222;
+}
+.btn-ghost:hover {
+  background: #dfe3e6;
+}
+
+/* Responsivo simples */
+@media (max-width: 640px) {
+  .payment-form .two-cols { grid-template-columns: 1fr; }
+  .pay-actions { flex-direction: column; }
+  .btn-pay { width: 100%; }
+}
