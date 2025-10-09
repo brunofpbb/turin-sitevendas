@@ -2,25 +2,44 @@ name: Deploy to Railway
 
 on:
   push:
-    branches: [ main ]   # troque se a branch de prod não for "main"
+    branches: [ main ]  # troque se sua branch de prod for outra
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install Railway CLI
-        run: npm i -g @railway/cli
+      - name: Show Git info (debug)
+        run: |
+          git rev-parse --short HEAD
+          ls -la
+
+      - name: Install Node and Railway CLI
+        run: |
+          node -v || true
+          npm -v || true
+          npm i -g @railway/cli
+          railway --version || true
+
+      - name: Verify secrets (masked)
+        run: |
+          echo "Has RAILWAY_TOKEN? $([[ -n \"${{ secrets.RAILWAY_TOKEN }}\" ]] && echo YES || echo NO)"
+          echo "Has PROJECT_ID? $([[ -n \"${{ secrets.PROJECT_ID }}\" ]] && echo YES || echo NO)"
+          echo "Has SERVICE_ID? $([[ -n \"${{ secrets.SERVICE_ID }}\" ]] && echo YES || echo NO)"
+          echo "Has ENVIRONMENT_ID? $([[ -n \"${{ secrets.ENVIRONMENT_ID }}\" ]] && echo YES || echo NO)"
 
       - name: Link project/service
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
+          set -euxo pipefail
           railway link \
             --project "${{ secrets.PROJECT_ID }}" \
             --service "${{ secrets.SERVICE_ID }}"
+          railway status
 
       - name: Deploy
         env:
@@ -28,8 +47,10 @@ jobs:
           SERVICE_ID: ${{ secrets.SERVICE_ID }}
           ENVIRONMENT_ID: ${{ secrets.ENVIRONMENT_ID }}
         run: |
+          set -euxo pipefail
           EXTRA=""
           if [ -n "$ENVIRONMENT_ID" ]; then
             EXTRA="--environment $ENVIRONMENT_ID"
           fi
           railway up --service "$SERVICE_ID" $EXTRA --detach
+          echo "Deploy disparado com sucesso."
