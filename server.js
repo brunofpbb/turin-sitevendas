@@ -11,22 +11,17 @@ const mercadopago = require('mercadopago');  // Mercado Pago SDK
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// << depois de const app = express(); e ANTES de app.use(express.static(...))
 app.use((req, res, next) => {
-  // CSP compatível com Mercado Pago Bricks
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      // o SDK/Bricks injetam inline e usam 'new Function' => precisa 'unsafe-inline' e 'unsafe-eval'
+      // precisa inline+eval pro Bricks
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // chamadas XHR/fetch do bricks
-      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com",
-      // imagens (inclui QR em data: e assets do mlstatic)
+      // ADICIONEI http2.mlstatic.com aqui também
+      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com",
       "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com",
-      // iframe do wallet
       "frame-src https://wallet.mercadopago.com",
-      // css inline básico do seu site e do brick
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
     ].join('; ')
