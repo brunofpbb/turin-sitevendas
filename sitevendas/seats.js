@@ -21,6 +21,20 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
+  // Clique no botão "Realizar Pagamento"
+confirmBtn.addEventListener('click', (e) => {
+  // Se o botão estiver em um <form>, evita submit “mudo”
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+
+  // Nenhuma poltrona selecionada? Avisa e sai.
+  if (!Array.isArray(selectedSeats) || selectedSeats.length === 0) {
+    alert('Primeiro selecione uma poltrona.');
+    return;
+  }
+  
+});
+
+
   // --- Cabeçalho da viagem ---
   if (tripInfo) {
     const origin = schedule.originName || schedule.origin || schedule.origem || '';
