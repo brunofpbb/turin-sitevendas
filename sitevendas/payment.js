@@ -123,35 +123,49 @@ document.addEventListener('DOMContentLoaded', async () => {
           console.error('[MP] Brick error:', error);
           alert('Erro ao carregar o meio de pagamento (veja o console).');
         },
-        // Disparado ao enviar o formulário do Brick
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
-          try {
-            const payload = {
-              ...formData,
-              transactionAmount: total,                // camelCase — o back usa esse nome
-              paymentMethodId: selectedPaymentMethod,  // ex.: 'visa' | 'pix'
-              description: 'Compra Turin Transportes'
-            };
+  try {
+    const payload = {
+      ...formData,                                  // token/issuer/parcelas (cartão) ou payer.email (pix)
+      transactionAmount: total,                     // number
+      paymentMethodId: selectedPaymentMethod,       // 'visa' | 'pix' etc.
+      description: 'Compra Turin Transportes'
+    };
 
-            const resp = await fetch('/api/mp/pay', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            const data = await resp.json();
-            if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
+    const resp = await fetch('/api/mp/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-            // Cartão aprovado
-            if (data.status === 'approved') {
-              const b = JSON.parse(localStorage.getItem('bookings') || '[]');
-              if (b.length) {
-                b[b.length - 1].paid = true;
-                localStorage.setItem('bookings', JSON.stringify(b));
-              }
-              alert('Pagamento aprovado! (ID: ' + data.id + ')');
-              window.location.href = 'profile.html';
-              return;
-            }
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
+
+    if (data.status === 'approved') {
+      const b = JSON.parse(localStorage.getItem('bookings') || '[]');
+      if (b.length) { b[b.length - 1].paid = true; localStorage.setItem('bookings', JSON.stringify(b)); }
+      alert('Pagamento aprovado! (ID: ' + data.id + ')');
+      window.location.href = 'profile.html';
+      return;
+    }
+
+    const s = String(data.status || '').toLowerCase();
+    if (s === 'pending' || s === 'in_process') {
+      // PIX pendente: exibir QR e cópia-e-cola
+      const box = ensurePixBox();
+      document.getElementById('pix-qr').innerHTML =
+        data?.pix?.qr_base64 ? `<img src="data:image/png;base64,${data.pix.qr_base64}" alt="QR Pix">` : '';
+      document.getElementById('pix-code').value = data?.pix?.qr_text || '';
+      alert('Use o QR ou o código Pix para concluir o pagamento.');
+      return;
+    }
+
+    alert('Status do pagamento: ' + (data.status || 'desconhecido'));
+  } catch (e) {
+    console.error('Pagamento falhou:', e);
+    alert(e.message || 'Não foi possível concluir o pagamento.');
+  }
+},
 
             // Pix pendente → mostra QR e cópia-e-cola
             const s = String(data.status || '').toLowerCase();
