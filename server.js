@@ -9,19 +9,19 @@ const nodemailer = require('nodemailer');
 
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+
 
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      // precisa inline+eval pro Bricks
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // ADICIONEI http2.mlstatic.com aqui também
-      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com",
-      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com",
-      "frame-src https://wallet.mercadopago.com",
+      // + api-static (secure-fields) + mlstatic
+      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com https://api-static.mercadopago.com",
+      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com",
+      // + api.mercadopago.com
+      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
     ].join('; ')
@@ -29,6 +29,8 @@ app.use((req, res, next) => {
   next();
 });
 
+
+const PORT = process.env.PORT || 3000;
 
 /* =================== Static / Health =================== */
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
@@ -325,21 +327,11 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
-// === Mercado Pago SDK v2 ===
 const { MercadoPagoConfig, Payment } = require('mercadopago');
+const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
 
-// Client autenticado
-const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN || ''
-});
-
-// Entrega a Public Key para o front
-app.get('/api/mp/pubkey', (_req, res) => {
-  res.json({ publicKey: process.env.MP_PUBLIC_KEY || '' });
-});
-
-// Cria pagamento (cartão/débito ou Pix)
 app.post('/api/mp/pay', async (req, res) => {
+  const payments = new Payment(mpClient);
   try {
     const {
       transactionAmount,
@@ -351,28 +343,42 @@ app.post('/api/mp/pay', async (req, res) => {
       payer
     } = req.body || {};
 
+    const amount = Number(
+      typeof transactionAmount === 'string'
+        ? transactionAmount.replace(',', '.')
+        : transactionAmount
+    );
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: true, message: 'Valor inválido.' });
+    }
+
     const base = {
-      transaction_amount: Number(transactionAmount),
+      transaction_amount: amount,
       description: description || 'Compra Turin Transportes',
       payer: {
-        email: payer?.email,
-        first_name: payer?.first_name,
-        last_name: payer?.last_name,
+        email: payer?.email || '',
+        first_name: payer?.first_name || '',
+        last_name: payer?.last_name || '',
         identification: payer?.identification // { type: 'CPF', number: '...' }
+      },
+      metadata: {
+        app: 'Turin SiteVendas',
+        when: new Date().toISOString()
       }
     };
 
-    const payments = new Payment(mpClient);
-
     // PIX
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
+      if (!base.payer.email) {
+        return res.status(400).json({ error: true, message: 'Informe um e-mail para Pix.' });
+      }
       const body = {
         ...base,
         payment_method_id: 'pix',
         date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString()
       };
-
-      const r = await payments.create({ body });          // v2
+      const r = await payments.create({ body });
       const td = r?.point_of_interaction?.transaction_data;
       return res.json({
         id: r?.id,
@@ -389,14 +395,18 @@ app.post('/api/mp/pay', async (req, res) => {
     // Cartão (crédito/débito)
     const body = {
       ...base,
-      token,
+      token, // obrigatório p/ cartão
       installments: Number(installments || 1),
       payment_method_id: paymentMethodId,
       capture: true,
       ...(issuerId ? { issuer_id: issuerId } : {})
     };
 
-    const r = await payments.create({ body });           // v2
+    if (!body.token) {
+      return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
+    }
+
+    const r = await payments.create({ body });
     return res.json({
       id: r?.id,
       status: r?.status,
@@ -404,11 +414,14 @@ app.post('/api/mp/pay', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('MP /pay error', err?.cause || err);
-    res.status(400).json({
-      error: true,
-      message: err?.message || 'Falha ao processar pagamento'
-    });
+    // Extrai mensagem útil do SDK v2
+    const details =
+      err?.cause?.[0]?.description ||
+      err?.cause?.[0]?.message ||
+      err?.message ||
+      'Falha ao processar pagamento';
+    console.error('MP /pay error:', JSON.stringify(err?.cause || err, null, 2));
+    return res.status(400).json({ error: true, message: details });
   }
 });
 
