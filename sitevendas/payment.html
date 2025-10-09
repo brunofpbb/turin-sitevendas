@@ -1,37 +1,14 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Pagamento</title>
-  <link rel="stylesheet" href="style.css">
-  <script defer src="main.js"></script>
+  <link rel="stylesheet" href="style.css" />
 
- <meta http-equiv="Content-Security-Policy"
-  content="
-    default-src 'self';
-    script-src 'self' 'unsafe-eval'
-      https://sdk.mercadopago.com
-      https://wallet.mercadopago.com
-      https://http2.mlstatic.com;
-    connect-src 'self'
-      https://api.mercadopago.com
-      https://wallet.mercadopago.com
-      https://api.mercadolibre.com;
-    img-src 'self' data:
-      https://*.mercadopago.com
-      https://*.mpago.li
-      https://http2.mlstatic.com;
-    frame-src https://wallet.mercadopago.com;
-    style-src 'self' 'unsafe-inline';
-    font-src 'self' data:
-  ">
-
-
-
-  <!-- SDK JS do Mercado Pago (precisa estar disponível antes do payment.js) -->
+  <!-- SDK do MP primeiro -->
   <script src="https://sdk.mercadopago.com/js/v2"></script>
-
-  <!-- Inicialização do Brick e integração (arquivo já adaptado) -->
+  <!-- Seus scripts depois -->
+  <script defer src="main.js"></script>
   <script defer src="payment.js"></script>
 </head>
 <body>
