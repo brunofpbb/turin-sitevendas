@@ -306,20 +306,20 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
-/* =================== Mercado Pago (Checkout Transparente) =================== */
-// Requer: MP_PUBLIC_KEY e MP_ACCESS_TOKEN nas env vars
-try {
-  mercadopago.configure({ access_token: process.env.MP_ACCESS_TOKEN || '' });
-} catch (e) {
-  console.warn('MercadoPago configure() falhou (verifique MP_ACCESS_TOKEN):', e?.message || e);
-}
+// === Mercado Pago SDK v2 ===
+const { MercadoPagoConfig, Payment } = require('mercadopago');
 
-// Public key para o front (Payment Brick)
+// Client autenticado
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN || ''
+});
+
+// Entrega a Public Key para o front
 app.get('/api/mp/pubkey', (_req, res) => {
   res.json({ publicKey: process.env.MP_PUBLIC_KEY || '' });
 });
 
-// Endpoint para processar o pagamento (cartão/débito/Pix)
+// Cria pagamento (cartão/débito ou Pix)
 app.post('/api/mp/pay', async (req, res) => {
   try {
     const {
@@ -343,16 +343,22 @@ app.post('/api/mp/pay', async (req, res) => {
       }
     };
 
+    const payments = new Payment(mpClient);
+
     // PIX
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
-      base.payment_method_id = 'pix';
-      base.date_of_expiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-      const r = await mercadopago.payment.create(base);
-      const td = r?.body?.point_of_interaction?.transaction_data;
+      const body = {
+        ...base,
+        payment_method_id: 'pix',
+        date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+      };
+
+      const r = await payments.create({ body });          // v2
+      const td = r?.point_of_interaction?.transaction_data;
       return res.json({
-        id: r?.body?.id,
-        status: r?.body?.status,
-        status_detail: r?.body?.status_detail,
+        id: r?.id,
+        status: r?.status,
+        status_detail: r?.status_detail,
         pix: {
           qr_base64: td?.qr_code_base64,
           qr_text: td?.qr_code,
@@ -362,41 +368,40 @@ app.post('/api/mp/pay', async (req, res) => {
     }
 
     // Cartão (crédito/débito)
-    base.token = token;
-    base.installments = Number(installments || 1);
-    base.payment_method_id = paymentMethodId;
-    if (issuerId) base.issuer_id = issuerId;
-    base.capture = true;
+    const body = {
+      ...base,
+      token,
+      installments: Number(installments || 1),
+      payment_method_id: paymentMethodId,
+      capture: true,
+      ...(issuerId ? { issuer_id: issuerId } : {})
+    };
 
-    const r = await mercadopago.payment.create(base);
+    const r = await payments.create({ body });           // v2
     return res.json({
-      id: r?.body?.id,
-      status: r?.body?.status,
-      status_detail: r?.body?.status_detail
+      id: r?.id,
+      status: r?.status,
+      status_detail: r?.status_detail
     });
+
   } catch (err) {
-    console.error('MP /pay error', err?.response?.data || err);
+    console.error('MP /pay error', err?.cause || err);
     res.status(400).json({
       error: true,
-      message: err?.response?.data?.message || err?.message || 'Falha ao processar pagamento'
+      message: err?.message || 'Falha ao processar pagamento'
     });
   }
 });
 
-// Webhook (opcional) para notificações e conciliação
+// (Opcional) Webhook – v2
 app.post('/api/mp/webhook', async (req, res) => {
-  try {
-    // Mercado Pago exige 200 rápido
-    res.sendStatus(200);
-    // Exemplo: consultar pagamento
-    // const id = req.body?.data?.id;
-    // if (id) {
-    //   const det = await mercadopago.payment.findById(id);
-    //   // TODO: atualizar pedido na sua base conforme det.body.status
-    // }
-  } catch (e) {
-    console.error('Webhook MP erro:', e?.message || e);
-  }
+  res.sendStatus(200);
+  // const id = req.body?.data?.id;
+  // if (id) {
+  //   const payments = new Payment(mpClient);
+  //   const det = await payments.get({ id });
+  //   // TODO: conciliação pelo det.status
+  // }
 });
 
 /* =================== SPA fallback =================== */
