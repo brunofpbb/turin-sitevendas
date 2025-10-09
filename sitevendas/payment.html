@@ -6,14 +6,26 @@
   <link rel="stylesheet" href="style.css">
   <script defer src="main.js"></script>
 
-  <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self';
-               script-src 'self' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com;
-               connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com;
-               img-src 'self' data: https://*.mercadopago.com https://*.mpago.li;
-               frame-src https://wallet.mercadopago.com;
-               style-src 'self' 'unsafe-inline';
-               font-src 'self' data:">
+ <meta http-equiv="Content-Security-Policy"
+  content="
+    default-src 'self';
+    script-src 'self' 'unsafe-eval'
+      https://sdk.mercadopago.com
+      https://wallet.mercadopago.com
+      https://http2.mlstatic.com;
+    connect-src 'self'
+      https://api.mercadopago.com
+      https://wallet.mercadopago.com
+      https://api.mercadolibre.com;
+    img-src 'self' data:
+      https://*.mercadopago.com
+      https://*.mpago.li
+      https://http2.mlstatic.com;
+    frame-src https://wallet.mercadopago.com;
+    style-src 'self' 'unsafe-inline';
+    font-src 'self' data:
+  ">
+
 
 
   <!-- SDK JS do Mercado Pago (precisa estar disponível antes do payment.js) -->
