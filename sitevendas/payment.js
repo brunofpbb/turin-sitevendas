@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
-  // 1) Checagem de login
+  /* -------------------- 1) Checagem de login -------------------- */
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   if (!user) {
     alert('Você precisa estar logado para pagar.');
@@ -11,11 +11,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // 2) Carrega o último pedido (resumo)
+  /* -------------------- 2) Carrega último pedido (resumo) -------------------- */
   const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
   const summary = document.getElementById('order-summary');
   if (!bookings.length) {
-    summary.textContent = 'Nenhuma reserva encontrada.';
+    if (summary) summary.textContent = 'Nenhuma reserva encontrada.';
     return;
   }
   const last = bookings[bookings.length - 1];
@@ -43,20 +43,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       '</ul>';
   }
 
-  summary.innerHTML = `
-    <p><strong>Origem:</strong> ${origem}</p>
-    <p><strong>Destino:</strong> ${destino}</p>
-    <p><strong>Data da Viagem:</strong> ${dataV}</p>
-    <p><strong>Saída:</strong> ${hora}</p>
-    <p><strong>Poltronas:</strong> ${seats}</p>
-    ${passengersHtml}
-    <div class="total-line">
-      <span class="total-label">Valor Total:</span>
-      <span class="total-amount">R$ ${totalBRL}</span>
-    </div>
-  `;
+  if (summary) {
+    summary.innerHTML = `
+      <p><strong>Origem:</strong> ${origem}</p>
+      <p><strong>Destino:</strong> ${destino}</p>
+      <p><strong>Data da Viagem:</strong> ${dataV}</p>
+      <p><strong>Saída:</strong> ${hora}</p>
+      <p><strong>Poltronas:</strong> ${seats}</p>
+      ${passengersHtml}
+      <div class="total-line">
+        <span class="total-label">Valor Total:</span>
+        <span class="total-amount">R$ ${totalBRL}</span>
+      </div>
+    `;
+  }
 
-  // 3) Public Key do back
+  /* -------------------- 3) Public Key do backend -------------------- */
   const pubRes = await fetch('/api/mp/pubkey');
   if (!pubRes.ok) {
     const txt = await pubRes.text();
@@ -70,77 +72,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  // 4) SDK v2
+  /* -------------------- 4) Inicializa SDK/Bricks -------------------- */
   const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
   const bricksBuilder = mp.bricks();
 
-  // 5) Caixa para QR Pix (aparece apenas quando necessário)
-  function ensurePixBox() {
-    let box = document.getElementById('pix-box');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'pix-box';
-      box.style.marginTop = '16px';
-      box.style.padding = '12px';
-      box.style.border = '1px solid #ddd';
-      box.style.borderRadius = '8px';
-      box.innerHTML = `
-        <h4>Pagamento via Pix</h4>
-        <div id="pix-qr" style="margin:8px 0"></div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input id="pix-code" type="text" readonly
-                 style="flex:1;padding:.5rem;border:1px solid #ccc;border-radius:4px">
-          <button id="pix-copy" class="btn btn-ghost" type="button">Copiar código</button>
-        </div>
-        <p id="pix-status" style="margin-top:8px;color:#555">Aguardando pagamento…</p>
-      `;
-      const cont = document.getElementById('payment-brick-container');
-      cont.parentNode.insertBefore(box, cont.nextSibling);
-      document.getElementById('pix-copy').addEventListener('click', () => {
-        const el = document.getElementById('pix-code');
-        el.select();
-        document.execCommand('copy');
-        alert('Código Pix copiado.');
-      });
-    }
-    return box;
-  }
-
-document.addEventListener('DOMContentLoaded', async () => {
-  // 1) pega a public key segura do backend
-  const { publicKey } = await fetch('/api/mp/pubkey').then(r => r.json());
-
-  // 2) inicializa SDK e Bricks
-  const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
-  const bricksBuilder = mp.bricks();
-
-  // 3) configurações do Brick
-  const total = window.__ORDER_TOTAL__ || Number(
-    (document.getElementById('totalAmount')?.dataset?.value || '0').replace(',', '.')
-  ); // ajuste se já tem o total em outro lugar
-
-  const user = { email: window.__USER_EMAIL__ || '' }; // ajuste se já tem email do usuário
-
+  /* -------------------- 5) Config do Brick -------------------- */
   const settings = {
     initialization: {
-      amount: total,
-      payer: { email: user.email || '' },
+      amount: total,                     // valor total
+      payer: { email: user.email || '' } // e-mail do logado
     },
     customization: {
       paymentMethods: {
         creditCard: {
-          // força 1x
+          // força 1x e oculta seletor de parcelas
           maxInstallments: 1,
           installments: { quantity: 1, min: 1, max: 1 },
           visual: { showInstallmentsSelector: false },
         },
         debitCard: 'all',
-        bankTransfer: ['pix'], // mantém Pix
+        bankTransfer: ['pix'], // Pix continua disponível
       },
       visual: { style: { theme: 'default' } },
     },
 
-    // <<< ÚNICA CHAVE callbacks >>>
     callbacks: {
       onReady: () => console.log('[MP] Brick pronto'),
 
@@ -149,12 +104,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert('Erro ao carregar o meio de pagamento (ver console).');
       },
 
-      // formData = dados tokenizados do Brick
+      // Dados tokenizados do Brick
       onSubmit: async ({ selectedPaymentMethod, formData }) => {
         try {
           console.log('[MP] formData:', formData, 'method:', selectedPaymentMethod);
 
-          // monta payload mínimo para o backend
+          // payload mínimo esperado pelo /api/mp/pay
           const payload = {
             transactionAmount: total,
             description: 'Compra Turin Transportes',
@@ -167,15 +122,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             },
           };
 
-          // limpa CPF (só dígitos)
+          // Normaliza CPF (só dígitos)
           if (payload?.payer?.identification?.number) {
             payload.payer.identification.number =
               String(payload.payer.identification.number).replace(/\D/g, '');
           }
 
-          // não enviar campos que não usamos
+          // remove campos que não usamos
           delete payload.issuer_id;
-          delete payload.paymentMethodId; // 'credit_card' | 'pix'
+          delete payload.paymentMethodId;
 
           const resp = await fetch('/api/mp/pay', {
             method: 'POST',
@@ -190,19 +145,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             throw new Error(data?.message || 'Falha ao processar');
           }
 
-          // sucesso — trate como preferir
+          // Sucesso
           if (data?.order?.status === 'processed' || data?.status === 'approved') {
             alert('Pagamento aprovado! ID: ' + (data?.id || data?.order?.id));
-            // TODO: marcar reserva como paga e redirecionar
+            // TODO: marque a reserva como paga e redirecione
             // window.location.href = 'profile.html';
           } else if (data?.pix?.qr_text) {
-            // Pix pendente — exibir QR
-            // TODO: desenhar QR com data.pix.qr_base64 e oferecer cópia
+            // Pix pendente (se um dia usar submit Pix do mesmo brick)
             alert('Pix gerado. Use o QR/Texto para pagar.');
           } else {
             alert('Pagamento criado: ' + (data?.status_detail || data?.status || 'verifique'));
           }
-
         } catch (err) {
           console.error('Pagamento falhou:', err);
           alert('Pagamento falhou: ' + (err?.message || 'erro'));
@@ -211,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
   };
 
-  // 4) renderiza o Brick "payment" (cartão + pix)
-  await bricksBuilder.create('payment', 'payment_brick_container', settings);
-  // certifique-se de ter <div id="payment_brick_container"></div> na página
+  /* -------------------- 6) Render do Brick -------------------- */
+  // ATENÇÃO: o ID precisa bater com o HTML: <div id="payment-brick-container"></div>
+  await bricksBuilder.create('payment', 'payment-brick-container', settings);
 });
