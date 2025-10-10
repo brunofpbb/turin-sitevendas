@@ -130,12 +130,27 @@ if (!publicKey) {
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
           try {
             const payload = {
+  ...formData,
+  transactionAmount: total,
+  paymentMethodId: selectedPaymentMethod,
+  description: 'Compra Turin Transportes',
+  payer: {
+    ...(formData?.payer || {}),
+    entityType: 'individual', // remove o warning do console
+  },
+};
+
+
+
+            
+            /*
+            const payload = {
               ...formData,                                  // token/issuer/parcelas (cartão) ou payer.email (pix)
               transactionAmount: total,                     // number
               paymentMethodId: selectedPaymentMethod,       // 'visa' | 'pix' etc.
               description: 'Compra Turin Transportes'
             };
-
+            */
             const resp = await fetch('/api/mp/pay', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
