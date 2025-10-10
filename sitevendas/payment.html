@@ -5,7 +5,23 @@
   <title>Pagamento</title>
   <link rel="stylesheet" href="style.css" />
 
-  <!-- SDK do Mercado Pago deve vir antes dos seus scripts -->
+  <!-- Esconde visualmente o seletor de parcelas do Payment Brick -->
+  <style>
+    /* diferentes versões do Payment Brick usam ids/classes ligeiramente diferentes */
+    [data-testid="installments"],
+    .mp-CardPayment-installments,
+    .mp-payment-installments,
+    .mp-form-control--installments {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+    }
+  </style>
+
+  <!-- SDK do Mercado Pago deve vir antes do seu payment.js -->
   <script src="https://sdk.mercadopago.com/js/v2"></script>
   <script defer src="main.js"></script>
   <script defer src="payment.js"></script>
@@ -23,11 +39,10 @@
     <h3>Informações de Pagamento</h3>
     <p>Pagamento seguro via Checkout API do Mercado Pago (Checkout Bricks). Aceitamos crédito, débito e Pix.</p>
 
-    <!-- Container do Payment Brick -->
     <div id="payment-brick-container"></div>
 
-    <div class="pay-actions" style="margin-top:12px">
-      <button type="button" id="cancel-btn" class="btn btn-ghost" onclick="location.href='profile.html'">Cancelar</button>
+    <div style="margin-top:12px">
+      <button type="button" class="btn btn-ghost" onclick="location.href='profile.html'">Cancelar</button>
     </div>
   </main>
 
