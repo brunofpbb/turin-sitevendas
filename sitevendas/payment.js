@@ -56,19 +56,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     </div>
   `;
 
-const pubRes = await fetch('/api/mp/pubkey');
-if (!pubRes.ok) {
-  const txt = await pubRes.text();
-  console.error('Erro ao obter pubkey:', pubRes.status, txt.slice(0,200));
-  alert('Falha ao obter chave pública do MP. Veja o console.');
-  return;
-}
-const { publicKey } = await pubRes.json();
-if (!publicKey) {
-  alert('Chave pública do Mercado Pago não configurada no servidor.');
-  return;
-}
-
+  // 3) Public Key do back
+  const pubRes = await fetch('/api/mp/pubkey');
+  if (!pubRes.ok) {
+    const txt = await pubRes.text();
+    console.error('Erro ao obter pubkey:', pubRes.status, txt.slice(0, 200));
+    alert('Falha ao obter chave pública do MP. Veja o console.');
+    return;
+  }
+  const { publicKey } = await pubRes.json();
+  if (!publicKey) {
+    alert('Chave pública do Mercado Pago não configurada no servidor.');
+    return;
+  }
 
   // 4) SDK v2
   const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
@@ -127,63 +127,40 @@ if (!publicKey) {
           console.error('[MP] Brick error:', error);
           alert('Erro ao carregar o meio de pagamento (veja o console).');
         },
-        
+
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
-  try {
-    console.log('[MP] formData:', formData, 'method:', selectedPaymentMethod); // debug
+          try {
+            console.log('[MP] formData:', formData, 'method:', selectedPaymentMethod);
 
-    const payload = {
-      ...formData,
-      transactionAmount: total,
-      paymentMethodId: selectedPaymentMethod,
-      description: 'Compra Turin Transportes',
-      payer: {
-        ...(formData?.payer || {}),
-        entityType: 'individual',  // tira o warning
-      },
-    };
-
-    const resp = await fetch('/api/mp/pay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      // Mostra a mensagem detalhada vinda do back (ex.: “Invalid card token”, “BIN not found”, etc.)
-      throw new Error(data?.message || 'Falha ao processar');
-    }
-
-    // ... resto igual (approved / pending Pix)
-  } catch (e) {
-    console.error('Pagamento falhou:', e);
-    alert(e.message || 'Não foi possível concluir o pagamento.');
-  }
-}
-
-           
-            /*
             const payload = {
-              ...formData,                                  // token/issuer/parcelas (cartão) ou payer.email (pix)
-              transactionAmount: total,                     // number
-              paymentMethodId: selectedPaymentMethod,       // 'visa' | 'pix' etc.
-              description: 'Compra Turin Transportes'
+              ...formData,                                // token/issuer/parcelas (cartão) ou payer.email (pix)
+              transactionAmount: total,                   // number
+              paymentMethodId: selectedPaymentMethod,     // 'visa' | 'pix' etc.
+              description: 'Compra Turin Transportes',
+              payer: {
+                ...(formData?.payer || {}),
+                entityType: 'individual',                 // remove o warning
+              },
             };
-            */
+
             const resp = await fetch('/api/mp/pay', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
+
+            if (!resp.ok) {
+              throw new Error(data?.message || 'Falha ao processar');
+            }
 
             // Cartão aprovado
             if (data.status === 'approved') {
               const b = JSON.parse(localStorage.getItem('bookings') || '[]');
-              if (b.length) { b[b.length - 1].paid = true; localStorage.setItem('bookings', JSON.stringify(b)); }
+              if (b.length) {
+                b[b.length - 1].paid = true;
+                localStorage.setItem('bookings', JSON.stringify(b));
+              }
               alert('Pagamento aprovado! (ID: ' + data.id + ')');
               window.location.href = 'profile.html';
               return;
