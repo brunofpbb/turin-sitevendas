@@ -132,20 +132,26 @@ document.addEventListener('DOMContentLoaded', async () => {
           try {
             console.log('[MP] formData:', formData, 'method:', selectedPaymentMethod);
 
-            const payload = {
-              ...formData,                                // token/issuer/parcelas (cartão) ou payer.email (pix)
-              transactionAmount: total,                   // number
-              paymentMethodId: selectedPaymentMethod,     // 'visa' | 'pix' etc.
-              description: 'Compra Turin Transportes',
-              payer: {
-                ...(formData?.payer || {}),
-                entityType: 'individual',                 // remove o warning
-              },
-            };
+// mantém só o que importa e remove issuer_id
+const payload = {
+  transactionAmount: total,
+  description: 'Compra Turin Transportes',
+  token: formData.token,
+  installments: formData.installments,
+  payment_method_id: formData.payment_method_id, // <- este é o que a API usa
+  payer: {
+    ...(formData.payer || {}),
+    entityType: 'individual',
+  },
+};
 
-            if (payload?.payer?.identification?.number) {
-              payload.payer.identification.number = String(payload.payer.identification.number).replace(/\D/g, '');
-                }
+// limpa CPF
+if (payload?.payer?.identification?.number) {
+  payload.payer.identification.number =
+    String(payload.payer.identification.number).replace(/\D/g, '');
+}
+
+// NÃO mande issuer_id
 
 
             const resp = await fetch('/api/mp/pay', {
