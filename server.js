@@ -1,21 +1,18 @@
-/**
- * Turin SiteVendas - server.js (limpo e estável)
- * - CSP compatível com Bricks
- * - Apenas Payments API (cartão 1x e Pix)
- * - Sem duplicidade de variáveis / app.listen()
- */
-
+// server.js
 require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const fetch = require('node-fetch'); // ok ter; útil p/ debug se precisar
+const fetch = require('node-fetch');
+const nodemailer = require('nodemailer');
+
 const { MercadoPagoConfig, Payment } = require('mercadopago');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 
-/* --------------------------- CSP --------------------------- */
+/* ===== CSP ===== */
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -33,7 +30,9 @@ app.use((req, res, next) => {
   next();
 });
 
-/* -------------------------- STATIC ------------------------- */
+const PORT = process.env.PORT || 3000;
+
+/* ===== static / json ===== */
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
   ? path.join(__dirname, 'sitevendas')
   : __dirname;
@@ -41,75 +40,48 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
 app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
-/* --------------------- MP CONFIG / CLIENT ------------------ */
-const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || '';
-const PUBLIC_KEY   = process.env.MP_PUBLIC_KEY || '';
-
-const mpClient = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN });
-const payments = new Payment(mpClient);
-
-app.get('/api/mp/pubkey', (_req, res) => {
-  res.json({ publicKey: PUBLIC_KEY });
+/* ===== MP config ===== */
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN || ''
 });
 
-/* -------------------------- HELPERS ------------------------ */
-const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
+app.get('/api/mp/pubkey', (_req, res) => {
+  res.type('application/json');
+  res.send(JSON.stringify({ publicKey: process.env.MP_PUBLIC_KEY || '' }));
+});
 
-/* ------------------------ /api/mp/pay ---------------------- */
-/**
- * Body esperado (cartão):
- * {
- *   transactionAmount: 28.45,
- *   description: 'Compra Turin',
- *   token: 'CARD_TOKEN',
- *   payment_method_id: 'visa' | 'master' | ... (opcional)
- *   payer: {
- *     email: '...',
- *     identification: { type: 'CPF', number: '12345678909' }
- *   }
- * }
- *
- * Body esperado (pix):
- * {
- *   transactionAmount: 28.45,
- *   description: 'Compra Turin',
- *   paymentMethodId: 'pix',
- *   payer: { email: '...' }
- * }
- */
+/* ===== criação de pagamento ===== */
 app.post('/api/mp/pay', async (req, res) => {
+  const payments = new Payment(mpClient);
   try {
     const {
       transactionAmount,
       description,
       token,
-      payment_method_id,
-      paymentMethodId,
+      installments,
+      payment_method_id, // 'visa','master',...
+      paymentMethodId,   // 'credit_card' | 'pix'
       payer
     } = req.body || {};
 
-    // normaliza/valida valor
     const amount = Number(
       typeof transactionAmount === 'string'
         ? transactionAmount.replace(',', '.')
         : transactionAmount
     );
-
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({ error: true, message: 'Valor inválido.' });
     }
-    if (!ACCESS_TOKEN) {
-      return res.status(401).json({ error: true, message: 'ACCESS_TOKEN ausente no servidor.' });
-    }
 
-    // base comum
+    const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
+
     const base = {
       transaction_amount: amount,
       description: description || 'Compra Turin Transportes',
       payer: {
         email: payer?.email || '',
         first_name: payer?.first_name || '',
-        last_name:  payer?.last_name  || '',
+        last_name: payer?.last_name || '',
         identification: payer?.identification
           ? {
               type: (payer.identification.type || 'CPF').toUpperCase(),
@@ -120,19 +92,15 @@ app.post('/api/mp/pay', async (req, res) => {
       metadata: { app: 'Turin SiteVendas', when: new Date().toISOString() },
     };
 
-    /* --------------------------- PIX --------------------------- */
-    const isPix =
-      String(paymentMethodId || '').toLowerCase() === 'pix' ||
-      String(payment_method_id || '').toLowerCase() === 'pix';
-
-    if (isPix) {
+    /* ---------- PIX primeiro ---------- */
+    if (String(paymentMethodId || '').toLowerCase() === 'pix') {
       if (!base.payer.email) {
         return res.status(400).json({ error: true, message: 'Informe um e-mail para Pix.' });
       }
       const pixBody = {
         ...base,
         payment_method_id: 'pix',
-        date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // +30 minutos
+        date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       };
       const r = await payments.create({ body: pixBody });
       const td = r?.point_of_interaction?.transaction_data;
@@ -148,7 +116,7 @@ app.post('/api/mp/pay', async (req, res) => {
       });
     }
 
-    /* -------------------------- CARTÃO ------------------------- */
+    /* ---------- Cartão (Orders API, 1x) ---------- */
     if (!token) {
       return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
     }
@@ -157,35 +125,65 @@ app.post('/api/mp/pay', async (req, res) => {
       return res.status(400).json({ error: true, message: 'E-mail do pagador é obrigatório.' });
     }
 
-    // Payments API — 1x fixo
-    const payBody = {
-      ...base,
-      token,
-      installments: 1, // força 1x
-      payment_method_id: payment_method_id || undefined, // bandeira (opcional)
-      capture: true,
+    const orderBody = {
+      type: "online",
+      processing_mode: "automatic",
+      total_amount: Number(amount).toFixed(2),
+      external_reference: `order_${Date.now()}`,
+      payer: { email },
+      transactions: {
+        payments: [
+          {
+            amount: Number(amount).toFixed(2),
+            payment_method: {
+              id: String(payment_method_id || ''), // 'visa' | 'master'…
+              type: "credit_card",
+              token: token,
+              installments: 1 // 1x fixo
+            }
+          }
+        ]
+      }
     };
 
-    const pr = await payments.create({ body: payBody });
+    const or = await fetch('https://api.mercadopago.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        'X-Idempotency-Key': uuidv4()
+      },
+      body: JSON.stringify(orderBody)
+    });
+
+    const odata = await or.json();
+    if (!or.ok) {
+      console.error('Orders API error:', or.status, JSON.stringify(odata));
+      return res.status(or.status).json({
+        error: true,
+        message: odata?.message || odata?.error || odata?.status_detail || 'Falha na criação da order',
+        details: odata
+      });
+    }
+
     return res.json({
-      id: pr?.id,
-      status: pr?.status,
-      status_detail: pr?.status_detail,
-      payment: pr
+      id: odata?.id,
+      status: odata?.status || 'processed',
+      status_detail: odata?.status_detail || '',
+      order: odata
     });
 
   } catch (err) {
     const details =
       err?.cause?.[0]?.description ||
       err?.cause?.[0]?.message ||
-      err?.message ||
-      'Falha ao processar pagamento';
+      err?.message || 'Falha ao processar pagamento';
     console.error('MP /pay error:', details, err);
     return res.status(400).json({ error: true, message: details });
   }
 });
 
-/* ------------------------- SPA Fallback -------------------- */
+/* ===== fallback SPA ===== */
 app.get('*', (_req, res) => {
   const indexPath = fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))
     ? path.join(PUBLIC_DIR, 'index.html')
@@ -193,8 +191,6 @@ app.get('*', (_req, res) => {
   res.sendFile(indexPath);
 });
 
-/* --------------------------- LISTEN ------------------------ */
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
 });
