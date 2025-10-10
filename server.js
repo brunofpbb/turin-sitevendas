@@ -386,15 +386,37 @@ app.post('/api/mp/pay', async (req, res) => {
       });
     }
 
-    // Cartão (crédito/débito)
-    const body = {
-      ...base,
-      token,
-      installments: Number(installments || 1),
-      payment_method_id: paymentMethodId,
-      capture: true,
-      ...(issuerId ? { issuer_id: issuerId } : {})
-    };
+// helper para dígitos
+const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
+
+const base = {
+  transaction_amount: amount,
+  description: description || 'Compra Turin Transportes',
+  payer: {
+    email: payer?.email || '',
+    first_name: payer?.first_name || '',
+    last_name: payer?.last_name || '',
+    identification: payer?.identification
+      ? {
+          type: (payer.identification.type || 'CPF').toUpperCase(),
+          number: onlyDigits(payer.identification.number),
+        }
+      : undefined,
+  },
+  metadata: { app: 'Turin SiteVendas', when: new Date().toISOString() },
+};
+
+// Cartão (crédito/débito) — sem issuer_id para evitar "Different parameters for the bin"
+const body = {
+  ...base,
+  token,                                            // obrigatório
+  installments: Number(installments || 1),
+  payment_method_id: paymentMethodId,               // ex.: 'visa'
+  capture: true,
+};
+
+const r = await payments.create({ body });
+
 
     if (!body.token) {
       return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
