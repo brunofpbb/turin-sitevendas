@@ -20,7 +20,7 @@ app.use((req, res, next) => {
       // XHR/fetch
       "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com https://api-static.mercadopago.com https://www.mercadolivre.com",
       // imagens (QR base64 + assets mlstatic + domínios ML BR/Global)
-      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com https://api-static.mercadopago.com https://www.mercadolivre.com",
       // iframes necessários (wallet + secure-fields + ML BR quando usado)
       "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://www.mercadolivre.com",
       // alguns navegadores ainda olham child-src – replica as fontes
