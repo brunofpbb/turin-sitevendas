@@ -11,7 +11,8 @@
     "express": "^4.19.2",
     "nodemailer": "^6.9.14",
     "node-fetch": "^2.7.0",
-    "mercadopago": "^2.1.9"
+    "mercadopago": "^2.1.9",
+    "uuid": "^9.0.1"
   }
 }
 
