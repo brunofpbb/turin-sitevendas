@@ -391,26 +391,28 @@ app.post('/api/mp/pay', async (req, res) => {
       });
     }
 
-    // ===== CARTÃO (crédito/débito) =====
-    if (!token) {
-      return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-    }
+// ===== CARTÃO (crédito/débito) =====
+if (!token) {
+  return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
+}
 
-    // Corpo mínimo: MP infere bandeira/issuer pelo token/BIN
-    const cardBody = {
-      ...base,               // transaction_amount + payer
-      token,
-      installments: Number(installments || 1),
-      capture: true,
-      // NÃO enviar payment_method_id nem issuer_id para evitar "Different parameters for the bin"
-    };
+// Corpo recomendado: COM payment_method_id, SEM issuer_id
+const cardBody = {
+  ...base,                                     // transaction_amount + payer (CPF só dígitos)
+  token,                                       // obrigatório
+  installments: Number(installments || 1),     // parcelas
+  payment_method_id: String(req.body?.payment_method_id || ''), // 'visa' | 'master' | ...
+  capture: true,
+  // não enviar issuer_id
+};
 
-    const r = await payments.create({ body: cardBody });
-    return res.json({
-      id: r?.id,
-      status: r?.status,
-      status_detail: r?.status_detail,
-    });
+const r = await payments.create({ body: cardBody });
+return res.json({
+  id: r?.id,
+  status: r?.status,
+  status_detail: r?.status_detail,
+});
+
 
   } catch (err) {
     const details =
