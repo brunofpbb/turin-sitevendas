@@ -106,6 +106,125 @@ document.addEventListener('DOMContentLoaded', async () => {
     return box;
   }
 
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1) pega a public key segura do backend
+  const { publicKey } = await fetch('/api/mp/pubkey').then(r => r.json());
+
+  // 2) inicializa SDK e Bricks
+  const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
+  const bricksBuilder = mp.bricks();
+
+  // 3) configurações do Brick
+  const total = window.__ORDER_TOTAL__ || Number(
+    (document.getElementById('totalAmount')?.dataset?.value || '0').replace(',', '.')
+  ); // ajuste se já tem o total em outro lugar
+
+  const user = { email: window.__USER_EMAIL__ || '' }; // ajuste se já tem email do usuário
+
+  const settings = {
+    initialization: {
+      amount: total,
+      payer: { email: user.email || '' },
+    },
+    customization: {
+      paymentMethods: {
+        creditCard: {
+          // força 1x
+          maxInstallments: 1,
+          installments: { quantity: 1, min: 1, max: 1 },
+          visual: { showInstallmentsSelector: false },
+        },
+        debitCard: 'all',
+        bankTransfer: ['pix'], // mantém Pix
+      },
+      visual: { style: { theme: 'default' } },
+    },
+
+    // <<< ÚNICA CHAVE callbacks >>>
+    callbacks: {
+      onReady: () => console.log('[MP] Brick pronto'),
+
+      onError: (error) => {
+        console.error('[MP] Brick error:', error);
+        alert('Erro ao carregar o meio de pagamento (ver console).');
+      },
+
+      // formData = dados tokenizados do Brick
+      onSubmit: async ({ selectedPaymentMethod, formData }) => {
+        try {
+          console.log('[MP] formData:', formData, 'method:', selectedPaymentMethod);
+
+          // monta payload mínimo para o backend
+          const payload = {
+            transactionAmount: total,
+            description: 'Compra Turin Transportes',
+            token: formData.token,
+            installments: 1, // força 1x
+            payment_method_id: formData.payment_method_id, // 'visa' | 'master' …
+            payer: {
+              ...(formData.payer || {}),
+              entityType: 'individual',
+            },
+          };
+
+          // limpa CPF (só dígitos)
+          if (payload?.payer?.identification?.number) {
+            payload.payer.identification.number =
+              String(payload.payer.identification.number).replace(/\D/g, '');
+          }
+
+          // não enviar campos que não usamos
+          delete payload.issuer_id;
+          delete payload.paymentMethodId; // 'credit_card' | 'pix'
+
+          const resp = await fetch('/api/mp/pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await resp.json();
+          console.log('[MP] /pay resp:', resp.status, data);
+
+          if (!resp.ok) {
+            throw new Error(data?.message || 'Falha ao processar');
+          }
+
+          // sucesso — trate como preferir
+          if (data?.order?.status === 'processed' || data?.status === 'approved') {
+            alert('Pagamento aprovado! ID: ' + (data?.id || data?.order?.id));
+            // TODO: marcar reserva como paga e redirecionar
+            // window.location.href = 'profile.html';
+          } else if (data?.pix?.qr_text) {
+            // Pix pendente — exibir QR
+            // TODO: desenhar QR com data.pix.qr_base64 e oferecer cópia
+            alert('Pix gerado. Use o QR/Texto para pagar.');
+          } else {
+            alert('Pagamento criado: ' + (data?.status_detail || data?.status || 'verifique'));
+          }
+
+        } catch (err) {
+          console.error('Pagamento falhou:', err);
+          alert('Pagamento falhou: ' + (err?.message || 'erro'));
+        }
+      },
+    },
+  };
+
+  // 4) renderiza o Brick "payment" (cartão + pix)
+  await bricksBuilder.create('payment', 'payment_brick_container', settings);
+  // certifique-se de ter <div id="payment_brick_container"></div> na página
+});
+
+
+
+
+
+
+
+
+  
+/*
   // 6) Render do Payment Brick
   async function renderPaymentBrick() {
    const settings = {
@@ -231,3 +350,4 @@ delete payload.paymentMethodId; // ('credit_card' | 'pix') — a Orders usa paym
     });
   }
 });
+*/
