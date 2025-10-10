@@ -108,19 +108,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 6) Render do Payment Brick
   async function renderPaymentBrick() {
-    const settings = {
-      initialization: {
-        amount: total,                     // number
-        payer: { email: user.email || '' } // ajuda no Pix
-      },
-      customization: {
-        paymentMethods: {
-          creditCard: 'all',
-          debitCard: 'all',
-          bankTransfer: ['pix'],
+   const settings = {
+  initialization: {
+    amount: total,
+    payer: { email: user.email || '' },
+  },
+  customization: {
+    paymentMethods: {
+      creditCard: {
+        // força 1x e não exibe seletor
+        maxInstallments: 1,
+        installments: {
+          quantity: 1,             // algumas versões usam essa chave
+          min: 1,                  // fallback
+          max: 1
         },
-        visual: { style: { theme: 'default' } },
+        visual: { showInstallmentsSelector: false } // fallback visual
       },
+      debitCard: 'all',
+      bankTransfer: ['pix'],
+    },
+    visual: { style: { theme: 'default' } },
+  },
+  callbacks: { /* ... como já está ... */ }
+};
+
       callbacks: {
         onReady: () => console.log('[MP] Brick pronto'),
         onError: (error) => {
@@ -139,6 +151,7 @@ const payload = {
   token: formData.token,
   installments: formData.installments,
   payment_method_id: formData.payment_method_id, // <- este é o que a API usa
+  installments: 1, 
   payer: {
     ...(formData.payer || {}),
     entityType: 'individual',
@@ -152,6 +165,9 @@ if (payload?.payer?.identification?.number) {
 }
 
 // NÃO mande issuer_id
+            // Remover campos que não queremos enviar
+delete payload.issuer_id;
+delete payload.paymentMethodId; // ('credit_card' | 'pix') — a Orders usa payment_method.id
 
 
             const resp = await fetch('/api/mp/pay', {
