@@ -28,7 +28,7 @@ app.use((req, res, next) => {
   next();
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 
 /* ===== static / json ===== */
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
