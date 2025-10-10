@@ -1,3 +1,4 @@
+
 // server.js
 require('dotenv').config();
 
@@ -5,7 +6,10 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch'); // pode remover se preferir usar o fetch nativo do Node 18+
-const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer');             
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+const { v4: uuidv4 } = require('uuid');              // <= A linha do uuid é esta
+
 
 const app = express();
 
@@ -432,7 +436,6 @@ const orderBody = {
 // Chamada HTTP direta à Orders API
 const { v4: uuidv4 } = require('uuid'); // no topo do arquivo: const { v4: uuidv4 } = require('uuid');
 const idempKey = uuidv4();
-
 const or = await fetch('https://api.mercadopago.com/v1/orders', {
   method: 'POST',
   headers: {
@@ -442,6 +445,7 @@ const or = await fetch('https://api.mercadopago.com/v1/orders', {
   },
   body: JSON.stringify(orderBody)
 });
+
 
 const odata = await or.json();
 
