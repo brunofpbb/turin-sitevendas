@@ -136,9 +136,10 @@ if (!publicKey) {
   description: 'Compra Turin Transportes',
   payer: {
     ...(formData?.payer || {}),
-    entityType: 'individual', // remove o warning do console
+    entityType: 'individual',
   },
 };
+
 
 
 
