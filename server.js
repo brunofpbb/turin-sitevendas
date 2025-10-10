@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 
 const express = require('express');
@@ -6,7 +5,6 @@ const path = require('path');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const nodemailer = require('nodemailer');
-
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const { v4: uuidv4 } = require('uuid');
 
@@ -41,16 +39,19 @@ app.use(express.static(PUBLIC_DIR));
 app.use(express.json());
 
 /* ===== MP config ===== */
-const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN || ''
-});
+const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || '';
+const PUBLIC_KEY   = process.env.MP_PUBLIC_KEY || '';
+
+const mpClient = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN });
 
 app.get('/api/mp/pubkey', (_req, res) => {
-  res.type('application/json');
-  res.send(JSON.stringify({ publicKey: process.env.MP_PUBLIC_KEY || '' }));
+  res.json({ publicKey: PUBLIC_KEY });
 });
 
-/* ===== criação de pagamento ===== */
+/* ===== Helpers ===== */
+const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
+
+/* ===== Pay endpoint ===== */
 app.post('/api/mp/pay', async (req, res) => {
   const payments = new Payment(mpClient);
   try {
@@ -59,22 +60,22 @@ app.post('/api/mp/pay', async (req, res) => {
       description,
       token,
       installments,
-      payment_method_id, // 'visa','master',...
-      paymentMethodId,   // 'credit_card' | 'pix'
+      payment_method_id,
+      paymentMethodId, // 'credit_card' | 'pix'
       payer
     } = req.body || {};
 
     const amount = Number(
-      typeof transactionAmount === 'string'
-        ? transactionAmount.replace(',', '.')
-        : transactionAmount
+      typeof transactionAmount === 'string' ? transactionAmount.replace(',', '.') : transactionAmount
     );
     if (!amount || isNaN(amount) || amount <= 0) {
       return res.status(400).json({ error: true, message: 'Valor inválido.' });
     }
+    if (!ACCESS_TOKEN) {
+      return res.status(401).json({ error: true, message: 'ACCESS_TOKEN ausente no servidor.' });
+    }
 
-    const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
-
+    // base usada nos dois fluxos
     const base = {
       transaction_amount: amount,
       description: description || 'Compra Turin Transportes',
@@ -116,7 +117,7 @@ app.post('/api/mp/pay', async (req, res) => {
       });
     }
 
-    /* ---------- Cartão (Orders API, 1x) ---------- */
+    /* ---------- Cartão (tenta Orders API; se 401/403 cai para Payments API) ---------- */
     if (!token) {
       return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
     }
@@ -125,6 +126,7 @@ app.post('/api/mp/pay', async (req, res) => {
       return res.status(400).json({ error: true, message: 'E-mail do pagador é obrigatório.' });
     }
 
+    // 1) tenta Orders API (1x fixo)
     const orderBody = {
       type: "online",
       processing_mode: "automatic",
@@ -136,41 +138,59 @@ app.post('/api/mp/pay', async (req, res) => {
           {
             amount: Number(amount).toFixed(2),
             payment_method: {
-              id: String(payment_method_id || ''), // 'visa' | 'master'…
+              id: String(payment_method_id || ''), // 'visa', 'master', ...
               type: "credit_card",
               token: token,
-              installments: 1 // 1x fixo
+              installments: 1
             }
           }
         ]
       }
     };
 
-    const or = await fetch('https://api.mercadopago.com/v1/orders', {
+    const orderResp = await fetch('https://api.mercadopago.com/v1/orders', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        'Authorization': `Bearer ${ACCESS_TOKEN}`,
         'X-Idempotency-Key': uuidv4()
       },
       body: JSON.stringify(orderBody)
     });
 
-    const odata = await or.json();
-    if (!or.ok) {
-      console.error('Orders API error:', or.status, JSON.stringify(odata));
-      return res.status(or.status).json({
+    if (orderResp.status === 401 || orderResp.status === 403) {
+      // 2) Fallback: Payments API (clássica) 1x
+      const payBody = {
+        ...base,
+        token,
+        installments: 1,
+        payment_method_id: payment_method_id || undefined,
+        capture: true,
+      };
+      const pr = await payments.create({ body: payBody });
+      return res.json({
+        id: pr?.id,
+        status: pr?.status,
+        status_detail: pr?.status_detail,
+        payment: pr
+      });
+    }
+
+    const orderJson = await orderResp.json();
+    if (!orderResp.ok) {
+      console.error('Orders API error:', orderResp.status, JSON.stringify(orderJson));
+      return res.status(orderResp.status).json({
         error: true,
-        message: odata?.message || odata?.error || odata?.status_detail || 'Falha na criação da order',
-        details: odata
+        message: orderJson?.message || orderJson?.error || orderJson?.status_detail || 'Falha na criação da order',
+        details: orderJson
       });
     }
 
     return res.json({
-      id: odata?.id,
-      status: odata?.status || 'processed',
-      status_detail: odata?.status_detail || '',
-      order: odata
+      id: orderJson?.id,
+      status: orderJson?.status || 'processed',
+      status_detail: orderJson?.status_detail || '',
+      order: orderJson
     });
 
   } catch (err) {
@@ -191,6 +211,7 @@ app.get('*', (_req, res) => {
   res.sendFile(indexPath);
 });
 
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
 });
