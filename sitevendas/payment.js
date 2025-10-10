@@ -127,23 +127,42 @@ if (!publicKey) {
           console.error('[MP] Brick error:', error);
           alert('Erro ao carregar o meio de pagamento (veja o console).');
         },
+        
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
-          try {
-            const payload = {
-  ...formData,
-  transactionAmount: total,
-  paymentMethodId: selectedPaymentMethod,
-  description: 'Compra Turin Transportes',
-  payer: {
-    ...(formData?.payer || {}),
-    entityType: 'individual',
-  },
-};
+  try {
+    console.log('[MP] formData:', formData, 'method:', selectedPaymentMethod); // debug
 
+    const payload = {
+      ...formData,
+      transactionAmount: total,
+      paymentMethodId: selectedPaymentMethod,
+      description: 'Compra Turin Transportes',
+      payer: {
+        ...(formData?.payer || {}),
+        entityType: 'individual',  // tira o warning
+      },
+    };
 
+    const resp = await fetch('/api/mp/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
 
+    if (!resp.ok) {
+      // Mostra a mensagem detalhada vinda do back (ex.: “Invalid card token”, “BIN not found”, etc.)
+      throw new Error(data?.message || 'Falha ao processar');
+    }
 
-            
+    // ... resto igual (approved / pending Pix)
+  } catch (e) {
+    console.error('Pagamento falhou:', e);
+    alert(e.message || 'Não foi possível concluir o pagamento.');
+  }
+}
+
+           
             /*
             const payload = {
               ...formData,                                  // token/issuer/parcelas (cartão) ou payer.email (pix)
