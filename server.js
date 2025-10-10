@@ -326,17 +326,18 @@ app.get('/api/mp/pubkey', (req, res) => {
 // Cria pagamento (cartão/débito/Pix)
 app.post('/api/mp/pay', async (req, res) => {
   const payments = new Payment(mpClient);
+
   try {
     const {
       transactionAmount,
       description,
       token,
       installments,
-      paymentMethodId,
+      paymentMethodId, // pode vir do Brick; não usaremos no cartão
       payer
     } = req.body || {};
 
-    // valor (pode vir "28,45" ou 28.45)
+    // valor pode vir "28,45" ou 28.45
     const amount = Number(
       typeof transactionAmount === 'string'
         ? transactionAmount.replace(',', '.')
@@ -346,10 +347,9 @@ app.post('/api/mp/pay', async (req, res) => {
       return res.status(400).json({ error: true, message: 'Valor inválido.' });
     }
 
-    // helper para dígitos
     const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
 
-    // base comum (normaliza payer e identificação)
+    // Base comum (mantém e-mail e CPF normalizado)
     const base = {
       transaction_amount: amount,
       description: description || 'Compra Turin Transportes',
@@ -372,12 +372,12 @@ app.post('/api/mp/pay', async (req, res) => {
       if (!base.payer.email) {
         return res.status(400).json({ error: true, message: 'Informe um e-mail para Pix.' });
       }
-      const body = {
+      const pixBody = {
         ...base,
         payment_method_id: 'pix',
-        date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+        date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       };
-      const r = await payments.create({ body });
+      const r = await payments.create({ body: pixBody });
       const td = r?.point_of_interaction?.transaction_data;
       return res.json({
         id: r?.id,
@@ -386,8 +386,8 @@ app.post('/api/mp/pay', async (req, res) => {
         pix: {
           qr_base64: td?.qr_code_base64,
           qr_text: td?.qr_code,
-          expires_at: td?.expiration_date
-        }
+          expires_at: td?.expiration_date,
+        },
       });
     }
 
@@ -396,20 +396,20 @@ app.post('/api/mp/pay', async (req, res) => {
       return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
     }
 
-    // Não enviar issuer_id para evitar "Different parameters for the bin"
-    const body = {
-      ...base,
+    // Corpo mínimo: MP infere bandeira/issuer pelo token/BIN
+    const cardBody = {
+      ...base,               // transaction_amount + payer
       token,
       installments: Number(installments || 1),
-      payment_method_id: paymentMethodId,
       capture: true,
+      // NÃO enviar payment_method_id nem issuer_id para evitar "Different parameters for the bin"
     };
 
-    const r = await payments.create({ body });
+    const r = await payments.create({ body: cardBody });
     return res.json({
       id: r?.id,
       status: r?.status,
-      status_detail: r?.status_detail
+      status_detail: r?.status_detail,
     });
 
   } catch (err) {
@@ -422,6 +422,7 @@ app.post('/api/mp/pay', async (req, res) => {
     return res.status(400).json({ error: true, message: details });
   }
 });
+
 
 // Webhook (opcional)
 app.post('/api/mp/webhook', async (req, res) => {
