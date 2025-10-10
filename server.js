@@ -5,11 +5,12 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const fetch = require('node-fetch'); // pode remover se preferir usar o fetch nativo do Node 18+
-const nodemailer = require('nodemailer');             
-const { MercadoPagoConfig, Payment } = require('mercadopago');
-const { v4: uuidv4 } = require('uuid');              // <= A linha do uuid é esta
+const fetch = require('node-fetch'); // ok com Node 18
+const nodemailer = require('nodemailer');
 
+// >>> só UMA VEZ:
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+const { v4: uuidv4 } = require('uuid'); 
 
 const app = express();
 
@@ -318,10 +319,11 @@ app.post('/api/poltronas', async (req, res) => {
 });
 
 /* =================== Mercado Pago v2 =================== */
-const { MercadoPagoConfig, Payment } = require('mercadopago');
-const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
+const mpClient = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN || ''
+});
 
-// Entrega a Public Key para o front (JSON sempre!)
+// Entrega a Public Key para o front
 app.get('/api/mp/pubkey', (req, res) => {
   res.type('application/json');
   res.send(JSON.stringify({ publicKey: process.env.MP_PUBLIC_KEY || '' }));
@@ -337,7 +339,8 @@ app.post('/api/mp/pay', async (req, res) => {
       description,
       token,
       installments,
-      paymentMethodId, // pode vir do Brick; não usaremos no cartão
+      payment_method_id,   // 'visa' | 'master' … (do Brick)
+      paymentMethodId,     // 'credit_card' | 'pix' (tipo do Brick)
       payer
     } = req.body || {};
 
@@ -371,7 +374,7 @@ app.post('/api/mp/pay', async (req, res) => {
       metadata: { app: 'Turin SiteVendas', when: new Date().toISOString() },
     };
 
-    // ===== PIX =====
+    /* ===== PIX ===== */
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
       if (!base.payer.email) {
         return res.status(400).json({ error: true, message: 'Informe um e-mail para Pix.' });
@@ -395,89 +398,80 @@ app.post('/api/mp/pay', async (req, res) => {
       });
     }
 
-// ===== CARTÃO (crédito/débito) =====
-if (!token) {
-  return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-}
+    /* ===== CARTÃO (Orders API) ===== */
+    if (!token) {
+      return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
+    }
+    const email = (base.payer?.email || '').trim();
+    if (!email) {
+      return res.status(400).json({ error: true, message: 'E-mail do pagador é obrigatório.' });
+    }
 
-// ===== CARTÃO (crédito/débito) =====
-if (!token) {
-  return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-}
-
-// Sanitiza email e CPF (já deve estar no base)
-const email = (base.payer?.email || '').trim();
-if (!email) {
-  return res.status(400).json({ error: true, message: 'E-mail do pagador é obrigatório.' });
-}
-
-// Body mínimo conforme Orders API (Checkout API v2)
-const orderBody = {
-  type: "online",
-  processing_mode: "automatic",
-  total_amount: Number(amount).toFixed(2),                // string/number conforme doc
-  external_reference: `order_${Date.now()}`,
-  payer: { email },
-  transactions: {
-    payments: [
-      {
-        amount: Number(amount).toFixed(2),
-        payment_method: {
-          id: String(req.body?.payment_method_id || ''),  // 'visa' | 'master' …
-          type: "credit_card",                             // ou "debit_card" se você diferenciar
-          token: token,
-          installments: Number(installments || 1)
-        }
+    const orderBody = {
+      type: "online",
+      processing_mode: "automatic",
+      total_amount: Number(amount).toFixed(2),
+      external_reference: `order_${Date.now()}`,
+      payer: { email },
+      transactions: {
+        payments: [
+          {
+            amount: Number(amount).toFixed(2),
+            payment_method: {
+              id: String(payment_method_id || ''), // 'visa' | 'master' …
+              type: "credit_card",                 // ou "debit_card" se for o caso
+              token: token,
+              installments: Number(installments || 1)
+            }
+          }
+        ]
       }
-    ]
+    };
+
+    const idempKey = uuidv4();
+    const or = await fetch('https://api.mercadopago.com/v1/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        'X-Idempotency-Key': idempKey
+      },
+      body: JSON.stringify(orderBody)
+    });
+
+    const odata = await or.json();
+    if (!or.ok) {
+      console.error('Orders API error:', or.status, JSON.stringify(odata));
+      return res.status(or.status).json({
+        error: true,
+        message: odata?.message || odata?.error || odata?.status_detail || 'Falha na criação da order',
+        details: odata
+      });
+    }
+
+    return res.json({
+      id: odata?.id,
+      status: odata?.status || 'processed',
+      status_detail: odata?.status_detail || '',
+      order: odata
+    });
+
+  } catch (err) {
+    const details =
+      err?.cause?.[0]?.description ||
+      err?.cause?.[0]?.message ||
+      err?.message ||
+      'Falha ao processar pagamento';
+    console.error('MP /pay error:', details, err);
+    return res.status(400).json({ error: true, message: details });
   }
-};
-
-// Chamada HTTP direta à Orders API
-const { v4: uuidv4 } = require('uuid'); // no topo do arquivo: const { v4: uuidv4 } = require('uuid');
-const idempKey = uuidv4();
-const or = await fetch('https://api.mercadopago.com/v1/orders', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
-    'X-Idempotency-Key': idempKey
-  },
-  body: JSON.stringify(orderBody)
 });
 
-
-const odata = await or.json();
-
-// Se falhar, devolve o erro detalhado para o front (para facilitar debug)
-if (!or.ok) {
-  console.error('Orders API error:', or.status, JSON.stringify(odata));
-  return res.status(or.status).json({
-    error: true,
-    message: odata?.message || odata?.error || odata?.status_detail || 'Falha na criação da order',
-    details: odata
-  });
-}
-
-// Sucesso
-return res.json({
-  id: odata?.id,
-  status: odata?.status || odata?.status_detail || 'processed',
-  status_detail: odata?.status_detail || '',
-  order: odata
-});
-
-
-// Webhook (opcional)
+/* (opcional) Webhook */
 app.post('/api/mp/webhook', async (req, res) => {
   res.sendStatus(200);
-  // const id = req.body?.data?.id;
-  // if (id) {
-  //   const payments = new Payment(mpClient);
-  //   const det = await payments.get({ id });
-  //   // TODO: conciliação conforme det.status
-  // }
 });
+
 
 /* =================== SPA fallback (deixa por último!) =================== */
 app.get('*', (_req, res) => {
