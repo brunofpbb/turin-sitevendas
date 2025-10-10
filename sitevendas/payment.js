@@ -1,5 +1,5 @@
 // payment.js — Turin / Mercado Pago (Payment Brick)
-// força 1x no backend (Orders API). Aqui mantemos config simples para garantir render do cartão.
+// 1x garantido no backend. Aqui mantemos config simples e robusta.
 
 document.addEventListener('DOMContentLoaded', async () => {
   /* --------- user/login --------- */
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       payer: { email: user.email || '' }, // Pix precisa de e-mail
     },
     customization: {
-      // forma simples/estável para garantir o render de cartão
+      // forma simples para garantir render do cartão
       paymentMethods: {
         creditCard: 'all',
         debitCard: 'all',
@@ -99,7 +99,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert('Erro ao carregar o pagamento (ver console).');
       },
 
-      // formData já vem tokenizado para cartão
       onSubmit: async ({ selectedPaymentMethod, formData }) => {
         try {
           const method = String(selectedPaymentMethod || '').toLowerCase();
@@ -107,18 +106,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             method === 'bank_transfer' ||
             String(formData?.payment_method_id || '').toLowerCase() === 'pix';
 
-          // base enviada para o backend
           const payload = {
             transactionAmount: total,
             description: 'Compra Turin Transportes',
-            installments: 1, // 1x — não exibimos/forçamos no front; o backend garante
+            installments: 1, // 1x – o backend também força
             payer: {
               ...(formData?.payer || {}),
               entityType: 'individual',
             },
           };
 
-          // normaliza CPF se veio
+          // normaliza CPF se vier
           if (payload?.payer?.identification?.number) {
             payload.payer.identification.number =
               String(payload.payer.identification.number).replace(/\D/g, '');
@@ -132,8 +130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           } else {
             payload.paymentMethodId  = 'credit_card';
-            payload.token            = formData?.token;                 // token do cartão
-            payload.payment_method_id = formData?.payment_method_id;    // 'visa','master',…
+            payload.token            = formData?.token;
+            payload.payment_method_id = formData?.payment_method_id; // 'visa','master',…
 
             if (!payload.token) {
               alert('Não foi possível tokenizar o cartão. Tente novamente.');
@@ -141,7 +139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
           }
 
-          // limpa undefineds
           Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
 
           const resp = await fetch('/api/mp/pay', {
@@ -156,7 +153,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           if (data?.order?.status === 'processed' || data?.status === 'approved') {
             alert('Pagamento aprovado! ID: ' + (data?.id || data?.order?.id));
-            // TODO: marcar compra como paga e redirecionar
             // window.location.href = 'profile.html';
           } else if (data?.pix?.qr_text || data?.pix?.qr_base64) {
             alert('Pix gerado. Use o QR/Texto para pagar.');
