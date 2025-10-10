@@ -143,6 +143,11 @@ document.addEventListener('DOMContentLoaded', async () => {
               },
             };
 
+            if (payload?.payer?.identification?.number) {
+              payload.payer.identification.number = String(payload.payer.identification.number).replace(/\D/g, '');
+                }
+
+
             const resp = await fetch('/api/mp/pay', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
