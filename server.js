@@ -15,17 +15,17 @@ app.use((req, res, next) => {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      // SDK/Bricks precisam inline+eval
+      // SDK/Bricks usam inline + new Function
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // XHR/fetch
-      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api.mercadolibre.com https://http2.mlstatic.com https://api-static.mercadopago.com https://www.mercadolivre.com",
+      // XHR/fetch (inclui mlstatic e api-static + todos os *.mercadolibre/mercadolivre)
+      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com https://api-static.mercadopago.com https://api.mercadolibre.com https://*.mercadolibre.com https://*.mercadolivre.com",
       // imagens (QR base64 + assets mlstatic + domínios ML BR/Global)
-      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com https://api-static.mercadopago.com https://www.mercadolivre.com",
-      // iframes necessários (wallet + secure-fields + ML BR quando usado)
-      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://www.mercadolivre.com",
-      // alguns navegadores ainda olham child-src – replica as fontes
-      "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://www.mercadolivre.com",
-      // estilos
+      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      // iframes necessários (wallet + secure-fields + possíveis páginas ML)
+      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      // (opcional) compat: alguns navegadores antigos ainda olham child-src
+      "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      // estilos e fontes
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
     ].join('; ')
