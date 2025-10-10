@@ -325,3 +325,17 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
+/* =================== SPA fallback (deixa por último!) =================== */
+app.get('*', (_req, res) => {
+  const indexPath = fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))
+    ? path.join(PUBLIC_DIR, 'index.html')
+    : path.join(__dirname, 'index.html');
+  res.sendFile(indexPath);
+});
+
+/* =================== Start =================== */
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
+});
+process.on('unhandledRejection', r => console.error('UnhandledRejection:', r));
+process.on('uncaughtException', e => console.error('UncaughtException:', e));
