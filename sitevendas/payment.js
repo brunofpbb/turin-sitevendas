@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const hora    = pick(last?.schedule?.departureTime, last?.schedule?.horaPartida, '—');
   const seats   = Array.isArray(last?.seats) ? last.seats.join(', ') : (last?.seat ?? '');
   const total   = Number(last?.price || 0);
+  console.log(total);
   const totalBRL = total.toFixed(2).replace('.', ',');
 
   let passengersHtml = '';
