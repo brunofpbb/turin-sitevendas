@@ -115,8 +115,8 @@ router.post('/pay', async (req, res) => {
         installments,                 // 1x (o front já envia 1; reforçamos aqui)
         capture: true,
         // Mantemos quando vier do Brick (alguns fluxos exigem)
-        payment_method_id: (req.body.payment_method_id || paymentMethodId || undefined),
-        issuer_id: issuerId || undefined,
+       /* payment_method_id: (req.body.payment_method_id || paymentMethodId || undefined),
+        issuer_id: issuerId || undefined,*/
       };
     }
 
