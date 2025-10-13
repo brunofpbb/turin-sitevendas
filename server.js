@@ -1,9 +1,16 @@
-
+/*
 // server.js
 require('dotenv').config();
 
-const express = require('express');
 const path = require('path');
+const express = require('express');
+const app = express();
+
+const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 const fs = require('fs');
 const fetch = require('node-fetch'); // ok com Node 18
 const nodemailer = require('nodemailer');
@@ -12,9 +19,9 @@ const nodemailer = require('nodemailer');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 const { v4: uuidv4 } = require('uuid'); 
 
-const app = express();
 
-/* =================== CSP compatível com MP Bricks =================== */
+
+ =================== CSP compatível com MP Bricks =================== 
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -38,16 +45,17 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
 
 const PORT = process.env.PORT;
 
-/* =================== Static / Health =================== */
+ =================== Static / Health =================== 
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'sitevendas'))
   ? path.join(__dirname, 'sitevendas')
   : __dirname;
 
 app.use(express.static(PUBLIC_DIR));
-app.use(express.json());
+
 
 app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }));
 
@@ -55,6 +63,69 @@ app.get('/health', (_req, res) => res.json({ ok: true, publicDir: PUBLIC_DIR }))
 
 const mpRoutes = require('./mpRoutes');
 app.use('/api/mp', mpRoutes);
+
+
+*/
+
+
+
+// server.js
+require('dotenv').config();
+
+const path = require('path');
+const express = require('express');
+
+const app = express();
+const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
+
+// Body parsers
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// CSP suficiente para os Bricks funcionarem
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
+      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com https://api-static.mercadopago.com https://api.mercadolibre.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      "style-src 'self' 'unsafe-inline'",
+      "font-src 'self' data:"
+    ].join('; ')
+  );
+  next();
+});
+
+// Arquivos estáticos
+app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
+
+// Rotas Mercado Pago
+app.use('/api/mp', require('./mpRoutes'));
+
+// Raiz
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+// Fallback para navegar entre suas páginas HTML sem extensão
+app.use((req, res, next) => {
+  if (/\.[a-z0-9]+$/i.test(req.path)) return next();
+  const candidate = path.join(PUBLIC_DIR, req.path.replace(/^\//, '') || 'index.html');
+  res.sendFile(candidate, (err) => {
+    if (err) res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  });
+});
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
+});
+
+
+
 
 
 
