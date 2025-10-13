@@ -1,126 +1,153 @@
 // mpRoutes.js
 require('dotenv').config();
 const express = require('express');
+const fetch = require('node-fetch'); // ok com Node 18 + "node-fetch": "^2.7.0"
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 
 const router = express.Router();
 
-// --- credenciais
 const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN || '';
 const PUBLIC_KEY   = process.env.MP_PUBLIC_KEY || '';
 
-const mpClient = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN });
-const payments = new Payment(mpClient);
+if (!ACCESS_TOKEN) {
+  console.warn('[MP] MP_ACCESS_TOKEN ausente! Configure no Railway (.env).');
+}
 
-// chave pública para o front
+/** Cliente SDK (para /v1/payments) */
+const mpClient  = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN, options: { timeout: 15000 } });
+const payments  = new Payment(mpClient);
+
+/** Expor a public key para o front */
 router.get('/pubkey', (_req, res) => {
-  res.json({ publicKey: PUBLIC_KEY });
+  return res.json({ publicKey: PUBLIC_KEY || '' });
 });
 
-const onlyDigits = s => String(s || '').replace(/\D/g, '');
-
-// pagamento (cartão 1x fixo) e Pix
+/**
+ * POST /api/mp/pay
+ * Body mínimo esperado (cartão):
+ * {
+ *   payment_method_id: "visa"|"master"|...,
+ *   token: "<card_token>",
+ *   transaction_amount: 28.45,
+ *   installments: 1,
+ *   payer: { email: "...", identification: { type: "CPF", number: "12345678909" } }
+ * }
+ *
+ * Pix:
+ * {
+ *   payment_method_id: "pix",
+ *   transaction_amount: 28.45,
+ *   payer: { email: "..." }
+ * }
+ */
 router.post('/pay', async (req, res) => {
   try {
+    if (!ACCESS_TOKEN) {
+      return res.status(400).json({ error: true, message: 'Access token ausente no servidor.' });
+    }
+
     const {
-      transactionAmount,
-      description,
-      token,
       payment_method_id,
-      paymentMethodId,
+      token,
+      transaction_amount,
+      installments,
       payer
     } = req.body || {};
 
-    const amount = Number(
-      typeof transactionAmount === 'string'
-        ? transactionAmount.replace(',', '.')
-        : transactionAmount
-    );
-
-    if (!amount || isNaN(amount) || amount <= 0) {
+    const amount = Number(transaction_amount || 0);
+    if (!amount || amount <= 0) {
       return res.status(400).json({ error: true, message: 'Valor inválido.' });
     }
-    if (!ACCESS_TOKEN) {
-      return res.status(401).json({ error: true, message: 'ACCESS_TOKEN ausente no servidor.' });
-    }
-
-    const base = {
-      transaction_amount: amount,
-      description: description || 'Compra Turin Transportes',
-      payer: {
-        email: payer?.email || '',
-        first_name: payer?.first_name || '',
-        last_name:  payer?.last_name  || '',
-        identification: payer?.identification
-          ? {
-              type: (payer.identification.type || 'CPF').toUpperCase(),
-              number: onlyDigits(payer.identification.number),
-            }
-          : undefined,
-      },
-      metadata: { app: 'Turin SiteVendas', when: new Date().toISOString() },
-    };
-
-    const isPix =
-      String(paymentMethodId || '').toLowerCase() === 'pix' ||
-      String(payment_method_id || '').toLowerCase() === 'pix';
-
-    // PIX
-    if (isPix) {
-      if (!base.payer.email) {
-        return res.status(400).json({ error: true, message: 'Informe um e-mail para Pix.' });
-      }
-      const pixBody = {
-        ...base,
-        payment_method_id: 'pix',
-        date_of_expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      };
-      const r = await payments.create({ body: pixBody });
-      const td = r?.point_of_interaction?.transaction_data;
-      return res.json({
-        id: r?.id,
-        status: r?.status,
-        status_detail: r?.status_detail,
-        pix: {
-          qr_base64: td?.qr_code_base64,
-          qr_text: td?.qr_code,
-          expires_at: td?.expiration_date,
-        },
-      });
-    }
-
-    // Cartão (1x fixo)
-    if (!token) {
-      return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-    }
-    if (!base.payer.email) {
+    if (!payer?.email) {
       return res.status(400).json({ error: true, message: 'E-mail do pagador é obrigatório.' });
     }
 
-    const payBody = {
-      ...base,
-      token,
-      installments: 1,                 // força 1x
-      payment_method_id: payment_method_id || undefined,
-      capture: true,
+    /** ======================= PIX ======================= */
+    if (payment_method_id === 'pix') {
+      // Fluxo clássico de PIX: POST /v1/payments
+      const body = {
+        transaction_amount: amount,
+        description: 'Compra Turin Transportes',
+        payment_method_id: 'pix',
+        payer: { email: payer.email }
+      };
+
+      // Você pode usar o SDK:
+      // const r = await payments.create({ body });
+      // OU fetch (fica mais fácil de inspecionar em alguns cenários):
+      const r = await fetch('https://api.mercadopago.com/v1/payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ACCESS_TOKEN}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        console.error('[MP][PIX] ERRO', r.status, JSON.stringify(j, null, 2));
+        const msg = j?.message || j?.error_message || 'Falha ao criar pagamento PIX';
+        return res.status(400).json({ error: true, message: msg, details: j });
+      }
+
+      const tx = j?.point_of_interaction?.transaction_data || {};
+      return res.json({
+        id: j.id,
+        status: j.status,
+        status_detail: j.status_detail,
+        qr_code: tx.qr_code,
+        qr_code_base64: tx.qr_code_base64,
+        ticket_url: tx.ticket_url
+      });
+    }
+
+    /** =================== CARTÃO (crédito/débito) =================== */
+    if (!token) {
+      return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
+    }
+    if (!payment_method_id) {
+      return res.status(400).json({ error: true, message: 'payment_method_id ausente.' });
+    }
+
+    // Força 1x do lado do servidor também:
+    const nInstallments = Number(installments || 1);
+
+    const body = {
+      transaction_amount: amount,
+      description: 'Compra Turin Transportes',
+      payment_method_id,         // "visa", "master", ...
+      token,                     // token do Brick
+      installments: nInstallments,
+      payer: {
+        email: payer.email,
+        identification: payer.identification
+          ? {
+              type: String(payer.identification.type || 'CPF'),
+              number: String(payer.identification.number || '').replace(/\D/g, '')
+            }
+          : undefined
+      }
     };
 
-    const pr = await payments.create({ body: payBody });
+    // SDK oficial
+    const r = await payments.create({ body });
+
     return res.json({
-      id: pr?.id,
-      status: pr?.status,
-      status_detail: pr?.status_detail,
-      payment: pr
+      id: r?.id,
+      status: r?.status,
+      status_detail: r?.status_detail
     });
 
   } catch (err) {
+    // Log detalhado
+    const cause = err?.cause || err;
+    console.error('[MP] /pay CATCH ->', JSON.stringify(cause, null, 2));
     const details =
-      err?.cause?.[0]?.description ||
-      err?.cause?.[0]?.message ||
+      (Array.isArray(err?.cause) && err.cause[0]?.description) ||
       err?.message ||
       'Falha ao processar pagamento';
-    console.error('MP /pay error:', details);
-    return res.status(400).json({ error: true, message: details });
+    return res.status(400).json({ error: true, message: details, details: err });
   }
 });
 
