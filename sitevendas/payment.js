@@ -1,171 +1,124 @@
-// payment.js — Turin / Mercado Pago (Payment Brick)
-// 1x garantido no backend. Aqui mantemos config simples e robusta.
-
-document.addEventListener('DOMContentLoaded', async () => {
-  /* --------- user/login --------- */
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  if (!user) {
-    alert('Você precisa estar logado para pagar.');
-    localStorage.setItem('postLoginRedirect', 'payment.html');
-    location.href = 'login.html';
+// sitevendas/payment.js
+(async () => {
+  const pub = await fetch('/api/mp/pubkey').then(r => r.json()).catch(() => ({}));
+  if (!pub.publicKey) {
+    alert('Public Key não encontrada no servidor.');
     return;
   }
-  if (typeof updateUserNav === 'function') updateUserNav();
 
-  /* --------- resumo do pedido --------- */
+  // Recupera user/cart/valor como você já fazia
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
-  const summaryEl = document.getElementById('order-summary');
-  if (!bookings.length) {
-    if (summaryEl) summaryEl.textContent = 'Nenhuma reserva encontrada.';
-    return;
-  }
-  const last = bookings[bookings.length - 1];
-
-  const pick = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '';
-  const formatDateBR = (iso) => {
-    if (typeof iso !== 'string' || !iso.includes('-')) return iso || '';
-    const [y, m, d] = iso.split('-');
-    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
-  };
-
-  const origem  = pick(last?.schedule?.originName, last?.schedule?.origin, last?.schedule?.origem, '—');
-  const destino = pick(last?.schedule?.destinationName, last?.schedule?.destination, last?.schedule?.destino, '—');
-  const dataV   = formatDateBR(last?.schedule?.date);
-  const hora    = pick(last?.schedule?.departureTime, last?.schedule?.horaPartida, '—');
-  const seats   = Array.isArray(last?.seats) ? last.seats.join(', ') : (last?.seat ?? '');
-  const total   = Number(last?.price || 0);
-  const totalBRL = total.toFixed(2).replace('.', ',');
-
-  let passengersHtml = '';
-  if (Array.isArray(last?.passengers) && last.passengers.length) {
-    passengersHtml =
-      '<p><strong>Passageiros:</strong></p><ul>' +
-      last.passengers.map(p => `<li>Poltrona ${p.seatNumber}: ${p.name}</li>`).join('') +
-      '</ul>';
-  }
-
-  if (summaryEl) {
-    summaryEl.innerHTML = `
-      <p><strong>Origem:</strong> ${origem}</p>
-      <p><strong>Destino:</strong> ${destino}</p>
-      <p><strong>Data da Viagem:</strong> ${dataV}</p>
-      <p><strong>Saída:</strong> ${hora}</p>
-      <p><strong>Poltronas:</strong> ${seats}</p>
-      ${passengersHtml}
-      <div class="total-line">
-        <span class="total-label">Valor Total:</span>
-        <span class="total-amount">R$ ${totalBRL}</span>
-      </div>
-    `;
-  }
-
-  /* --------- public key --------- */
-  let publicKey = '';
-  try {
-    const r = await fetch('/api/mp/pubkey');
-    const j = await r.json();
-    publicKey = j.publicKey || '';
-  } catch (e) {
-    console.error('Erro /api/mp/pubkey', e);
-  }
-  if (!publicKey) {
-    alert('Chave pública do Mercado Pago não configurada.');
+  const last = bookings[bookings.length - 1] || {};
+  const total = Number(last?.total || last?.valorTotal || 0);
+  if (!total) {
+    alert('Valor total não encontrado.');
     return;
   }
 
-  /* --------- SDK + Bricks --------- */
-  const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
+  // Injeta CSS para esconder completamente o seletor de parcelas (fallback visual)
+  const css = document.createElement('style');
+  css.textContent = `
+    /* classes internas podem variar entre versões; usamos seletores genéricos */
+    [class*="installments"], [data-test-id*="installments"] { display: none !important; }
+  `;
+  document.head.appendChild(css);
+
+  const mp = new MercadoPago(pub.publicKey, { locale: 'pt-BR' });
   const bricksBuilder = mp.bricks();
 
-  /* --------- Config do Payment Brick --------- */
-  const settings = {
+  const paymentsBrick = await bricksBuilder.create('payment', 'mp-checkout', {
     initialization: {
-      amount: total,
-      payer: { email: user.email || '' }, // Pix precisa de e-mail
+      amount: total, // número
+      payer: { email: user.email || '' }
     },
     customization: {
-      // forma simples para garantir render do cartão
+      // força 1x – algumas versões do Brick respeitam maxInstallments
       paymentMethods: {
-        creditCard: 'all',
+        creditCard: {
+          maxInstallments: 1
+        },
         debitCard: 'all',
-        bankTransfer: ['pix'],
+        bankTransfer: ['pix']
       },
-      visual: { style: { theme: 'default' } },
+      visual: {
+        style: { theme: 'default' }
+      }
     },
     callbacks: {
       onReady: () => console.log('[MP] Brick pronto'),
       onError: (error) => {
         console.error('[MP] Brick error:', error);
-        alert('Erro ao carregar o pagamento (ver console).');
+        alert('Erro ao carregar o meio de pagamento (veja o console).');
       },
-
       onSubmit: async ({ selectedPaymentMethod, formData }) => {
         try {
-          const method = String(selectedPaymentMethod || '').toLowerCase();
-          const isPix  =
-            method === 'bank_transfer' ||
-            String(formData?.payment_method_id || '').toLowerCase() === 'pix';
-
+          // Normaliza o que mandaremos ao backend
+          const method = selectedPaymentMethod; // "credit_card" | "debit_card" | "pix"
           const payload = {
-            transactionAmount: total,
-            description: 'Compra Turin Transportes',
-            installments: 1, // 1x – o backend também força
+            transaction_amount: total,
             payer: {
-              ...(formData?.payer || {}),
-              entityType: 'individual',
-            },
+              email: user.email || '',
+              identification: formData?.payer?.identification
+                ? {
+                    type: formData.payer.identification.type || 'CPF',
+                    number: String(formData.payer.identification.number || '').replace(/\D/g, '')
+                  }
+                : undefined
+            }
           };
 
-          // normaliza CPF se vier
-          if (payload?.payer?.identification?.number) {
-            payload.payer.identification.number =
-              String(payload.payer.identification.number).replace(/\D/g, '');
-          }
-
-          if (isPix) {
-            payload.paymentMethodId = 'pix';
-            if (!payload.payer?.email) {
-              alert('Informe seu e-mail para receber o Pix.');
-              return;
-            }
+          if (method === 'pix') {
+            payload.payment_method_id = 'pix';
+            // NÃO envia token
           } else {
-            payload.paymentMethodId  = 'credit_card';
-            payload.token            = formData?.token;
-            payload.payment_method_id = formData?.payment_method_id; // 'visa','master',…
-
-            if (!payload.token) {
-              alert('Não foi possível tokenizar o cartão. Tente novamente.');
-              return;
-            }
+            // cartão (crédito/débito)
+            payload.payment_method_id = formData?.payment_method_id; // ex: "visa", "master"
+            payload.token = formData?.token; // token gerado pelo Brick
+            payload.installments = 1;        // reforça 1x
           }
-
-          Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
 
           const resp = await fetch('/api/mp/pay', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(payload)
           });
-          const data = await resp.json();
-          console.log('[MP] /pay', resp.status, data);
 
+          const data = await resp.json();
           if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
 
-          if (data?.order?.status === 'processed' || data?.status === 'approved') {
-            alert('Pagamento aprovado! ID: ' + (data?.id || data?.order?.id));
-            // window.location.href = 'profile.html';
-          } else if (data?.pix?.qr_text || data?.pix?.qr_base64) {
-            alert('Pix gerado. Use o QR/Texto para pagar.');
+          // === Sucesso ===
+          if (method === 'pix') {
+            // Exibe QR/ticket
+            const qrBase64 = data?.qr_code_base64;
+            const ticketUrl = data?.ticket_url;
+            if (qrBase64) {
+              const img = document.createElement('img');
+              img.src = `data:image/png;base64,${qrBase64}`;
+              img.style.maxWidth = '280px';
+              alert('Pix gerado! O QR será exibido na página.');
+              document.getElementById('mp-checkout')?.appendChild(img);
+            } else if (ticketUrl) {
+              window.open(ticketUrl, '_blank');
+            } else {
+              alert('Pix criado (sem QR). Verifique o console.');
+              console.log('[MP][PIX] resp:', data);
+            }
           } else {
-            alert('Pagamento criado: ' + (data?.status_detail || data?.status || 'verifique'));
+            // Cartão aprovado ou em análise
+            alert(`Pagamento aprovado/recebido!\nID: ${data.id}\nStatus: ${data.status}`);
+            // marca compra como paga (se você controla no localStorage)
+            if (bookings.length) {
+              bookings[bookings.length - 1].paid = true;
+              localStorage.setItem('bookings', JSON.stringify(bookings));
+            }
+            window.location.href = 'profile.html';
           }
-        } catch (err) {
-          console.error('Pagamento falhou:', err);
-          alert('Pagamento falhou: ' + (err?.message || 'erro'));
+        } catch (e) {
+          console.error('[Pagamento falhou]', e);
+          alert(`Pagamento falhou: ${e?.message || e}`);
         }
-      },
-    },
-  };
-
-  await bricksBuilder.create('payment', 'payment-brick-container', settings);
-});
+      }
+    }
+  });
+})();
