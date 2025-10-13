@@ -79,6 +79,8 @@
     // 3) usuário (apenas email já é suficiente)
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+/*
+    
     // 4) injeta CSS extra para esconder seletor de parcelas (cinto de segurança)
     const css = document.createElement('style');
     css.textContent = `
@@ -88,7 +90,7 @@
       .mp-form-control--installments { display:none !important; visibility:hidden !important; height:0 !important; margin:0 !important; padding:0 !important; overflow:hidden !important; }
     `;
     document.head.appendChild(css);
-
+*/
     // 5) cria o Brick
     const mp = new MercadoPago(pub.publicKey, { locale: 'pt-BR' });
     const bricksBuilder = mp.bricks();
@@ -100,7 +102,7 @@
       },
       customization: {
         paymentMethods: {
-          creditCard: { maxInstallments: 1 },   // força 1x
+          creditCard: { Installments: 1, default_installments: 1 },   // força 1x
           debitCard: 'all',
           bankTransfer: ['pix']
         },
