@@ -1,4 +1,4 @@
-// mpRoutes.js — Mercado Pago (SDK v2) c/ logs detalhados
+// mpRoutes.js — Mercado Pago (SDK v2) com logs e fluxo redondo
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
@@ -12,6 +12,7 @@ if (!ACCESS_TOKEN) {
   console.warn('[MP] MP_ACCESS_TOKEN ausente! /api/mp/* retornará erro.');
 }
 
+// Instância da SDK v2
 const mp = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN });
 
 // util simples
@@ -49,20 +50,21 @@ router.post('/pay', async (req, res) => {
 
     // aceita camelCase e snake_case
     const paymentMethodId =
-      req.body.paymentMethodId ?? req.body.payment_method_id;       // 'pix' | 'credit_card' | 'debit_card'
+      req.body.paymentMethodId ?? req.body.payment_method_id;  // 'pix' | 'credit_card' | 'debit_card'
     const transactionAmount =
       Number(req.body.transactionAmount ?? req.body.transaction_amount ?? 0);
-    const token = req.body.token;                                    // token do cartão
-    const installments = Number(req.body.installments ?? 1);
-    const issuerId =
-      req.body.issuerId ?? req.body.issuer_id;
-    const description = req.body.description || 'Compra Turin Transportes';
-    const payerIn = req.body.payer || {};
+    const token         = req.body.token;                       // token do cartão (Card Brick)
+    const installments  = Number(req.body.installments ?? 1);
+    const issuerId      = req.body.issuerId ?? req.body.issuer_id;
+    const description   = req.body.description || 'Compra Turin Transportes';
+    const payerIn       = req.body.payer || {};
 
+    // normaliza CPF se veio
     if (payerIn?.identification?.number) {
       payerIn.identification.number = onlyDigits(payerIn.identification.number);
     }
 
+    // valida valor
     if (!transactionAmount || Number.isNaN(transactionAmount) || transactionAmount <= 0) {
       console.log('[MP] /pay VALIDAÇÃO -> transactionAmount inválido:', transactionAmount);
       return res.status(400).json({ error: true, message: 'Valor inválido.' });
@@ -90,8 +92,8 @@ router.post('/pay', async (req, res) => {
 
     let body;
 
+    // -------- PIX --------
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
-      // ---------- PIX ----------
       if (!base.payer?.email) {
         console.log('[MP] /pay VALIDAÇÃO -> e-mail obrigatório para Pix');
         return res.status(400).json({ error: true, message: 'E-mail obrigatório para Pix.' });
@@ -100,39 +102,24 @@ router.post('/pay', async (req, res) => {
         ...base,
         payment_method_id: 'pix'
       };
+
+    // -------- CARTÃO / DÉBITO --------
     } else {
-      // ---------- CARTÃO ----------
-     /* if (!token) {
+      if (!token) {
         console.log('[MP] /pay VALIDAÇÃO -> token do cartão ausente');
         return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
       }
       body = {
         ...base,
         token,
-        installments,    // 1x (o front já envia 1; reforçamos aqui)
-        capture: true
-        // issuer_id: issuerId || undefined     // só se o MP pedir em um caso específico
-        // NÃO enviar payment_method_id: o MP infere pelo token/BIN
+        installments,                 // 1x (o front já envia 1; reforçamos aqui)
+        capture: true,
+        // Mantemos quando vier do Brick (alguns fluxos exigem)
+        payment_method_id: (req.body.payment_method_id || paymentMethodId || undefined),
+        issuer_id: issuerId || undefined,
       };
     }
-*/
-// ---------- CARTÃO ----------
-if (!token) {
-  console.log('[MP] /pay VALIDAÇÃO -> token do cartão ausente');
-  return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-}
 
-body = {
-  ...base,
-  token,
-  installments,           // 1x (vem do front como 1)
-  capture: true,
-  // >>>> MANTER quando vier do Brick <<<<
-  payment_method_id: (req.body.payment_method_id || paymentMethodId || undefined),
-  issuer_id: issuerId || undefined,
-};
-
-      
     // ---- LOG 2: BODY ENVIADO AO MP (token mascarado) ----
     const bodyLog = JSON.parse(JSON.stringify(body));
     if (bodyLog.token) {
@@ -163,6 +150,7 @@ body = {
       point_of_interaction: mpResp?.point_of_interaction,
       transaction_details: mpResp?.transaction_details
     });
+
   } catch (err) {
     const cause =
       err?.cause?.[0]?.description ||
@@ -180,7 +168,7 @@ body = {
     const elapsed = Date.now() - startedAt;
     console.error(`[MP] /pay FAIL (elapsed ${elapsed}ms)`);
 
-    // 401 para credencial/token de API; 400 para erro de regra/validação
+    // 401 para credencial/token; 400 para validação/regra
     const code = /token|credencial|unauthorized/i.test(cause) ? 401 : 400;
     return res.status(code).json({ error: true, message: cause });
   }
