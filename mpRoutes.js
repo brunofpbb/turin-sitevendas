@@ -1,112 +1,126 @@
 // mpRoutes.js
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { MercadoPagoConfig, Payment } = require('mercadopago');
+
+const {
+  MercadoPagoConfig,
+  Payment,
+  MPRequestOptions
+} = require('mercadopago');
 
 const router = express.Router();
 
+// ---------- CONFIGURA SDK NO BOOT ----------
 const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const PUBLIC_KEY = process.env.MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY;
-
 if (!ACCESS_TOKEN) {
-  console.warn('[MP] MP_ACCESS_TOKEN não definido (.env).');
+  console.warn('[MP] MP_ACCESS_TOKEN ausente! /api/mp/pay vai retornar 500.');
 }
-if (!PUBLIC_KEY) {
-  console.warn('[MP] MP_PUBLIC_KEY não definido (.env).');
-}
-
 const mp = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN });
 
-// Public Key para o front
-router.get('/pubkey', (_req, res) => {
-  res.json({ publicKey: PUBLIC_KEY || '' });
+// ---------- Helpers ----------
+const onlyDigits = (str) => String(str || '').replace(/\D/g, '');
+
+// ---------- PubKey para o frontend ----------
+router.get('/pubkey', (req, res) => {
+  res.json({ publicKey: process.env.MP_PUBLIC_KEY || '' });
 });
 
-// Criação de pagamento (cartão / pix)
+// ---------- Pagamento ----------
 router.post('/pay', async (req, res) => {
   try {
-    const {
-      transaction_amount,
-      payment_method_id,
-      token,
-      installments,
-      payer
-    } = req.body || {};
-
-    const amount = Number(transaction_amount);
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: true, message: 'Valor total inválido.' });
-    }
-    if (!payment_method_id) {
-      return res.status(400).json({ error: true, message: 'payment_method_id ausente.' });
-    }
-
-    const payClient = new Payment(mp);
-
-    const parsedPayer = {
-      email: payer?.email,
-      identification: payer?.identification?.number
-        ? {
-            type: payer?.identification?.type || 'CPF',
-            number: String(payer.identification.number).replace(/\D/g, '')
-          }
-        : undefined
-    };
-
-    // Corpo base
-    const body = {
-      transaction_amount: amount,
-      description: 'Compra Turin Transportes',
-      payment_method_id,
-      payer: parsedPayer
-    };
-
-    if (payment_method_id === 'pix') {
-      // pix não usa token/parcelas
-    } else {
-      // cartão
-      if (!token) {
-        return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-      }
-      body.token = token;
-      body.installments = Number(installments || 1) || 1; // reforça 1x
-    }
-
-    // Cabeçalho de idempotência (OBRIGATÓRIO)
-    const requestOptions = { headers: { 'X-Idempotency-Key': uuidv4() } };
-
-    const mpResp = await payClient.create({ body, requestOptions });
-
-    if (payment_method_id === 'pix') {
-      const tx = mpResp?.point_of_interaction?.transaction_data || {};
-      return res.json({
-        id: mpResp?.id,
-        status: mpResp?.status,
-        status_detail: mpResp?.status_detail,
-        qr_code: tx.qr_code,
-        qr_code_base64: tx.qr_code_base64,
-        ticket_url: tx.ticket_url
+    if (!ACCESS_TOKEN) {
+      return res.status(500).json({
+        error: true,
+        message: 'MP_ACCESS_TOKEN não configurado no servidor.'
       });
     }
 
-    // cartão/débito
+    const {
+      payment_method_id,            // 'pix' | 'credit_card' | 'debit_card'
+      transaction_amount,           // number
+      token,                        // token do cartão
+      installments,                 // number
+      issuer_id,                    // string
+      payer = {},                   // { email, identification: { type, number } }
+      description                   // optional
+    } = req.body || {};
+
+    // Sanitiza CPF
+    if (payer?.identification?.number) {
+      payer.identification.number = onlyDigits(payer.identification.number);
+    }
+
+    // Corpo base
+    const base = {
+      transaction_amount: Number(transaction_amount || 0),
+      description: description || 'Compra Turin Transportes',
+      payer: {
+        email: payer?.email || '',
+        identification: payer?.identification?.number
+          ? {
+              type: payer?.identification?.type || 'CPF',
+              number: payer.identification.number
+            }
+          : undefined
+      }
+    };
+
+    // Valida valor
+    if (!base.transaction_amount || base.transaction_amount <= 0) {
+      return res.status(400).json({ error: true, message: 'Valor inválido.' });
+    }
+
+    // Prepara cabeçalho de idempotência
+    const requestOptions = new MPRequestOptions({
+      customHeaders: { 'X-Idempotency-Key': uuidv4() }
+    });
+
+    const payments = new Payment(mp);
+
+    let body;
+
+    if (payment_method_id === 'pix') {
+      // --------- PIX ----------
+      if (!base.payer?.email) {
+        return res.status(400).json({ error: true, message: 'E-mail obrigatório para Pix.' });
+      }
+      body = {
+        ...base,
+        payment_method_id: 'pix'
+      };
+    } else {
+      // --------- CARTÃO (crédito/débito) ----------
+      if (!token) {
+        return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
+      }
+      body = {
+        ...base,
+        token,
+        installments: Number(installments || 1),
+        capture: true
+        // NÃO envie payment_method_id/issuer_id aqui.
+        // O MP infere pelo token/BIN e issuer_id.
+      };
+    }
+
+    const mpResp = await payments.create({ body, requestOptions });
+
     return res.json({
       id: mpResp?.id,
       status: mpResp?.status,
-      status_detail: mpResp?.status_detail
+      status_detail: mpResp?.status_detail,
+      point_of_interaction: mpResp?.point_of_interaction,
+      transaction_details: mpResp?.transaction_details
     });
   } catch (err) {
-    const details =
+    // Mostra a causa real no log:
+    const cause =
       err?.cause?.[0]?.description ||
       err?.cause?.[0]?.message ||
       err?.message ||
       'Falha ao processar pagamento';
-
-    // log detalhado no servidor
-    console.error('MP /pay error:', JSON.stringify(err?.cause || err, null, 2));
-
-    const code = /401|unauthor/i.test(details) ? 401 : 400;
-    return res.status(code).json({ error: true, message: details });
+    console.error('[MP] /pay error ->', JSON.stringify(err?.cause || err, null, 2));
+    return res.status(401).json({ error: true, message: cause });
   }
 });
 
