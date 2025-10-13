@@ -102,7 +102,7 @@ router.post('/pay', async (req, res) => {
       };
     } else {
       // ---------- CARTÃO ----------
-      if (!token) {
+     /* if (!token) {
         console.log('[MP] /pay VALIDAÇÃO -> token do cartão ausente');
         return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
       }
@@ -115,7 +115,24 @@ router.post('/pay', async (req, res) => {
         // NÃO enviar payment_method_id: o MP infere pelo token/BIN
       };
     }
+*/
+// ---------- CARTÃO ----------
+if (!token) {
+  console.log('[MP] /pay VALIDAÇÃO -> token do cartão ausente');
+  return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
+}
 
+body = {
+  ...base,
+  token,
+  installments,           // 1x (vem do front como 1)
+  capture: true,
+  // >>>> MANTER quando vier do Brick <<<<
+  payment_method_id: (req.body.payment_method_id || paymentMethodId || undefined),
+  issuer_id: issuerId || undefined,
+};
+
+      
     // ---- LOG 2: BODY ENVIADO AO MP (token mascarado) ----
     const bodyLog = JSON.parse(JSON.stringify(body));
     if (bodyLog.token) {
