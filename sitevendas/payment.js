@@ -87,6 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     customization: {
       // forma simples/estável para garantir o render de cartão
       paymentMethods: {
+        minInstallments: 1,
+        maxInstallments: 1,
         creditCard: 'all',
         debitCard: 'all',
         bankTransfer: ['pix'],
