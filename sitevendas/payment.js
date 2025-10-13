@@ -78,101 +78,113 @@ document.addEventListener('DOMContentLoaded', async () => {
   const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
   const bricksBuilder = mp.bricks();
 
-  /* --------- Config do Payment Brick --------- */
-  const settings = {
-    initialization: {
-      amount: total,
-      payer: { email: user.email || '' }, // Pix precisa de e-mail
+// --- ajuste na inicialização: garanta número (duas casas) ---
+const amount = Number((total ?? 0).toFixed(2));
+
+// ...
+const settings = {
+  initialization: {
+    amount,                        // número (não string)
+    payer: { email: user.email || '' } // útil pro Pix
+  },
+  customization: {
+    paymentMethods: {
+      creditCard: 'all',
+      debitCard: 'all',
+      bankTransfer: ['pix'],
+      minInstallments: 1,
+      maxInstallments: 1
     },
-    customization: {
-      // forma simples/estável para garantir o render de cartão
-      paymentMethods: {
-        minInstallments: 1,
-        maxInstallments: 1,
-        creditCard: 'all',
-        debitCard: 'all',
-        bankTransfer: ['pix'],
-      },
-      visual: { style: { theme: 'default' } },
+    visual: { showInstallmentsSelector: false }
+  },
+
+  callbacks: {
+    onReady: () => console.log('[MP] Brick pronto'),
+
+    onError: (error) => {
+      console.error('[MP] Brick error:', error);
+      alert('Erro ao carregar o pagamento (ver console).');
     },
-    callbacks: {
-      onReady: () => console.log('[MP] Brick pronto'),
-      onError: (error) => {
-        console.error('[MP] Brick error:', error);
-        alert('Erro ao carregar o pagamento (ver console).');
-      },
 
-      // formData já vem tokenizado para cartão
-      onSubmit: async ({ selectedPaymentMethod, formData }) => {
-        try {
-          const method = String(selectedPaymentMethod || '').toLowerCase();
-          const isPix  =
-            method === 'bank_transfer' ||
-            String(formData?.payment_method_id || '').toLowerCase() === 'pix';
+    // === ESTE TRECHO SUBSTITUI O SEU onSubmit ===
+    onSubmit: async ({ selectedPaymentMethod, formData }) => {
+      try {
+        // O Brick retorna exatamente estes campos (doc oficial):
+        // formData.token, formData.payment_method_id, formData.issuer_id,
+        // formData.payer.email, formData.payer.identification.{type, number}
+        const method = String(selectedPaymentMethod || '').toLowerCase();
+        const isPix = method === 'bank_transfer' ||
+                      String(formData?.payment_method_id || '').toLowerCase() === 'pix';
 
-          // base enviada para o backend
-          const payload = {
-            transactionAmount: total,
-            description: 'Compra Turin Transportes',
-            installments: 1, // 1x — não exibimos/forçamos no front; o backend garante
-            payer: {
-              ...(formData?.payer || {}),
-              entityType: 'individual',
-            },
-          };
-
-          // normaliza CPF se veio
-          if (payload?.payer?.identification?.number) {
-            payload.payer.identification.number =
-              String(payload.payer.identification.number).replace(/\D/g, '');
+        // Corpo em snake_case (Payments API)
+        const body = {
+          transaction_amount: amount,
+          description: 'Compra Turin Transportes',
+          payer: {
+            email: formData?.payer?.email || user.email || '',
+            identification: formData?.payer?.identification ? {
+              type: formData.payer.identification.type,
+              number: String(formData.payer.identification.number || '').replace(/\D/g, '')
+            } : undefined
           }
+        };
 
-          if (isPix) {
-            payload.paymentMethodId = 'pix';
-            if (!payload.payer?.email) {
-              alert('Informe seu e-mail para receber o Pix.');
-              return;
-            }
-          } else {
-            payload.paymentMethodId  = 'credit_card';
-            payload.token            = formData?.token;                 // token do cartão
-            payload.payment_method_id = formData?.payment_method_id;    // 'visa','master',…
-
-            if (!payload.token) {
-              alert('Não foi possível tokenizar o cartão. Tente novamente.');
-              return;
-            }
+        if (isPix) {
+          // PIX precisa somente destes campos
+          body.payment_method_id = 'pix';
+        } else {
+          // Cartão / Débito — segue Card Payment Brick
+          if (!formData?.token) {
+            alert('Não foi possível tokenizar o cartão. Tente novamente.');
+            return;
           }
-
-          // limpa undefineds
-          Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-
-          const resp = await fetch('/api/mp/pay', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const data = await resp.json();
-          console.log('[MP] /pay', resp.status, data);
-
-          if (!resp.ok) throw new Error(data?.message || 'Falha ao processar');
-
-          if (data?.order?.status === 'processed' || data?.status === 'approved') {
-            alert('Pagamento aprovado! ID: ' + (data?.id || data?.order?.id));
-            // TODO: marcar compra como paga e redirecionar
-            // window.location.href = 'profile.html';
-          } else if (data?.pix?.qr_text || data?.pix?.qr_base64) {
-            alert('Pix gerado. Use o QR/Texto para pagar.');
-          } else {
-            alert('Pagamento criado: ' + (data?.status_detail || data?.status || 'verifique'));
-          }
-        } catch (err) {
-          console.error('Pagamento falhou:', err);
-          alert('Pagamento falhou: ' + (err?.message || 'erro'));
+          body.token = formData.token;                       // token gerado pelo Brick
+          body.payment_method_id = formData.payment_method_id; // "visa", "master", ...
+          body.installments = 1;
+          if (formData.issuer_id) body.issuer_id = formData.issuer_id; // opcional
         }
-      },
-    },
-  };
+
+        // remove undefineds
+        Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+        if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
+
+        const resp = await fetch('/api/mp/pay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        console.log('[MP] /pay ->', resp.status, data);
+
+        if (!resp.ok) {
+          // mensagens típicas: invalid_value, unauthorized, etc.
+          throw new Error(data?.message || 'Falha ao processar pagamento');
+        }
+
+        // Sucesso em cartão
+        if (data.status === 'approved' || data?.order?.status === 'processed') {
+          alert('Pagamento aprovado! ID: ' + (data?.id || data?.order?.id));
+          // window.location.href = 'profile.html';
+          return;
+        }
+
+        // Sucesso em PIX
+        const pix = data?.point_of_interaction?.transaction_data || data?.pix;
+        if (pix?.qr_code || pix?.qr_code_base64 || pix?.qr_text) {
+          alert('Pix gerado! Copie o código e conclua no seu banco.');
+          return;
+        }
+
+        // Outros status (in_process, rejected…)
+        alert(`Pagamento criado: ${data.status} - ${data.status_detail || ''}`);
+      } catch (err) {
+        console.error('Pagamento falhou:', err);
+        alert('Pagamento falhou: ' + (err?.message || 'erro'));
+      }
+    }
+  }
+};
+
 
   await bricksBuilder.create('payment', 'payment-brick-container', settings);
 });
