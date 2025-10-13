@@ -1,37 +1,38 @@
-// sitevendas/payment.js
 (async () => {
-  // ------ total ------
-  // Se você guarda o total no localStorage ou querystring, ajuste aqui.
-  // Exemplo simples: buscar do storage:
-  const saved = JSON.parse(localStorage.getItem('bookings') || '[]');
-  const total = saved.reduce((sum, b) => sum + (Number(b?.price || 0)), 0);
-  console.log('[payment.js] total detectado =', total);
+  // 1) Descobrir o total (com fallback para 1.00 só para não travar)
+  let total = 0;
+  try {
+    const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+    total = bookings.reduce((acc, b) => acc + (Number(b?.price || 0)), 0);
+  } catch {}
+  if (!Number.isFinite(total) || total <= 0) total = 1.00; // fallback
 
-  // ------ Public Key ------
-  const { publicKey } = await fetch('/api/mp/pubkey').then(r => r.json());
-  if (!publicKey) {
-    alert('Chave pública do MP não encontrada.');
+  console.log('[payment.js] total =', total);
+
+  // 2) Buscar a Public Key do servidor
+  const pub = await fetch('/api/mp/pubkey').then(r => r.json()).catch(e => (console.error(e), {}));
+  if (!pub?.publicKey) {
+    alert('Public Key do MP não encontrada. Verifique /api/mp/pubkey.');
     return;
   }
+  console.log('[payment.js] publicKey =', pub.publicKey);
 
-  const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
+  // 3) Instanciar MP + Bricks
+  const mp = new MercadoPago(pub.publicKey, { locale: 'pt-BR' });
   const bricksBuilder = mp.bricks();
 
-  const container = document.getElementById('paymentBrick_container');
-
+  // 4) Configurar o Brick (cartão, débito e pix), com parcelas desativadas (1x)
   const settings = {
     initialization: {
-      amount: Number(total.toFixed(2)), // valor total
-      payer: { email: '' } // se tiver, preencha
+      amount: Number(total.toFixed(2)),
+      payer: { email: '' }
     },
     customization: {
       paymentMethods: {
-        // habilita abas de cartão crédito / débito e pix
         creditCard: 'all',
         debitCard: 'all',
         bankTransfer: ['pix']
       },
-      // força 1x SEM seletor de parcelas (fallbacks p/ versões do Brick)
       visual: { showInstallmentsSelector: false },
       maxInstallments: 1,
       installments: { quantity: 1, min: 1, max: 1 }
@@ -40,16 +41,12 @@
       onReady: () => console.log('[MP] Brick pronto'),
       onError: (error) => {
         console.error('[MP] Brick error:', error);
-        // causas comuns: CSP bloqueando sdk/mlstatic, ou total inválido
+        alert('Erro ao carregar o meio de pagamento. Veja o console.');
       },
-
-      // -------- envio efetivo p/ o backend --------
       onSubmit: async ({ selectedPaymentMethod, formData }) => {
         try {
-          // formData vem do Brick com todos campos necessários
-          console.log('[MP] submit method =', selectedPaymentMethod, 'formData=', formData);
+          console.log('[MP] onSubmit method =', selectedPaymentMethod, 'formData =', formData);
 
-          // Monta o payload p/ nosso backend
           const payload = {
             payment_method_id: selectedPaymentMethod, // 'credit_card' | 'debit_card' | 'pix'
             transaction_amount: Number(total.toFixed(2)),
@@ -63,10 +60,8 @@
               return;
             }
           } else {
-            // cartao
             payload.token = formData?.token;
-            payload.installments = 1; // força 1x
-            // Não envie payment_method_id (bandeira) nem issuer_id — o MP infere pelo token
+            payload.installments = 1;
           }
 
           const resp = await fetch('/api/mp/pay', {
@@ -74,36 +69,31 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
-
           const data = await resp.json();
 
+          console.log('[MP] /pay ->', resp.status, data);
+
           if (!resp.ok) {
-            console.error('[MP] /pay resp', resp.status, data);
             alert(`Pagamento falhou: ${data?.message || 'Erro'}`);
             return;
           }
 
-          console.log('[MP] pagamento OK:', data);
-
-          // AQUI VOCÊ DECIDE A NAVEGAÇÃO PÓS-PAGAMENTO
           if (data.status === 'approved') {
-            // Marcar reserva como paga, etc
             alert('Pagamento aprovado!');
             window.location.href = 'profile.html';
-          } else if (payload.payment_method_id === 'pix' && data?.point_of_interaction?.transaction_data?.qr_code_base64) {
-            // Você pode exibir o QR ou redirecionar para tela de status
-            alert('Pix gerado! Abra o comprovante / QR.');
+          } else if (selectedPaymentMethod === 'pix' && data?.point_of_interaction?.transaction_data?.qr_code) {
+            alert('Pix gerado! Copie e pague o código/QR.');
           } else {
             alert(`Status: ${data.status} - ${data.status_detail}`);
           }
-        } catch (err) {
-          console.error('[MP] submit err', err);
+        } catch (e) {
+          console.error('[MP] submit erro:', e);
           alert('Erro inesperado ao enviar o pagamento.');
         }
       }
     }
   };
 
-  // Renderiza o Payment Brick
+  // 5) Renderizar
   await bricksBuilder.create('payment', 'paymentBrick_container', settings);
 })();
