@@ -68,30 +68,25 @@ app.use('/api/mp', mpRoutes);
 */
 
 
-
 // server.js
 require('dotenv').config();
 
-const path = require('path');
 const express = require('express');
+const path = require('path');
 
 const app = express();
-const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
 
-// Body parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// CSP suficiente para os Bricks funcionarem
+// ----------- Segurança mínima / CSP p/ Bricks -----------
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com https://api-static.mercadopago.com https://api.mercadolibre.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://api-static.mercadopago.com https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
       "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
       "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
+      "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
     ].join('; ')
@@ -99,29 +94,38 @@ app.use((req, res, next) => {
   next();
 });
 
-// Arquivos estáticos
-app.use(express.static(PUBLIC_DIR, { extensions: ['html'] }));
+// ----------- Body parser -----------
+app.use(express.json());
 
-// Rotas Mercado Pago
-app.use('/api/mp', require('./mpRoutes'));
+// ----------- Arquivos estáticos -----------
+app.use(express.static(path.join(__dirname, 'sitevendas')));
 
-// Raiz
-app.get('/', (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+// ----------- Rotas MP -----------
+const mpRoutes = require('./mpRoutes'); // <- este arquivo fica na RAIZ junto com server.js
+app.use('/api/mp', mpRoutes);
+
+// ----------- Diagnóstico simples -----------
+app.get('/api/_diag', (req, res) => {
+  const at = process.env.MP_ACCESS_TOKEN || '';
+  res.json({
+    has_access_token: Boolean(at),
+    access_token_snippet: at ? `${at.slice(0, 6)}...${at.slice(-4)}` : null,
+    public_key: process.env.MP_PUBLIC_KEY || null
+  });
 });
 
-// Fallback para navegar entre suas páginas HTML sem extensão
-app.use((req, res, next) => {
-  if (/\.[a-z0-9]+$/i.test(req.path)) return next();
-  const candidate = path.join(PUBLIC_DIR, req.path.replace(/^\//, '') || 'index.html');
-  res.sendFile(candidate, (err) => {
-    if (err) res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
-  });
+// ----------- SPA fallback p/ arquivos .html -----------
+app.get('*', (req, res, next) => {
+  // entrega /payment.html, /index.html etc. direto da pasta
+  if (req.path.endsWith('.html')) {
+    return res.sendFile(path.join(__dirname, 'sitevendas', req.path));
+  }
+  next();
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
+  console.log(`[server] rodando em http://localhost:${PORT}`);
 });
 
 
