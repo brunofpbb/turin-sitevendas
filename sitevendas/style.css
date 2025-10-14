@@ -100,3 +100,11 @@ footer{
   color: #666;
 }
 
+/* ===== Login ===== */
+.auth-wrapper{
+  display:flex; justify-content:center; padding:24px;
+}
+.auth-card{
+  width: 520px; background:#fff; padding:16px 18px; border-radius:12px;
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
