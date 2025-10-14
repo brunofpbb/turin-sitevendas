@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <title>Turin Transportes – Venda de Passagens</title>
   <link rel="stylesheet" href="style.css" />
-  <script type="module" src="main.js"></script>
+  <!-- Sem type="module" para evitar problemas de import -->
+  <script src="main.js" defer></script>
 </head>
 <body>
   <header>
@@ -12,9 +13,9 @@
     <nav id="user-nav"></nav>
   </header>
 
-  <!-- SOMENTE 2 CARDS: sidebar fixa + conteúdo -->
+  <!-- SOMENTE 2 CARDS: lateral fixo + central dinâmico -->
   <main class="two-cols">
-    <!-- CARD LATERAL (fixo) -->
+    <!-- CARD LATERAL (sempre visível, colado à esquerda) -->
     <aside class="search-card">
       <h2 class="step-title">Encontre sua viagem</h2>
 
@@ -47,10 +48,8 @@
       </form>
     </aside>
 
-    <!-- CARD CENTRAL (começa vazio) -->
-    <section class="content-card" id="content-root">
-      <!-- é preenchido dinamicamente após Pesquisar -->
-    </section>
+    <!-- CARD CENTRAL (inicia completamente vazio) -->
+    <section class="content-card" id="content-root"></section>
   </main>
 
   <footer>
