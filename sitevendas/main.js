@@ -306,4 +306,43 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('pendingPurchase', JSON.stringify({ legs: toSave }));
         localStorage.setItem('postLoginRedirect', 'payment.html');
         location.href = 'login.html';
-        return
+        return;
+      }
+
+      // limpa não pagas antigas e salva apenas as novas + pagas existentes
+      const old = JSON.parse(localStorage.getItem('bookings') || '[]');
+      const onlyPaid = old.filter(b => b.paid === true);
+      localStorage.setItem('bookings', JSON.stringify([...onlyPaid, ...toSave]));
+      localStorage.removeItem('pendingPurchase');
+      location.href = 'payment.html';
+    };
+  }
+
+  // ===== Util
+  function clearCentral(){ content.innerHTML = ''; }
+});
+
+/* ===== Nav usuário (igual ao seu) ===== */
+function updateUserNav(){
+  const nav = document.getElementById('user-nav');
+  if (!nav) return;
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  nav.innerHTML = '';
+  if (user){
+    const a = document.createElement('a'); a.href='profile.html';
+    a.textContent = `Minhas viagens (${user.name || user.email})`;
+    nav.appendChild(a);
+
+    const s = document.createElement('a'); s.href='#'; s.style.marginLeft='12px'; s.textContent='Sair';
+    s.addEventListener('click', ()=>{ localStorage.removeItem('user'); updateUserNav(); location.href='index.html'; });
+    nav.appendChild(s);
+  } else {
+    const a = document.createElement('a'); a.href='login.html'; a.textContent='Entrar';
+    a.addEventListener('click', ()=>{
+      const href = location.href;
+      const path = href.substring(href.lastIndexOf('/') + 1);
+      localStorage.setItem('postLoginRedirect', path);
+    });
+    nav.appendChild(a);
+  }
+}
