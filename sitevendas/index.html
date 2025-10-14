@@ -1,39 +1,79 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <title>Venda de Passagens Turin</title>
-  <link rel="stylesheet" href="style.css">
-  <script defer src="main.js"></script>
+  <meta charset="UTF-8" />
+  <title>Turin Transportes – Venda de Passagens</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Agora usamos módulos -->
+  <script type="module" src="main.js"></script>
 </head>
 <body>
   <header>
     <h1>Turin Transportes – Venda de Passagens</h1>
     <nav id="user-nav"></nav>
   </header>
+
   <main>
-    <section class="search-widget">
-      <h2>Encontre sua viagem</h2>
-      <form id="search-form">
-        <div class="form-row">
-          <label for="origin">Origem</label>
-          <!-- A lista de opções é preenchida dinamicamente via JavaScript -->
-          <input type="text" id="origin" name="origin" placeholder="Cidade de origem" list="origin-suggestions" autocomplete="off" required>
-          <datalist id="origin-suggestions"></datalist>
+    <!-- CARD ÚNICO -->
+    <section id="app-card" class="app-card">
+      <!-- STEP 1: Formulário de busca -->
+      <div id="step-search" class="step step-active">
+        <h2 class="step-title">Encontre sua viagem</h2>
+
+        <form id="search-form" class="grid-2">
+          <div class="form-row">
+            <label for="origin">Origem</label>
+            <input id="origin" list="origin-suggestions" placeholder="Cidade de origem" required autocomplete="off" />
+            <datalist id="origin-suggestions"></datalist>
+          </div>
+
+          <div class="form-row">
+            <label for="destination">Destino</label>
+            <input id="destination" list="destination-suggestions" placeholder="Cidade de destino" required autocomplete="off" />
+            <datalist id="destination-suggestions"></datalist>
+          </div>
+
+          <div class="form-row">
+            <label for="date">Data da ida</label>
+            <input id="date" type="date" required />
+          </div>
+
+          <div class="form-row">
+            <label for="return-date">Data da volta (opcional)</label>
+            <input id="return-date" type="date" />
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary" type="submit">Pesquisar</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- STEP 2: Lista de horários (IDA/ VOLTA) -->
+      <div id="step-schedules" class="step" hidden>
+        <h2 class="step-title">
+          <span id="legenda-lista">Viagens disponíveis (ida)</span>
+        </h2>
+        <div id="schedule-list"></div>
+        <div id="no-results" class="mute"></div>
+        <div class="actions">
+          <button id="back-to-search" class="btn btn-ghost">Voltar</button>
         </div>
-        <div class="form-row">
-          <label for="destination">Destino</label>
-          <input type="text" id="destination" name="destination" placeholder="Cidade de destino" list="destination-suggestions" autocomplete="off" required>
-          <datalist id="destination-suggestions"></datalist>
+      </div>
+
+      <!-- STEP 3: Seleção de poltronas -->
+      <div id="step-seats" class="step" hidden>
+        <h2 class="step-title">
+          <span id="legenda-seats">Escolha suas poltronas</span>
+        </h2>
+        <div id="seats-container"></div>
+        <div class="actions">
+          <button id="cancel-seats" class="btn btn-ghost">Voltar</button>
         </div>
-        <div class="form-row">
-          <label for="date">Data de partida</label>
-          <input type="date" id="date" name="date" required>
-        </div>
-        <button type="submit">Pesquisar</button>
-      </form>
+      </div>
     </section>
   </main>
+
   <footer>
     <p>&copy; 2025 Turin Transportes</p>
   </footer>
