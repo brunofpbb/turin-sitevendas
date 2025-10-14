@@ -1,481 +1,9 @@
-body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 0;
-  background: #f5f5f5;
-  color: #333;
-}
+/* ===== Base ===== */
+body{font-family:Arial,sans-serif;margin:0;color:#333;background:#f5f5f5}
+header{background:#005b28;color:#fff;padding:1rem;text-align:center}
+nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 
-header {
-  background: #005b28; /* verde escuro inspirado na marca Turin */
-  color: #fff;
-  padding: 1rem;
-  text-align: center;
-}
-
-nav {
-  margin-top: 0.5rem;
-}
-
-nav a {
-  color: #fff;
-  margin: 0 0.5rem;
-  text-decoration: none;
-}
-
-main {
-  /* Aumenta a largura máxima do cartão para acomodar mais campos em linha */
-  max-width: 1000px;
-  margin: 2rem auto;
-  background: #fff;
-  padding: 2rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.search-widget h2 {
-  margin-top: 0;
-}
-
-.form-row {
-  margin-bottom: 1rem;
-  display: flex;
-  flex-direction: column;
-}
-
-.form-row label {
-  font-weight: bold;
-  margin-bottom: 0.3rem;
-}
-
-.form-row input {
-  padding: 0.5rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 1rem;
-}
-
-button {
-  background: #005b28;
-  color: #fff;
-  border: none;
-  padding: 0.7rem 1.2rem;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-button:hover {
-  background: #007a3b;
-}
-
-/* ---------- LISTA DE VIAGENS EM CARDS ---------- */
-#bus-list, #schedule-list, .bus-list{
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 10px;
-  margin-bottom: 20px;            /* afasta do Voltar */
-}
-
-/* CARD: grid por áreas para garantir alinhamento do botão */
-.schedule-card{
-  --padY: 12px;                   /* padding vertical do card */
-  --padX: 14px;                   /* padding horizontal do card */
-  --rowGap: 6px;                  /* espaço entre header e body */
-  --inlineGap: 12px;              /* espaço entre campos dentro das linhas */
-
-  background: #fff;
-  border: 1px solid #ced6de;
-  border-radius: 12px;
-  padding: var(--padY) var(--padX);
-  display: grid;
-  grid-template-columns: 1fr 160px;                /* info | ações */
-  grid-template-rows: auto auto;                   /* header | body */
-  grid-template-areas:
-    "header actions"
-    "body   actions";
-  align-items: center;                              /* alinha o conteúdo das células */
-  row-gap: var(--rowGap);
-  box-shadow: 0 0 0 rgba(0,0,0,0);
-  transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease;
-}
-
-.schedule-card:hover{
-  border-color: #9fb3c8;
-  box-shadow: 0 6px 16px rgba(0,0,0,.08);
-}
-
-/* linhas de info */
-.schedule-header,
-.schedule-body{
-  display: flex;
-  gap: var(--inlineGap);
-  flex-wrap: wrap;
-  align-items: baseline;
-  font-size: 15px;
-  line-height: 1.8;             /* reduz “quebra” alta dentro do card */
-}
-
-.schedule-header{ grid-area: header; }
-.schedule-body{   grid-area: body; }
-.schedule-header b{ font-weight: 700; }
-
-/* coluna de ações ocupa as DUAS linhas e centraliza o botão */
-.schedule-actions{
-  grid-area: actions;             /* cola na área 'actions' */
-  display: flex;
-  align-items: center;            /* centraliza verticalmente */
-  justify-content: flex-end;      /* alinha à direita */
-  padding-left: 10px;             /* respiro da coluna de info */
-}
-
-.select-btn{
-  min-width: 130px;
-  height: 36px;                   /* altura consistente */
-}
-
-/* ---------- MAPA DE ASSENTOS ---------- */
-.bus-layout {
-  position: relative;
-  width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.bus-image {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-/* Container para o mapa de assentos sobre a imagem do ônibus */
-.seat-map {
-  position: absolute;
-  top: 11%;
-  left: 22%;
-  width: 70%;
-  height: 68%;
-  display: grid;
-  grid-template-columns: repeat(11, 1fr);
-  grid-template-rows: 1fr 1fr 0.5fr 1fr 1fr;
-  gap: 1%;
-  pointer-events: none;
-}
-
-/* Estilo para cada poltrona */
-.seat {
-  width: 100%;
-  height: 100%;
-  border: 1px solid #bbb;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  cursor: pointer;
-  background: #e8f5e9;
-  pointer-events: auto;
-}
-
-/* Poltronas selecionadas */
-.seat.selected {
-  background: #007a3b;
-  color: #fff;
-}
-
-/* Poltronas ocupadas */
-.seat.occupied {
-  background: #95a5a6;
-  color: #fff;
-  cursor: not-allowed;
-}
-
-/* Espaço do corredor */
-.walkway {
-  background: transparent;
-  pointer-events: none;
-}
-
-.passenger-container {
-  margin-top: 16px;   /* ajuste para 20/24px se quiser mais */
-}
-
-/* ---------- PASSAGEIROS (linha única) ---------- */
-.passenger-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;               /* respiro entre campos */
-  margin-bottom: 1rem;
-  flex-wrap: nowrap;       /* <- NÃO quebrar de linha */
-  width: 100%;
-}
-
-.seat-label {
-  font-weight: bold;
-  margin-right: 0.5rem;
-  min-width: 60px;
-}
-
-/* regras base dos inputs */
-.passenger-row input {
-  padding: 0.45rem 0.55rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  min-width: 0;            /* <- permite encolher dentro do flex */
-}
-
-/* Nome maior; CPF e Telefone com o MESMO tamanho */
-.passenger-row input[name="name"]   { flex: 2 1 0; }  /* maior */
-.passenger-row input[name="cpf"]    { flex: 1 1 0; }  /* mesmo tamanho */
-.passenger-row input[name="phone"]  { flex: 1 1 0; }  /* mesmo tamanho */
-
-
-.seat-label {
-  font-weight: bold;
-  margin-right: 0.5rem;
-  min-width: 60px;
-}
-
-.passenger-row input,
-.passenger-row select {
-  padding: 0.45rem 0.55rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  flex: 1 1 180px;
-  min-width: 120px;
-}
-
-/* Nome maior, CPF/Telefone médios */
-.passenger-row input[name="name"] {
-  flex: 2 1 360px;          /* bem maior */
-  min-width: 280px;
-}
-
-.passenger-row input[name="cpf"],
-.passenger-row input[name="phone"] {
-  flex: 1 1 220px;          /* médios */
-}
-
-/* Legenda/indicação do motorista */
-#bus-orientation {
-  text-align: center;
-  font-size: 0.9rem;
-  color: #555;
-  margin-bottom: 0.5rem;
-}
-
-.login-form, .profile {
-  max-width: 400px;
-  margin: 0 auto;
-}
-
-.login-form .form-row {
-  margin-bottom: 1rem;
-}
-
-.booking-item {
-  border-bottom: 1px solid #ddd;
-  padding: 1rem 0;
-}
-
-/* ===== Resumo do pedido – destaque do total ===== */
-.total-line {
-  margin-top: .5rem;
-  display: flex;
-  align-items: baseline;
-  gap: .5rem;
-}
-.total-label {
-  font-weight: 700;
-  font-size: 1.05rem;
-}
-.total-amount {
-  font-weight: 800;
-  font-size: 1.4rem;   /* maior para dar ênfase */
-}
-
-/* ===== Form de pagamento ===== */
-.payment-form .two-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.payment-form .two-cols > div {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Botões lado a lado */
-.pay-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-/* Botões base */
-.btn {
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  line-height: 1;
-  padding: .9rem 1.2rem;
-  cursor: pointer;
-}
-.btn-primary {
-  background: #005b28;
-  color: #fff;
-}
-.btn-primary:hover {
-  background: #007a3b;
-}
-/* Pagar um pouco mais comprido */
-.btn-pay {
-  min-width: 160px;
-}
-.btn-ghost {
-  background: #e9ecef;
-  color: #222;
-}
-.btn-ghost:hover {
-  background: #dfe3e6;
-}
-
-/* Responsivo simples */
-@media (max-width: 640px) {
-  .payment-form .two-cols { grid-template-columns: 1fr; }
-  .pay-actions { flex-direction: column; }
-  .btn-pay { width: 100%; }
-}
-
-/* ===== Card único e steps ===== */
-.app-card{
-  max-width: 1000px;
-  margin: 2rem auto;
-  background: #fff;
-  padding: 1.25rem 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,.06);
-}
-
-.step-title{ margin: 0 0 .75rem; }
-
-.grid-2{
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 12px 16px;
-}
-.grid-2 .form-row{ margin: 0; }
-
-.actions{
-  margin-top: .75rem;
-  display: flex;
-  gap: 10px;
-  justify-content: flex-start;
-}
-
-.mute{ color: #666; }
-
-@media (max-width: 720px){
-  .grid-2{ grid-template-columns: 1fr; }
-}
-
-/* ===== Lista de horários reaproveita suas classes ===== */
-#schedule-list{
-  display: grid;
-  gap: 10px;
-}
-
-/* ===== Container do mapa (renderizado via seats.js) ===== */
-#seats-container{
-  display: block;
-}
-
-/* Botões padrão já existem no seu CSS; usamos .btn/.btn-primary/.btn-ghost */
-
-/* ===== Ônibus com poltronas dentro da imagem ===== */
-.bus-wrap{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:10px;
-}
-
-.bus-bg{
-  position: relative;
-  width: 560px;   /* largura do card do ônibus */
-  height: 180px;  /* altura do card do ônibus */
-  margin: 0 auto;
-  background: url('bus-layout.png') no-repeat center;
-  background-size: contain;
-}
-
-/* grade “invisível” posicionada por cima da imagem do ônibus */
-.seat-grid{
-  position: absolute;
-  /* ↙ ajuste fino para encaixar a grade dentro da carroceria */
-  top: 22px;      /* ↓ mova pra baixo ou pra cima se precisar */
-  left: 175px;    /* → mova pra direita/esquerda se precisar */
-  width: 335px;   /* largura útil da grade de poltronas */
-  height: 110px;  /* altura útil da grade de poltronas */
-  display: grid;
-  grid-template-columns: repeat(11, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-  gap: 4px;
-}
-
-/* estado visual das poltronas (mantém sua identidade) */
-.seat{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size: 12px;
-  line-height: 1;
-  border-radius: 3px;
-  background: #dff0d8;           /* disponível */
-  border: 1px solid #c6dfbf;
-  cursor: pointer;
-  user-select: none;
-}
-
-.seat.selected{
-  background:#b7d7b1;            /* selecionado */
-  border-color:#7fb176;
-}
-
-.seat.occupied,
-.seat[aria-disabled="true"]{
-  background:#cfd8dc;            /* indisponível/bloqueada */
-  color:#6b6b6b;
-  border-color:#b0bec5;
-  cursor:not-allowed;
-}
-
-.walkway{ visibility:hidden; }
-
-/* mini-legenda (Disponível/Selecionado/Ocupado) */
-.legend{
-  display:flex;
-  gap:16px;
-  align-items:center;
-  font-size: 12px;
-  color:#444;
-}
-.legend .dot{
-  display:inline-block;
-  width:14px;height:10px;
-  border:1px solid #c6dfbf;
-  background:#dff0d8;
-  vertical-align:middle;
-  margin-right:6px;
-}
-.legend .sel{ background:#b7d7b1; border-color:#7fb176; }
-.legend .occ{ background:#cfd8dc; border-color:#b0bec5; }
-
-/* ===== Layout duas colunas (sidebar fixa + conteúdo) ===== */
+/* ===== Layout (apenas 2 cards) ===== */
 .two-cols{
   max-width: 1200px;
   margin: 24px auto;
@@ -484,82 +12,67 @@ button:hover {
   gap: 24px;
   align-items: start;
 }
-
 .search-card{
-  position: sticky;
-  top: 24px;             /* fixa durante o scroll */
-  background: #fff;
-  padding: 16px 18px;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  position: sticky; top: 24px;
+  background:#fff; padding:16px 18px;
+  border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.06);
 }
-
 .content-card{
-  background: #fff;
-  padding: 16px 18px;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,.06);
-  min-height: 300px;
+  background:#fff; padding:16px 18px; min-height:320px;
+  border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.06);
 }
+.step-title{margin:0 0 .75rem}
+.form-vert .form-row{margin-bottom:10px}
+.form-vert input{width:100%}
+.actions{margin-top:.75rem;display:flex;gap:10px}
 
-.form-vert .form-row{ margin-bottom: 10px; }
-.form-vert input{ width: 100%; }
+/* ===== Botões ===== */
+.btn{border:none;border-radius:4px;font-size:1rem;line-height:1;padding:.9rem 1.2rem;cursor:pointer}
+.btn-primary{background:#005b28;color:#fff}.btn-primary:hover{background:#007a3b}
+.btn-ghost{background:#e9ecef;color:#222}.btn-ghost:hover{background:#dfe3e6}
 
-.panel + .panel{ margin-top: 8px; }
-
-#schedule-list{ display: grid; gap: 10px; }
-.mute{ color:#666; }
-
-/* ===== Mapa dentro do ônibus usando bus-blank.png ===== */
-.bus-wrap{
-  display:flex; flex-direction:column; align-items:center; gap:10px;
+/* ===== Lista de viagens ===== */
+#schedule-list{display:grid;gap:10px;margin-top:8px}
+.mute{color:#666}
+.schedule-card{
+  --padY:12px;--padX:14px;--rowGap:6px;--inlineGap:12px;
+  background:#fff;border:1px solid #ced6de;border-radius:12px;
+  padding:var(--padY) var(--padX);
+  display:grid;grid-template-columns:1fr 160px;grid-template-rows:auto auto;
+  grid-template-areas:"header actions" "body actions";
+  align-items:center;row-gap:var(--rowGap);
+  transition:box-shadow .15s ease,border-color .15s ease
 }
+.schedule-card:hover{border-color:#9fb3c8;box-shadow:0 6px 16px rgba(0,0,0,.08)}
+.schedule-header,.schedule-body{display:flex;gap:var(--inlineGap);flex-wrap:wrap;align-items:baseline;font-size:15px;line-height:1.8}
+.schedule-header{grid-area:header}.schedule-body{grid-area:body}.schedule-header b{font-weight:700}
+.schedule-actions{grid-area:actions;display:flex;align-items:center;justify-content:flex-end;padding-left:10px}
+.select-btn{min-width:130px;height:36px}
 
-.bus-bg{
-  position: relative;
-  width: 560px;
-  height: 180px;
-  margin: 0 auto;
-  background: url('bus-blank.png') no-repeat center; /* usa bus-blank.png */
-  background-size: contain;
-}
+/* ===== Mapa de poltronas sobre a imagem (bus-blank.png) ===== */
+.bus-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+.bus-bg{position:relative;width:560px;height:180px;margin:0 auto;background:url('bus-blank.png') no-repeat center;background-size:contain}
+.seat-grid{position:absolute;top:22px;left:175px;width:335px;height:110px;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(5,1fr);gap:4px}
+.seat{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;border-radius:3px;background:#dff0d8;border:1px solid #c6dfbf;cursor:pointer;user-select:none}
+.seat.selected{background:#b7d7b1;border-color:#7fb176}
+.seat.occupied,.seat[aria-disabled="true"]{background:#cfd8dc;color:#6b6b6b;border-color:#b0bec5;cursor:not-allowed}
+.walkway{visibility:hidden}
+.legend{display:flex;gap:16px;align-items:center;font-size:12px;color:#444}
+.legend .dot{display:inline-block;width:14px;height:10px;border:1px solid #c6dfbf;background:#dff0d8;margin-right:6px}
+.legend .sel{background:#b7d7b1;border-color:#7fb176}.legend .occ{background:#cfd8dc;border-color:#b0bec5}
 
-/* Grade de poltronas sobre a imagem */
-.seat-grid{
-  position: absolute;
-  top: 22px;          /* ajuste fino */
-  left: 175px;
-  width: 335px;
-  height: 110px;
-  display: grid;
-  grid-template-columns: repeat(11, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-  gap: 4px;
-}
+/* ===== Passageiros ===== */
+.passenger-container{margin-top:12px}
+.passenger-row{display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:nowrap;width:100%}
+.seat-label{font-weight:700;margin-right:.5rem;min-width:60px}
+.passenger-row input{padding:.45rem .55rem;border:1px solid #ccc;border-radius:4px;font-size:.95rem;min-width:0}
+.passenger-row input[name="name"]{flex:2 1 0}
+.passenger-row input[name="cpf"],.passenger-row input[name="phone"]{flex:1 1 0}
 
-.seat{
-  display:flex; align-items:center; justify-content:center;
-  font-size: 12px; line-height: 1;
-  border-radius: 3px;
-  background: #dff0d8;
-  border: 1px solid #c6dfbf;
-  cursor: pointer; user-select:none;
-}
-.seat.selected{ background:#b7d7b1; border-color:#7fb176; }
-.seat.occupied,
-.seat[aria-disabled="true"]{ background:#cfd8dc; color:#6b6b6b; border-color:#b0bec5; cursor:not-allowed; }
-.walkway{ visibility:hidden; }
-
-.legend{ display:flex; gap:16px; align-items:center; font-size:12px; color:#444; }
-.legend .dot{ display:inline-block; width:14px; height:10px; border:1px solid #c6dfbf; background:#dff0d8; margin-right:6px; }
-.legend .sel{ background:#b7d7b1; border-color:#7fb176; }
-.legend .occ{ background:#cfd8dc; border-color:#b0bec5; }
-
+/* ===== Responsivo ===== */
 @media (max-width: 960px){
-  .two-cols{ grid-template-columns: 1fr; }
-  .search-card{ position: static; }
-  .bus-bg{ width: 100%; height: 200px; }
-  .seat-grid{ left: 50%; transform: translateX(-50%); width: 60%; }
+  .two-cols{grid-template-columns:1fr}
+  .search-card{position:static}
+  .bus-bg{width:100%;height:200px}
+  .seat-grid{left:50%;transform:translateX(-50%);width:60%}
 }
-
-
