@@ -62,12 +62,12 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 .bus-bg{position:relative;width:620px;height:200px;margin:0 auto;background:url('bus-blank.png') no-repeat center;background-size:contain}
 .seat-grid{position:absolute;top:26px;left:190px;width:370px;height:122px;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(5,1fr);gap:4px}
 .seat{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;border-radius:3px;background:#dff0d8;border:1px solid #c6dfbf;cursor:pointer;user-select:none}
-.seat.selected{background:#005b28;border-color:#005b28}
+.seat.selected{background:#005b28;border-color:#b0bec5}
 .seat.occupied,.seat[aria-disabled="true"]{background:#cfd8dc;color:#6b6b6b;border-color:#b0bec5;cursor:not-allowed}
 .walkway{visibility:hidden}
 .legend{display:flex;gap:16px;align-items:center;font-size:12px;color:#444}
 .legend .dot{display:inline-block;width:14px;height:10px;border:1px solid #c6dfbf;background:#dff0d8;margin-right:6px}
-.legend .sel{background:#b7d7b1;border-color:#7fb176}.legend .occ{background:#cfd8dc;border-color:#b0bec5}
+.legend .sel{background:#e9ecef;border-color:#7fb176}.legend .occ{background:#cfd8dc;border-color:#b0bec5}
 
 /* ===== Passageiros ===== */
 .passenger-container{margin-top:12px}
