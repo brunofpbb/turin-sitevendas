@@ -1,44 +1,50 @@
 /* ===== Base ===== */
-body{font-family:Arial,sans-serif;margin:0;color:#333;background:#f5f5f5}
-header{background:#005b28;color:#fff;padding:1rem;text-align:center}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#333;background:#f4f5f7}
+header{background:#005b28;color:#fff;padding:18px 12px;text-align:center}
 nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 
 /* ===== Layout (apenas 2 cards) ===== */
 .two-cols{
-  max-width: 1200px;
-  margin: 24px auto;
+  max-width: 1360px;
+  margin: 22px auto;                 /* centraliza o conjunto */
+  padding: 0 18px;                   /* respiro horizontal */
   display: grid;
-  grid-template-columns: 330px 1fr;
-  gap: 24px;
+  grid-template-columns: 360px minmax(0, 1fr);  /* lateral + central largo */
+  gap: 26px;
   align-items: start;
 }
 .search-card{
-  position: sticky; top: 24px;
+  position: sticky; top: 22px;       /* fixa no scroll */
   background:#fff; padding:16px 18px;
   border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.06);
+  min-height: 420px;                 /* mais alto */
 }
 .content-card{
-  background:#fff; padding:16px 18px; min-height:320px;
+  background:#fff; padding:16px 18px; min-height:420px;
   border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.06);
 }
+
+/* ===== Form ===== */
 .step-title{margin:0 0 .75rem}
 .form-vert .form-row{margin-bottom:10px}
 .form-vert input{width:100%}
 .actions{margin-top:.75rem;display:flex;gap:10px}
 
 /* ===== Botões ===== */
-.btn{border:none;border-radius:4px;font-size:1rem;line-height:1;padding:.9rem 1.2rem;cursor:pointer}
-.btn-primary{background:#005b28;color:#fff}.btn-primary:hover{background:#007a3b}
+.btn{border:none;border-radius:6px;font-size:1rem;line-height:1;padding:.8rem 1.1rem;cursor:pointer}
+.btn-primary{background:#005b28;color:#fff}.btn-primary:hover{background:#00743a}
 .btn-ghost{background:#e9ecef;color:#222}.btn-ghost:hover{background:#dfe3e6}
 
 /* ===== Lista de viagens ===== */
-#schedule-list{display:grid;gap:10px;margin-top:8px}
+#schedule-list{display:grid;gap:12px;margin-top:6px}
 .mute{color:#666}
 .schedule-card{
   --padY:12px;--padX:14px;--rowGap:6px;--inlineGap:12px;
   background:#fff;border:1px solid #ced6de;border-radius:12px;
   padding:var(--padY) var(--padX);
-  display:grid;grid-template-columns:1fr 160px;grid-template-rows:auto auto;
+  display:grid;grid-template-columns:1fr 170px;grid-template-rows:auto auto;
   grid-template-areas:"header actions" "body actions";
   align-items:center;row-gap:var(--rowGap);
   transition:box-shadow .15s ease,border-color .15s ease
@@ -47,12 +53,12 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 .schedule-header,.schedule-body{display:flex;gap:var(--inlineGap);flex-wrap:wrap;align-items:baseline;font-size:15px;line-height:1.8}
 .schedule-header{grid-area:header}.schedule-body{grid-area:body}.schedule-header b{font-weight:700}
 .schedule-actions{grid-area:actions;display:flex;align-items:center;justify-content:flex-end;padding-left:10px}
-.select-btn{min-width:130px;height:36px}
+.select-btn{min-width:140px;height:38px}
 
-/* ===== Mapa de poltronas sobre a imagem (bus-blank.png) ===== */
+/* ===== Mapa de poltronas sobre imagem bus-blank.png ===== */
 .bus-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
-.bus-bg{position:relative;width:560px;height:180px;margin:0 auto;background:url('bus-blank.png') no-repeat center;background-size:contain}
-.seat-grid{position:absolute;top:22px;left:175px;width:335px;height:110px;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(5,1fr);gap:4px}
+.bus-bg{position:relative;width:620px;height:200px;margin:0 auto;background:url('bus-blank.png') no-repeat center;background-size:contain}
+.seat-grid{position:absolute;top:26px;left:190px;width:370px;height:122px;display:grid;grid-template-columns:repeat(11,1fr);grid-template-rows:repeat(5,1fr);gap:4px}
 .seat{display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;border-radius:3px;background:#dff0d8;border:1px solid #c6dfbf;cursor:pointer;user-select:none}
 .seat.selected{background:#b7d7b1;border-color:#7fb176}
 .seat.occupied,.seat[aria-disabled="true"]{background:#cfd8dc;color:#6b6b6b;border-color:#b0bec5;cursor:not-allowed}
@@ -70,9 +76,10 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 .passenger-row input[name="cpf"],.passenger-row input[name="phone"]{flex:1 1 0}
 
 /* ===== Responsivo ===== */
-@media (max-width: 960px){
+@media (max-width: 1024px){
   .two-cols{grid-template-columns:1fr}
   .search-card{position:static}
-  .bus-bg{width:100%;height:200px}
-  .seat-grid{left:50%;transform:translateX(-50%);width:60%}
+  .content-card{min-height:380px}
+  .bus-bg{width:100%;height:210px}
+  .seat-grid{left:50%;transform:translateX(-50%);width:64%}
 }
