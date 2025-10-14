@@ -3,24 +3,27 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+const nodemailer = require('nodemailer');
 
 const app = express();
+const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
+const PORT = process.env.PORT || 8080;
 
-// ----------- Segurança mínima / CSP p/ Bricks -----------
+/* =================== CSP pró-Bricks (válido p/ todo o site) =================== */
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      // SDK/Bricks usam inline + new Function
+      // SDK/Bricks usam inline e eval
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // XHR/fetch (inclui mlstatic e api-static + todos os *.mercadolibre/mercadolivre)
+      // chamadas XHR/fetch
       "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com https://api-static.mercadopago.com https://api.mercadolibre.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      // imagens (QR base64 + assets mlstatic + domínios ML BR/Global)
+      // imagens (inclusive base64 do QR)
       "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      // iframes necessários (wallet + secure-fields + possíveis páginas ML)
+      // iframes usados pelo Brick
       "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      // (opcional) compat: alguns navegadores antigos ainda olham child-src
       "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
       // estilos e fontes
       "style-src 'self' 'unsafe-inline'",
@@ -30,18 +33,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// ----------- Body parser -----------
+/* =================== Middlewares =================== */
 app.use(express.json());
+app.use(express.static(PUBLIC_DIR));
 
-// ----------- Arquivos estáticos -----------
-app.use(express.static(path.join(__dirname, 'sitevendas')));
-
-// ----------- Rotas MP -----------
-const mpRoutes = require('./mpRoutes'); // <- este arquivo fica na RAIZ junto com server.js
+/* =================== Rotas Mercado Pago =================== */
+const mpRoutes = require('./mpRoutes');
 app.use('/api/mp', mpRoutes);
 
-// ----------- Diagnóstico simples -----------
-app.get('/api/_diag', (req, res) => {
+// diagnóstico rápido
+app.get('/api/_diag', (_req, res) => {
   const at = process.env.MP_ACCESS_TOKEN || '';
   res.json({
     has_access_token: Boolean(at),
@@ -50,26 +51,7 @@ app.get('/api/_diag', (req, res) => {
   });
 });
 
-// ----------- SPA fallback p/ arquivos .html -----------
-app.get('*', (req, res, next) => {
-  // entrega /payment.html, /index.html etc. direto da pasta
-  if (req.path.endsWith('.html')) {
-    return res.sendFile(path.join(__dirname, 'sitevendas', req.path));
-  }
-  next();
-});
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`[server] rodando em http://localhost:${PORT}`);
-});
-
-
-
-
-
-
-/* =================== SMTP / Brevo (como estava) =================== */
+/* =================== SMTP / Brevo (envio código login) =================== */
 function createSSL() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
@@ -120,37 +102,16 @@ async function ensureTransport() {
   }
   return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
 }
-
-app.get('/api/auth/_debug-smtp', async (_req, res) => {
-  const sslT = createSSL();
-  const stT  = createSTARTTLS();
-  const [sslRes, stRes] = await Promise.all([
-    sslT ? verifyWithTimeout(sslT) : Promise.resolve({ ok: false, error: 'vars faltando (SSL)' }),
-    stT  ? verifyWithTimeout(stT)  : Promise.resolve({ ok: false, error: 'vars faltando (STARTTLS)' }),
-  ]);
-  res.json({
-    host: process.env.SMTP_HOST || null,
-    user: !!process.env.SMTP_USER,
-    ssl: sslRes,
-    starttls: stRes,
-  });
-});
-
 async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName }) {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'api-key': apiKey,
-    },
+    headers: { 'content-type': 'application/json', 'api-key': apiKey },
     body: JSON.stringify({
       sender: { email: fromEmail, name: fromName },
       to: [{ email: to }],
-      subject,
-      htmlContent: html,
-      textContent: text,
+      subject, htmlContent: html, textContent: text,
     }),
   });
   if (!resp.ok) {
@@ -160,26 +121,13 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName })
   return resp.json();
 }
 
-app.get('/api/auth/_debug-brevo', async (_req, res) => {
-  try {
-    const r = await fetch('https://api.brevo.com/v3/account', {
-      headers: { 'api-key': process.env.BREVO_API_KEY || '' },
-    });
-    const j = await r.json().catch(() => ({}));
-    res.json({ ok: r.ok, status: r.status, company: j.companyName || null, plan: j.planType || null });
-  } catch (e) {
-    res.json({ ok: false, error: e.message });
-  }
-});
-
-/* =================== Auth: códigos por e-mail (como estava) =================== */
+/* =================== Auth: códigos por e-mail =================== */
 const codes = new Map();
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 6;
-
 const genCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 const normalizeEmail = e => String(e || '').trim().toLowerCase();
-console.log(genCode);
+
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of codes.entries()) if (v.expiresAt <= now) codes.delete(k);
@@ -211,7 +159,6 @@ app.post('/api/auth/request-code', async (req, res) => {
     `;
     const text = `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`;
 
-    let via;
     try {
       const got = await ensureTransport();
       if (!got.transporter) throw new Error('smtp-indisponivel');
@@ -220,17 +167,15 @@ app.post('/api/auth/request-code', async (req, res) => {
         subject: `Seu código de acesso (${appName})`,
         html, text,
       });
-      via = got.mode || 'SMTP';
     } catch {
       await sendViaBrevoApi({ to: email, subject: `Seu código de acesso (${appName})`, html, text, fromEmail, fromName });
-      via = 'Brevo API';
     }
 
     const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
-    return res.json({ ok: true, message: `Código enviado via ${via}.`, ...devPayload });
+    return res.json({ ok: true, message: 'Código enviado.', ...devPayload });
 
   } catch (err) {
-    console.error('Erro ao preparar/envio do e-mail:', err?.message || err);
+    console.error('Erro ao enviar e-mail:', err?.message || err);
     return res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
   }
 });
@@ -242,8 +187,8 @@ app.post('/api/auth/verify-code', (req, res) => {
 
   const entry = codes.get(email);
   if (!entry) return res.status(400).json({ ok: false, error: 'Solicite um novo código.' });
-  if (entry.expiresAt < Date.now()) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Código expirado. Solicite outro.' }); }
-  if (entry.attempts >= MAX_ATTEMPTS) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Muitas tentativas. Solicite outro código.' }); }
+  if (entry.expiresAt < Date.now()) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Código expirado.' }); }
+  if (entry.attempts >= MAX_ATTEMPTS) { codes.delete(email); return res.status(400).json({ ok: false, error: 'Muitas tentativas.' }); }
 
   entry.attempts += 1;
   if (entry.code !== code) return res.status(400).json({ ok: false, error: 'Código incorreto.' });
@@ -253,14 +198,13 @@ app.post('/api/auth/verify-code', (req, res) => {
   res.json({ ok: true, user });
 });
 
-/* =================== Praxio (como estava) =================== */
+/* =================== Praxio =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
 
     const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         Nome: process.env.PRAXIO_USER,
         Senha: process.env.PRAXIO_PASS,
@@ -274,8 +218,7 @@ app.post('/api/partidas', async (req, res) => {
     const loginData = await loginResp.json();
 
     const partResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         IdSessaoOp: loginData.IdSessaoOp,
         LocalidadeOrigem: origemId,
@@ -302,8 +245,7 @@ app.post('/api/poltronas', async (req, res) => {
     const { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino } = req.body;
 
     const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         Nome: process.env.PRAXIO_USER,
         Senha: process.env.PRAXIO_PASS,
@@ -317,8 +259,7 @@ app.post('/api/poltronas', async (req, res) => {
     const loginData = await loginResp.json();
 
     const seatResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         IdSessaoOp: loginData.IdSessaoOp,
         IdViagem: idViagem,
@@ -336,17 +277,14 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
-/* =================== SPA fallback (deixa por último!) =================== */
-app.get('*', (_req, res) => {
-  const indexPath = fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))
-    ? path.join(PUBLIC_DIR, 'index.html')
-    : path.join(__dirname, 'index.html');
-  res.sendFile(indexPath);
+/* =================== Fallback p/ .html direto da pasta =================== */
+app.get('*', (req, res, next) => {
+  if (req.path.endsWith('.html')) {
+    return res.sendFile(path.join(PUBLIC_DIR, req.path));
+  }
+  next();
 });
 
-/* =================== Start =================== */
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor rodando na porta ${PORT} | publicDir: ${PUBLIC_DIR}`);
+  console.log(`[server] rodando em http://localhost:${PORT} | publicDir: ${PUBLIC_DIR}`);
 });
-process.on('unhandledRejection', r => console.error('UnhandledRejection:', r));
-process.on('uncaughtException', e => console.error('UncaughtException:', e));
