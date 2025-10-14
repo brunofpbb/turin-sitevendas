@@ -243,7 +243,7 @@ const MAX_ATTEMPTS = 6;
 
 const genCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 const normalizeEmail = e => String(e || '').trim().toLowerCase();
-
+console.log(genCode);
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of codes.entries()) if (v.expiresAt <= now) codes.delete(k);
