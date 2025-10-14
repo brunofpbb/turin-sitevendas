@@ -2,6 +2,7 @@
 // Usa bus-blank.png como fundo e a matriz 1..42 (1 e 2 bloqueadas)
 // Assinatura: window.renderSeats(container, schedule, onConfirm)
 
+
 (function(){
   function renderSeats(container, schedule, onConfirm){
     container.innerHTML = '';
