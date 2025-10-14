@@ -7,14 +7,16 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 
 /* ===== Layout (apenas 2 cards) ===== */
 .two-cols{
-  max-width: 1360px;
-  margin: 22px auto;                 /* centraliza o conjunto */
-  padding: 0 18px;                   /* respiro horizontal */
+  width: 100%;
+  max-width: none;
+  margin: 22px 0 0 0;
+  padding: 0;                 /* sem respiro */
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);  /* lateral + central largo */
+  grid-template-columns: 360px minmax(0, 1fr);
   gap: 26px;
   align-items: start;
 }
+
 .search-card{
   position: sticky; top: 22px;       /* fixa no scroll */
   background:#fff; padding:16px 18px;
