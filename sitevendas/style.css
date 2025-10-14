@@ -350,3 +350,49 @@ button:hover {
   .pay-actions { flex-direction: column; }
   .btn-pay { width: 100%; }
 }
+
+/* ===== Card único e steps ===== */
+.app-card{
+  max-width: 1000px;
+  margin: 2rem auto;
+  background: #fff;
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+}
+
+.step-title{ margin: 0 0 .75rem; }
+
+.grid-2{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px 16px;
+}
+.grid-2 .form-row{ margin: 0; }
+
+.actions{
+  margin-top: .75rem;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+.mute{ color: #666; }
+
+@media (max-width: 720px){
+  .grid-2{ grid-template-columns: 1fr; }
+}
+
+/* ===== Lista de horários reaproveita suas classes ===== */
+#schedule-list{
+  display: grid;
+  gap: 10px;
+}
+
+/* ===== Container do mapa (renderizado via seats.js) ===== */
+#seats-container{
+  display: block;
+}
+
+/* Botões padrão já existem no seu CSS; usamos .btn/.btn-primary/.btn-ghost */
+
