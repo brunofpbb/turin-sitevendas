@@ -121,7 +121,7 @@ const settings = {
           transaction_amount: amount,
           description: 'Compra Turin Transportes',
           payer: {
-            email: formData?.payer?.email || user.email || '',
+            email: "teste@teste.com" /*formData?.payer?.email || user.email || ''*/,
             identification: formData?.payer?.identification ? {
               type: formData.payer.identification.type,
               number: String(formData.payer.identification.number || '').replace(/\D/g, '')
