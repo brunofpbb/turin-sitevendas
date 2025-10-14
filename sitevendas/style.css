@@ -108,3 +108,27 @@ footer{
   width: 520px; background:#fff; padding:16px 18px; border-radius:12px;
   box-shadow:0 2px 10px rgba(0,0,0,.06);
 }
+
+/* ===== Payment layout ===== */
+.two-cols-pay{
+  width:100%; max-width:none; margin:22px 0; padding:0 24px;
+  display:grid; grid-template-columns: 360px minmax(780px, 980px) 1fr;
+  gap:26px; align-items:start;
+}
+.summary-card{
+  position:sticky; top:22px; background:#fff; padding:16px 18px;
+  border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+#summary-body{ display:grid; gap:8px; margin:8px 0 14px; }
+.summary-line{ display:flex; justify-content:space-between; gap:10px; }
+.summary-total{
+  margin-top:6px; padding:12px 14px; border-radius:10px;
+  background:#f0f8f2; border:1px solid #cfe5d5;
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:1.05rem;
+}
+.summary-total strong{ font-size:1.25rem; color:#005b28; }
+@media (max-width: 1024px){
+  .two-cols-pay{ grid-template-columns:1fr; padding:0 16px; }
+  .summary-card{ position:static; }
+}
