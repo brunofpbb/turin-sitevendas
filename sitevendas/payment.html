@@ -32,19 +32,32 @@
     <nav id="user-nav"></nav>
   </header>
 
-  <main>
-    <h2>Resumo do Pedido</h2>
-    <div id="order-summary"></div>
-
-    <h3>Informações de Pagamento</h3>
-    <p>Pagamento seguro via Checkout API do Mercado Pago (Checkout Bricks). Aceitamos crédito, débito e Pix.</p>
-
-    <div id="payment-brick-container"></div>
-
-    <div style="margin-top:12px">
-      <button type="button" class="btn btn-ghost" onclick="location.href='profile.html'">Cancelar</button>
+<main class="two-cols-pay">
+  <!-- Card lateral fixo: Resumo -->
+  <aside class="summary-card" id="summary-card">
+    <h2 class="step-title">Resumo do Pedido</h2>
+    <div id="summary-body">
+      <!-- preenchido pelo payment.js -->
     </div>
-  </main>
+    <div class="summary-total">
+      <span>Total</span>
+      <strong id="summary-total">R$ 0,00</strong>
+    </div>
+    <div class="actions">
+      <button id="btn-cancel" class="btn btn-ghost">Cancelar</button>
+    </div>
+  </aside>
+
+  <!-- Card central: Bricks -->
+  <section class="content-card" id="bricks-card">
+    <h2 class="step-title">Informações de Pagamento</h2>
+    <p class="mute">Pagamento seguro via Checkout API do Mercado Pago (Bricks).</p>
+    <div id="payment-bricks" style="margin-top:12px;">
+      <!-- o Bricks entra aqui -->
+    </div>
+  </section>
+</main>
+
 
   <footer>
     <p>&copy; 2025 Turin Transportes</p>
