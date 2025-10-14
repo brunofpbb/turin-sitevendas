@@ -1,8 +1,8 @@
-// main.js (sem imports) – sidebar fixa + card central dinâmico
+// main.js — sidebar fixa + card central dinâmico + integração seats.js com coletor
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
 
-  // ===== Localidades (iguais às suas)
+  // ===== Localidades (lista usada no autocomplete)
   const localities = [
     { id: 2,  descricao: 'Ouro Branco' },
     { id: 6,  descricao: 'Ouro Preto E/S' },
@@ -85,15 +85,22 @@ document.addEventListener('DOMContentLoaded', () => {
     state.leg = 'IDA';
     state.selected = [];
     state.search = { originId:o.id, originName:o.descricao, destinationId:d.id, destinationName:d.descricao, date };
-    state.searchReturn = retInput.value ? { originId:d.id, originName:d.descricao, destinationId:o.id, destinationName:o.descricao, date: retInput.value } : null;
+    state.searchReturn = retInput.value
+      ? { originId:d.id, originName:d.descricao, destinationId:o.id, destinationName:o.descricao, date: retInput.value }
+      : null;
 
+    // lista de IDA
     renderList(state.search, 'Viagens disponíveis (ida)', (schedule)=>{
+      // guarda o horário escolhido
       state.selected = state.selected.filter(s => s.leg !== 'IDA');
       state.selected.push({ leg:'IDA', schedule });
-      renderSeatsPanel(schedule, 'Escolha suas poltronas (ida)', ()=> {
-        // voltar para lista da ida
+
+      // abre poltronas da IDA
+      renderSeatsPanel(schedule, 'Escolha suas poltronas (ida)', ()=>{
+        // voltar pra lista da ida
         renderList(state.search, 'Viagens disponíveis (ida)', onSelectIda);
       });
+
       function onSelectIda(s2){
         state.selected = state.selected.filter(s => s.leg !== 'IDA');
         state.selected.push({ leg:'IDA', schedule:s2 });
@@ -102,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // ====== Render do PAINEL LISTA (usa sua lógica que já funcionava)
+  // ===== Render lista de horários
   function renderList(params, legend, onSelect){
     content.innerHTML = `
       <h2 class="step-title">${legend}</h2>
@@ -230,29 +237,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ====== Render do PAINEL DE POLTRONAS
+  // ===== Painel de poltronas (usa o coletor do seats.js)
   function renderSeatsPanel(schedule, legend, onBack){
     content.innerHTML = `
       <h2 class="step-title">${legend}</h2>
       <div id="seats-container"></div>
-      <div class="actions"><button id="btn-back" class="btn btn-ghost">Voltar</button></div>
+      <div class="actions">
+        <button id="btn-back" class="btn btn-ghost">Voltar</button>
+        <button id="btn-confirm" class="btn btn-primary">Confirmar seleção</button>
+      </div>
     `;
     const sc = $('#seats-container');
     const back = $('#btn-back');
+    const confirm = $('#btn-confirm');
     back.onclick = onBack;
 
-    // usa a função global window.renderSeats (seu seats.js atual pode expô-la)
     if (typeof window.renderSeats !== 'function'){
-      sc.innerHTML = '<p class="mute">Componente de poltronas não carregado. Substitua seu <code>seats.js</code> para expor <b>window.renderSeats</b>.</p>';
+      sc.innerHTML = '<p class="mute">Componente de poltronas não carregado. Atualize o <code>seats.js</code> para expor <b>window.renderSeats</b>.</p>';
       return;
     }
 
-    window.renderSeats(sc, schedule, (payload)=>{
-      // salva ida/volta e finaliza (mesmo fluxo de antes)
+    // desenha o mapa (o próprio seats.js mantém os dados digitados)
+    window.renderSeats(sc, schedule, ()=>{});
+
+    // confirma usando o coletor exposto pelo seats.js
+    confirm.onclick = ()=>{
+      const collect = sc.__sv_collect && sc.__sv_collect();
+      if (!collect || !collect.ok) { alert(collect?.error || 'Selecione poltrona(s) e preencha os dados.'); return; }
+
+      const payload = collect.payload;
       const legLabel = state.leg;
       const idx = state.selected.findIndex(s => s.leg === legLabel);
       if (idx >= 0) state.selected[idx] = { ...payload, leg: legLabel };
+      else state.selected.push({ ...payload, leg: legLabel });
 
+      // Se existe volta, passa para a volta
       if (legLabel === 'IDA' && state.searchReturn){
         state.leg = 'VOLTA';
         renderList(state.searchReturn, 'Viagens disponíveis (volta)', (schedule2)=>{
@@ -269,15 +288,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // fim → pagamento
+      // Fim do fluxo → pagamento
       const user = JSON.parse(localStorage.getItem('user') || 'null');
-      const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+
+      // compõe legs para salvar (ida e possivelmente volta)
       const toSave = state.selected.map(s => ({
         id: Date.now() + Math.floor(Math.random()*1000),
         schedule: s.schedule,
         seats: s.seats,
         passengers: s.passengers,
-        price: (Number(s.schedule.price)||0) * s.seats.length,
+        price: (Number(String(s.schedule.price).replace(',', '.'))||0) * (s.seats?.length||0),
         date: s.schedule.date,
         paid: false
       }));
@@ -286,40 +306,4 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('pendingPurchase', JSON.stringify({ legs: toSave }));
         localStorage.setItem('postLoginRedirect', 'payment.html');
         location.href = 'login.html';
-        return;
-      }
-
-      localStorage.setItem('bookings', JSON.stringify([...bookings, ...toSave]));
-      localStorage.removeItem('pendingPurchase');
-      location.href = 'payment.html';
-    });
-  }
-
-  // ===== Util
-  function clearCentral(){ content.innerHTML = ''; }
-});
-
-/* ===== Nav usuário (igual ao seu) ===== */
-function updateUserNav(){
-  const nav = document.getElementById('user-nav');
-  if (!nav) return;
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  nav.innerHTML = '';
-  if (user){
-    const a = document.createElement('a'); a.href='profile.html';
-    a.textContent = `Minhas viagens (${user.name || user.email})`;
-    nav.appendChild(a);
-
-    const s = document.createElement('a'); s.href='#'; s.style.marginLeft='12px'; s.textContent='Sair';
-    s.addEventListener('click', ()=>{ localStorage.removeItem('user'); updateUserNav(); location.href='index.html'; });
-    nav.appendChild(s);
-  } else {
-    const a = document.createElement('a'); a.href='login.html'; a.textContent='Entrar';
-    a.addEventListener('click', ()=>{
-      const href = location.href;
-      const path = href.substring(href.lastIndexOf('/') + 1);
-      localStorage.setItem('postLoginRedirect', path);
-    });
-    nav.appendChild(a);
-  }
-}
+        return
