@@ -1,141 +1,222 @@
-// main.js - inicializa navegação e lida com pesquisa de viagens
-document.addEventListener('DOMContentLoaded', () => {
-  // Atualiza o menu do usuário (login/logout)
-  updateUserNav();
+// main.js (módulo) – Orquestra busca → lista (ida/volta) → poltronas (ida/volta)
+import { renderSchedules } from './schedules.js';
+import { renderSeats } from './seats.js';
 
-  // Lista de localidades (id e descrição) que servirão para as sugestões.
-  // Essa lista foi extraída a partir da planilha fornecida pelo usuário e
-  // representa um sentido da linha. Caso existam outras localidades, basta
-  // adicionar novos objetos ao array.
-  const localities = [
-    { id: 2, descricao: 'Ouro Branco' },
-    { id: 6, descricao: 'Ouro Preto E/S' },
-    { id: 24, descricao: 'Mariana' },
-    { id: 23, descricao: 'Antonio Pereira – Ouro Preto E/S' },
-    { id: 21, descricao: 'Mina Alegria' },
-    { id: 20, descricao: 'Catas Altas E/S - Rua Felicio Alve' },
-    { id: 19, descricao: 'Santa Bárbara E/S' },
-    { id: 22, descricao: 'Cocais-Barão de Cocais' },
-    { id: 26, descricao: 'Barão de Cocais E/S' },
-    { id: 17, descricao: 'BR381/BR129–São Goncalo do R' },
-    { id: 16, descricao: 'Joao Monlevade - Graal 5 Estrela' },
-    { id: 28, descricao: 'BR381/AC.Nova Era–Nova Era' },
-    { id: 15, descricao: 'Timoteo' },
-    { id: 14, descricao: 'Coronel Fabriciano' },
-    { id: 12, descricao: 'Ipatinga' }
-  ];
-
-  // Referências aos inputs e listas de sugestões
-  const originInput = document.getElementById('origin');
-  const destInput = document.getElementById('destination');
-  const originList = document.getElementById('origin-suggestions');
-  const destList = document.getElementById('destination-suggestions');
-
-  /**
-   * Atualiza a lista de opções de um datalist de acordo com o texto digitado.
-   * @param {HTMLInputElement} input Campo de texto que dispara a atualização
-   * @param {HTMLDataListElement} datalist Lista de opções associada ao campo
-   */
-  function updateSuggestions(input, datalist) {
-    const search = input.value.toLowerCase();
-    // Remove todas as opções atuais
-    datalist.innerHTML = '';
-    if (!search) return;
-    // Filtra localidades que começam com o texto digitado
-    const filtered = localities.filter(loc => loc.descricao.toLowerCase().startsWith(search));
-    filtered.forEach(loc => {
-      const option = document.createElement('option');
-      option.value = loc.descricao;
-      option.dataset.id = loc.id;
-      datalist.appendChild(option);
-    });
-  }
-
-  // Event listeners para atualizar as sugestões enquanto o usuário digita
-  if (originInput && originList) {
-    originInput.addEventListener('input', () => updateSuggestions(originInput, originList));
-  }
-  if (destInput && destList) {
-    destInput.addEventListener('input', () => updateSuggestions(destInput, destList));
-  }
-
-  const searchForm = document.getElementById('search-form');
-  if (searchForm) {
-    searchForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const originName = originInput.value.trim();
-      const destinationName = destInput.value.trim();
-      const date = document.getElementById('date').value;
-      if (!originName || !destinationName || !date) {
-        alert('Por favor, preencha todos os campos.');
-        return;
-      }
-      // Encontra os IDs correspondentes às descrições informadas
-      const originObj = localities.find(loc => loc.descricao.toLowerCase() === originName.toLowerCase());
-      const destObj = localities.find(loc => loc.descricao.toLowerCase() === destinationName.toLowerCase());
-      if (!originObj || !destObj) {
-        alert('Origem ou destino inválido. Selecione uma opção sugerida.');
-        return;
-      }
-      const searchParams = {
-        originId: originObj.id,
-        originName: originObj.descricao,
-        destinationId: destObj.id,
-        destinationName: destObj.descricao,
-        date
-      };
-      // salva os parâmetros de pesquisa no localStorage
-      localStorage.setItem('searchParams', JSON.stringify(searchParams));
-      // redireciona para a página de horários
-      window.location.href = 'schedules.html';
-    });
-  }
-
-  // Impede seleção de datas anteriores à atual
-  const dateInput = document.getElementById('date');
-  if (dateInput) {
-    const today = new Date();
-    // Formata data no padrão YYYY-MM-DD considerando fuso horário local
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    const minDate = `${yyyy}-${mm}-${dd}`;
-    dateInput.setAttribute('min', minDate);
-  }
-});
-
+// ====== util navegação do usuário (mesmo comportamento do seu arquivo atual)
 function updateUserNav() {
   const nav = document.getElementById('user-nav');
   if (!nav) return;
   const user = JSON.parse(localStorage.getItem('user') || 'null');
   nav.innerHTML = '';
   if (user) {
-    const profileLink = document.createElement('a');
-    profileLink.href = 'profile.html';
-    // Usa nome ou email como identificador do usuário
-    const identifier = user.name ? user.name : user.email;
-    profileLink.textContent = `Minhas viagens (${identifier})`;
-    nav.appendChild(profileLink);
+    const a = document.createElement('a');
+    a.href = 'profile.html';
+    a.textContent = `Minhas viagens (${user.name || user.email})`;
+    nav.appendChild(a);
 
-    const logoutLink = document.createElement('a');
-    logoutLink.href = '#';
-    logoutLink.textContent = 'Sair';
-    logoutLink.addEventListener('click', () => {
+    const s = document.createElement('a');
+    s.href = '#';
+    s.textContent = 'Sair';
+    s.addEventListener('click', () => {
       localStorage.removeItem('user');
       updateUserNav();
-      window.location.href = 'index.html';
+      location.href = 'index.html';
     });
-    nav.appendChild(logoutLink);
+    nav.appendChild(s);
   } else {
-    const loginLink = document.createElement('a');
-    loginLink.href = 'login.html';
-    loginLink.textContent = 'Entrar';
-    loginLink.addEventListener('click', () => {
-      // Armazena a página atual para redirecionar após o login
-      const href = window.location.href;
+    const a = document.createElement('a');
+    a.href = 'login.html';
+    a.textContent = 'Entrar';
+    a.addEventListener('click', () => {
+      const href = location.href;
       const path = href.substring(href.lastIndexOf('/') + 1);
       localStorage.setItem('postLoginRedirect', path);
     });
-    nav.appendChild(loginLink);
+    nav.appendChild(a);
   }
+}
+updateUserNav();
+
+// ====== dataset de localidades (igual ao seu)
+const localities = [
+  { id: 2,  descricao: 'Ouro Branco' },
+  { id: 6,  descricao: 'Ouro Preto E/S' },
+  { id: 24, descricao: 'Mariana' },
+  { id: 23, descricao: 'Antonio Pereira – Ouro Preto E/S' },
+  { id: 21, descricao: 'Mina Alegria' },
+  { id: 20, descricao: 'Catas Altas E/S - Rua Felicio Alve' },
+  { id: 19, descricao: 'Santa Bárbara E/S' },
+  { id: 22, descricao: 'Cocais-Barão de Cocais' },
+  { id: 26, descricao: 'Barão de Cocais E/S' },
+  { id: 17, descricao: 'BR381/BR129–São Goncalo do R' },
+  { id: 16, descricao: 'Joao Monlevade - Graal 5 Estrela' },
+  { id: 28, descricao: 'BR381/AC.Nova Era–Nova Era' },
+  { id: 15, descricao: 'Timoteo' },
+  { id: 14, descricao: 'Coronel Fabriciano' },
+  { id: 12, descricao: 'Ipatinga' }
+];
+
+// ====== helpers UI
+const $ = (sel) => document.querySelector(sel);
+function setMinToday(input){
+  if (!input) return;
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  input.min = `${yyyy}-${mm}-${dd}`;
+}
+function datalist(input, list){
+  const update = () => {
+    const s = input.value.toLowerCase();
+    list.innerHTML = '';
+    if (!s) return;
+    localities.filter(l => l.descricao.toLowerCase().startsWith(s))
+      .forEach(l => {
+        const o = document.createElement('option');
+        o.value = l.descricao; o.dataset.id = l.id; list.appendChild(o);
+      });
+  };
+  input.addEventListener('input', update);
+}
+
+// ====== estados
+const state = {
+  search: null,                // params da ida
+  searchReturn: null,          // params da volta (se houver)
+  selected: [],                // [{leg: 'IDA'|'VOLTA', schedule, seats[], passengers[]}]
+  leg: 'IDA'                   // ou 'VOLTA'
+};
+
+// ====== elementos
+const stepSearch    = $('#step-search');
+const stepSchedules = $('#step-schedules');
+const stepSeats     = $('#step-seats');
+
+const legendList = $('#legenda-lista');
+const legendSeats = $('#legenda-seats');
+
+const listContainer  = $('#schedule-list');
+const noResultsEl    = $('#no-results');
+const seatsContainer = $('#seats-container');
+
+// ====== inicialização busca
+const originInput = $('#origin');
+const destInput   = $('#destination');
+const dateInput   = $('#date');
+const retInput    = $('#return-date');
+datalist(originInput, $('#origin-suggestions'));
+datalist(destInput,   $('#destination-suggestions'));
+setMinToday(dateInput);
+setMinToday(retInput);
+
+// ====== fluxo
+function showStep(which){
+  stepSearch.hidden = which !== 'search';
+  stepSchedules.hidden = which !== 'schedules';
+  stepSeats.hidden = which !== 'seats';
+}
+showStep('search');
+
+$('#search-form').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const originName = originInput.value.trim();
+  const destName   = destInput.value.trim();
+  const date       = dateInput.value;
+  if (!originName || !destName || !date) {
+    alert('Preencha origem, destino e data da ida.');
+    return;
+  }
+  const o = localities.find(l => l.descricao.toLowerCase() === originName.toLowerCase());
+  const d = localities.find(l => l.descricao.toLowerCase() === destName.toLowerCase());
+  if (!o || !d) { alert('Origem/Destino inválidos. Selecione uma opção sugerida.'); return; }
+
+  state.search = {
+    originId: o.id, originName: o.descricao,
+    destinationId: d.id, destinationName: d.descricao,
+    date
+  };
+
+  // retorno opcional
+  state.searchReturn = null;
+  if (retInput.value) {
+    state.searchReturn = {
+      originId: d.id, originName: d.descricao,
+      destinationId: o.id, destinationName: o.descricao,
+      date: retInput.value
+    };
+  }
+
+  state.leg = 'IDA';
+  legendList.textContent = 'Viagens disponíveis (ida)';
+  showStep('schedules');
+  renderLegSchedules();
+});
+
+$('#back-to-search').addEventListener('click', ()=> showStep('search'));
+$('#cancel-seats').addEventListener('click', ()=> {
+  // volta para a lista da perna atual
+  showStep('schedules');
+  renderLegSchedules();
+});
+
+function renderLegSchedules(){
+  const params = state.leg === 'IDA' ? state.search : state.searchReturn;
+  listContainer.innerHTML = '';
+  noResultsEl.textContent = 'Buscando viagens disponíveis...';
+  renderSchedules(listContainer, noResultsEl, params, (schedule)=>{
+    // onSelect
+    state.selected = state.selected.filter(s => s.leg !== state.leg); // limpa escolha anterior da mesma perna
+    state.selected.push({ leg: state.leg, schedule });
+    legendSeats.textContent = `Escolha suas poltronas (${state.leg.toLowerCase()})`;
+    showStep('seats');
+    renderLegSeats(schedule);
+  });
+}
+
+function renderLegSeats(schedule){
+  seatsContainer.innerHTML = '';
+  renderSeats(seatsContainer, schedule, (payload)=>{
+    // payload = { schedule, seats:[n], passengers:[{...}] }
+    const idx = state.selected.findIndex(s => s.leg === state.leg);
+    if (idx >= 0) state.selected[idx] = { ...payload, leg: state.leg };
+
+    // Próximo passo: se tem volta e ainda estamos na ida → ir para volta
+    if (state.leg === 'IDA' && state.searchReturn){
+      state.leg = 'VOLTA';
+      legendList.textContent = 'Viagens disponíveis (volta)';
+      legendSeats.textContent = 'Escolha suas poltronas (volta)';
+      showStep('schedules');
+      renderLegSchedules();
+      return;
+    }
+
+    // Finalizar → exigir login e gravar bookings como antes
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+
+    const toSave = state.selected.map(s => ({
+      id: Date.now() + Math.floor(Math.random()*1000),
+      schedule: s.schedule,
+      seats: s.seats,
+      passengers: s.passengers,
+      price: (Number(s.schedule.price)||0) * s.seats.length,
+      date: s.schedule.date,
+      paid: false
+    }));
+
+    if (!user){
+      // pendente para depois do login
+      localStorage.setItem('pendingPurchase', JSON.stringify({
+        legs: toSave
+      }));
+      localStorage.setItem('postLoginRedirect', 'payment.html');
+      location.href = 'login.html';
+      return;
+    }
+
+    localStorage.setItem('bookings', JSON.stringify([...bookings, ...toSave]));
+    localStorage.removeItem('pendingPurchase');
+    location.href = 'payment.html';
+  });
 }
