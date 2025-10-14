@@ -174,4 +174,20 @@ router.post('/pay', async (req, res) => {
   }
 });
 
+// GET /api/mp/payments/:id -> status do pagamento
+router.get('/payments/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const resp = await payments.get({ id }); // usando o SDK
+    return res.json({
+      id: resp.id,
+      status: resp.status,
+      status_detail: resp.status_detail,
+    });
+  } catch (err) {
+    console.error('[MP] /payments/:id ERROR', err?.cause || err);
+    return res.status(400).json({ error: true, message: 'Falha ao consultar' });
+  }
+});
+
 module.exports = router;
