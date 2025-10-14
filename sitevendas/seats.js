@@ -1,52 +1,64 @@
-// seats.js – módulo do mapa de poltronas
-// exporta renderSeats(container, schedule, onConfirm)
-// Mantém regras: sempre 1..42; 1 e 2 bloqueadas; ocupadas/inativas fora; máx 6
-
+// seats.js – poltronas dentro do ônibus (bus-layout.png)
 export function renderSeats(container, schedule, onConfirm){
   container.innerHTML = '';
 
+  // Cabeçalho mini
   const info = document.createElement('div');
-  info.id = 'trip-info-mini';
   info.style.marginBottom = '8px';
   const origin = schedule.originName || schedule.origin || '';
   const dest   = schedule.destinationName || schedule.destino || '';
   const [y,m,d] = String(schedule.date||'').split('-');
   const dataBR = (d && m && y) ? `${d}/${m}/${y}` : (schedule.date || '');
-  info.innerHTML = `<b>${origin}</b> &rarr; <b>${dest}</b> – ${dataBR} às ${schedule.departureTime || ''}`;
+  info.innerHTML = `<b>${origin}</b> &rarr; <b>${dest}</b> — ${dataBR} às ${schedule.departureTime || ''}`;
   container.appendChild(info);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'bus-wrap';
+
+  // Bloco com a imagem do ônibus
+  const bus = document.createElement('div');
+  bus.className = 'bus-bg';
+
+  // A grade fica ABSOLUTE por cima da imagem
+  const grid = document.createElement('div');
+  grid.className = 'seat-grid';
+  grid.id = 'seat-grid';
+
+  bus.appendChild(grid);
+  wrap.appendChild(bus);
+
+  // Legenda
+  const legend = document.createElement('div');
+  legend.className = 'legend';
+  legend.innerHTML = `
+    <span><i class="dot"></i>Disponível</span>
+    <span><i class="dot sel"></i>Selecionado</span>
+    <span><i class="dot occ"></i>Ocupado</span>
+  `;
+  wrap.appendChild(legend);
+
+  // Área de passageiros + botões
+  const selectedP = document.createElement('p');
+  selectedP.style.margin = '6px 0 10px';
+
+  const paxBox = document.createElement('div');
+  paxBox.id = 'passenger-container';
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  const confirm = document.createElement('button');
+  confirm.className = 'btn btn-primary';
+  confirm.textContent = 'Confirmar seleção';
+
+  actions.appendChild(confirm);
+
+  container.appendChild(wrap);
+  container.appendChild(selectedP);
+  container.appendChild(paxBox);
+  container.appendChild(actions);
 
   const selectedSeats = new Set();
   const maxSelected = 6;
-
-  const layoutWrap = document.createElement('div');
-  layoutWrap.className = 'bus-layout';
-  layoutWrap.style.position = 'relative';
-  layoutWrap.style.paddingTop = '8px';
-
-  // Grid nu (reaproveita suas classes CSS .seat-map / .seat / .occupied / .selected / .walkway)
-  const grid = document.createElement('div');
-  grid.className = 'seat-map';
-  grid.id = 'seat-map';
-
-  // passengers form
-  const paxBox = document.createElement('div');
-  paxBox.className = 'passenger-container';
-  paxBox.id = 'passenger-container';
-
-  const selectedP = document.createElement('p');
-  selectedP.id = 'selected-seat';
-  selectedP.style.margin = '6px 0 10px';
-
-  const confirm = document.createElement('button');
-  confirm.className = 'btn btn-primary btn-pay';
-  confirm.textContent = 'Confirmar seleção';
-  confirm.style.marginTop = '6px';
-
-  layoutWrap.appendChild(grid);
-  container.appendChild(layoutWrap);
-  container.appendChild(selectedP);
-  container.appendChild(paxBox);
-  container.appendChild(confirm);
 
   // ===== API: carrega poltronas se necessário
   async function loadSeats() {
@@ -98,6 +110,7 @@ export function renderSeats(container, schedule, onConfirm){
     paxBox.innerHTML = '';
     selectedP.textContent = '';
 
+    // mesma matriz (11 colunas x 5 linhas) usada antes
     const rows = [
       [3,7,11,15,19,23,27,31,35,39,null],
       [4,8,12,16,20,24,28,32,36,40,null],
@@ -108,12 +121,9 @@ export function renderSeats(container, schedule, onConfirm){
 
     rows.forEach((row,r)=>{
       row.forEach((cell,c)=>{
-        const rr=r+1, cc=c+1;
         if (cell===null){
           const w=document.createElement('div');
           w.className='walkway';
-          w.style.gridRowStart=rr;
-          w.style.gridColumnStart=cc;
           grid.appendChild(w);
           return;
         }
@@ -121,8 +131,6 @@ export function renderSeats(container, schedule, onConfirm){
         el.className='seat';
         el.textContent=cell;
         el.dataset.seat=String(cell);
-        el.style.gridRowStart=rr;
-        el.style.gridColumnStart=cc;
 
         const s = (schedule.seats||[]).find(x=>Number(x.number)===cell);
         const isForced=(cell===1||cell===2);
@@ -134,24 +142,22 @@ export function renderSeats(container, schedule, onConfirm){
         if (isUnavailable){
           el.classList.add('occupied');
           el.setAttribute('aria-disabled','true');
-          grid.appendChild(el);
-          return;
-        }
-
-        el.addEventListener('click', ()=>{
-          if (selectedSeats.has(cell)){
-            selectedSeats.delete(cell);
-            el.classList.remove('selected');
-          } else {
-            if (selectedSeats.size>=maxSelected){
-              alert(`É possível selecionar no máximo ${maxSelected} poltronas por compra.`);
-              return;
+        } else {
+          el.addEventListener('click', ()=>{
+            if (selectedSeats.has(cell)){
+              selectedSeats.delete(cell);
+              el.classList.remove('selected');
+            } else {
+              if (selectedSeats.size>=maxSelected){
+                alert(`É possível selecionar no máximo ${maxSelected} poltronas por compra.`);
+                return;
+              }
+              selectedSeats.add(cell);
+              el.classList.add('selected');
             }
-            selectedSeats.add(cell);
-            el.classList.add('selected');
-          }
-          renderPassengers();
-        });
+            renderPassengers();
+          });
+        }
 
         grid.appendChild(el);
       });
