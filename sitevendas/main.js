@@ -1,8 +1,8 @@
-// main.js (módulo) – Orquestra busca → lista (ida/volta) → poltronas (ida/volta)
+// Orquestra: sidebar sempre visível; painel da direita alterna entre LISTA e SEATS
 import { renderSchedules } from './schedules.js';
 import { renderSeats } from './seats.js';
 
-// ====== util navegação do usuário (mesmo comportamento do seu arquivo atual)
+/* ===== Usuário (mesmo comportamento anterior) ===== */
 function updateUserNav() {
   const nav = document.getElementById('user-nav');
   if (!nav) return;
@@ -16,6 +16,7 @@ function updateUserNav() {
 
     const s = document.createElement('a');
     s.href = '#';
+    s.style.marginLeft = '12px';
     s.textContent = 'Sair';
     s.addEventListener('click', () => {
       localStorage.removeItem('user');
@@ -37,7 +38,7 @@ function updateUserNav() {
 }
 updateUserNav();
 
-// ====== dataset de localidades (igual ao seu)
+/* ===== Localidades (iguais às que você já usa) ===== */
 const localities = [
   { id: 2,  descricao: 'Ouro Branco' },
   { id: 6,  descricao: 'Ouro Preto E/S' },
@@ -56,10 +57,9 @@ const localities = [
   { id: 12, descricao: 'Ipatinga' }
 ];
 
-// ====== helpers UI
-const $ = (sel) => document.querySelector(sel);
+/* ===== Helpers ===== */
+const $ = (q) => document.querySelector(q);
 function setMinToday(input){
-  if (!input) return;
   const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -80,27 +80,26 @@ function datalist(input, list){
   input.addEventListener('input', update);
 }
 
-// ====== estados
+/* ===== Estado ===== */
 const state = {
-  search: null,                // params da ida
-  searchReturn: null,          // params da volta (se houver)
-  selected: [],                // [{leg: 'IDA'|'VOLTA', schedule, seats[], passengers[]}]
-  leg: 'IDA'                   // ou 'VOLTA'
+  leg: 'IDA',                 // 'IDA' ou 'VOLTA'
+  search: null,               // ida
+  searchReturn: null,         // volta (opcional)
+  selected: []                // [{leg, schedule, seats, passengers}]
 };
 
-// ====== elementos
-const stepSearch    = $('#step-search');
-const stepSchedules = $('#step-schedules');
-const stepSeats     = $('#step-seats');
-
-const legendList = $('#legenda-lista');
-const legendSeats = $('#legenda-seats');
-
+/* ===== Elementos da direita ===== */
+const listPanel   = $('#panel-schedules');
+const seatsPanel  = $('#panel-seats');
 const listContainer  = $('#schedule-list');
-const noResultsEl    = $('#no-results');
+const statusEl       = $('#no-results');
 const seatsContainer = $('#seats-container');
+const legendList  = $('#legend-list');
+const legendSeats = $('#legend-seats');
+const backBtn     = $('#btn-back');
+const contentActions = $('#content-actions');
 
-// ====== inicialização busca
+/* ===== Sidebar ===== */
 const originInput = $('#origin');
 const destInput   = $('#destination');
 const dateInput   = $('#date');
@@ -110,91 +109,101 @@ datalist(destInput,   $('#destination-suggestions'));
 setMinToday(dateInput);
 setMinToday(retInput);
 
-// ====== fluxo
-function showStep(which){
-  stepSearch.hidden = which !== 'search';
-  stepSchedules.hidden = which !== 'schedules';
-  stepSeats.hidden = which !== 'seats';
+/* ===== Navegação interna (só muda o painel da direita) ===== */
+function showList(){
+  listPanel.hidden  = false;
+  seatsPanel.hidden = true;
+  contentActions.hidden = false;
 }
-showStep('search');
+function showSeats(){
+  listPanel.hidden  = true;
+  seatsPanel.hidden = false;
+  contentActions.hidden = false;
+}
 
+/* ===== Pesquisar (alimenta state e abre lista da IDA) ===== */
 $('#search-form').addEventListener('submit', (e)=>{
   e.preventDefault();
+
   const originName = originInput.value.trim();
   const destName   = destInput.value.trim();
   const date       = dateInput.value;
+
   if (!originName || !destName || !date) {
     alert('Preencha origem, destino e data da ida.');
     return;
   }
+
   const o = localities.find(l => l.descricao.toLowerCase() === originName.toLowerCase());
   const d = localities.find(l => l.descricao.toLowerCase() === destName.toLowerCase());
   if (!o || !d) { alert('Origem/Destino inválidos. Selecione uma opção sugerida.'); return; }
 
+  state.leg = 'IDA';
+  state.selected = [];
   state.search = {
     originId: o.id, originName: o.descricao,
     destinationId: d.id, destinationName: d.descricao,
     date
   };
 
-  // retorno opcional
-  state.searchReturn = null;
-  if (retInput.value) {
-    state.searchReturn = {
-      originId: d.id, originName: d.descricao,
-      destinationId: o.id, destinationName: o.descricao,
-      date: retInput.value
-    };
-  }
+  state.searchReturn = retInput.value ? {
+    originId: d.id, originName: d.descricao,
+    destinationId: o.id, destinationName: o.descricao,
+    date: retInput.value
+  } : null;
 
-  state.leg = 'IDA';
   legendList.textContent = 'Viagens disponíveis (ida)';
-  showStep('schedules');
+  showList();
   renderLegSchedules();
 });
 
-$('#back-to-search').addEventListener('click', ()=> showStep('search'));
-$('#cancel-seats').addEventListener('click', ()=> {
-  // volta para a lista da perna atual
-  showStep('schedules');
-  renderLegSchedules();
+/* ===== Voltar (da direita) ===== */
+backBtn.addEventListener('click', ()=>{
+  if (!seatsPanel.hidden) {
+    // estava em SEATS → volta para lista do mesmo trecho
+    showList();
+    renderLegSchedules();
+  } else {
+    // estava em LIST → volta para permitir nova busca (opcional)
+    statusEl.textContent = '';
+    listContainer.innerHTML = '';
+  }
 });
 
+/* ===== Render de LISTA por trecho ===== */
 function renderLegSchedules(){
   const params = state.leg === 'IDA' ? state.search : state.searchReturn;
   listContainer.innerHTML = '';
-  noResultsEl.textContent = 'Buscando viagens disponíveis...';
-  renderSchedules(listContainer, noResultsEl, params, (schedule)=>{
-    // onSelect
-    state.selected = state.selected.filter(s => s.leg !== state.leg); // limpa escolha anterior da mesma perna
+  statusEl.textContent = 'Buscando viagens disponíveis...';
+  renderSchedules(listContainer, statusEl, params, (schedule)=>{
+    // ao selecionar uma viagem, abre o mapa
+    state.selected = state.selected.filter(s => s.leg !== state.leg);
     state.selected.push({ leg: state.leg, schedule });
     legendSeats.textContent = `Escolha suas poltronas (${state.leg.toLowerCase()})`;
-    showStep('seats');
+    showSeats();
     renderLegSeats(schedule);
   });
 }
 
+/* ===== Render do MAPA por trecho ===== */
 function renderLegSeats(schedule){
   seatsContainer.innerHTML = '';
   renderSeats(seatsContainer, schedule, (payload)=>{
-    // payload = { schedule, seats:[n], passengers:[{...}] }
     const idx = state.selected.findIndex(s => s.leg === state.leg);
     if (idx >= 0) state.selected[idx] = { ...payload, leg: state.leg };
 
-    // Próximo passo: se tem volta e ainda estamos na ida → ir para volta
+    // se tiver volta e acabamos a IDA, vamos para a VOLTA (lista)
     if (state.leg === 'IDA' && state.searchReturn){
       state.leg = 'VOLTA';
       legendList.textContent = 'Viagens disponíveis (volta)';
-      legendSeats.textContent = 'Escolha suas poltronas (volta)';
-      showStep('schedules');
+      showList();
       renderLegSchedules();
       return;
     }
 
-    // Finalizar → exigir login e gravar bookings como antes
+    // fim: salva e vai para pagamento
     const user = JSON.parse(localStorage.getItem('user') || 'null');
     const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
-
     const toSave = state.selected.map(s => ({
       id: Date.now() + Math.floor(Math.random()*1000),
       schedule: s.schedule,
@@ -206,10 +215,7 @@ function renderLegSeats(schedule){
     }));
 
     if (!user){
-      // pendente para depois do login
-      localStorage.setItem('pendingPurchase', JSON.stringify({
-        legs: toSave
-      }));
+      localStorage.setItem('pendingPurchase', JSON.stringify({ legs: toSave }));
       localStorage.setItem('postLoginRedirect', 'payment.html');
       location.href = 'login.html';
       return;
