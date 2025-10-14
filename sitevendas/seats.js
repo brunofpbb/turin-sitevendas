@@ -1,8 +1,7 @@
-// seats.js – poltronas dentro do ônibus (bus-layout.png)
+// Poltronas sobre a imagem bus-blank.png dentro do card da direita
 export function renderSeats(container, schedule, onConfirm){
   container.innerHTML = '';
 
-  // Cabeçalho mini
   const info = document.createElement('div');
   info.style.marginBottom = '8px';
   const origin = schedule.originName || schedule.origin || '';
@@ -15,19 +14,14 @@ export function renderSeats(container, schedule, onConfirm){
   const wrap = document.createElement('div');
   wrap.className = 'bus-wrap';
 
-  // Bloco com a imagem do ônibus
   const bus = document.createElement('div');
-  bus.className = 'bus-bg';
+  bus.className = 'bus-bg'; // usa bus-blank.png definido no CSS
 
-  // A grade fica ABSOLUTE por cima da imagem
   const grid = document.createElement('div');
   grid.className = 'seat-grid';
-  grid.id = 'seat-grid';
-
   bus.appendChild(grid);
   wrap.appendChild(bus);
 
-  // Legenda
   const legend = document.createElement('div');
   legend.className = 'legend';
   legend.innerHTML = `
@@ -37,7 +31,6 @@ export function renderSeats(container, schedule, onConfirm){
   `;
   wrap.appendChild(legend);
 
-  // Área de passageiros + botões
   const selectedP = document.createElement('p');
   selectedP.style.margin = '6px 0 10px';
 
@@ -49,7 +42,6 @@ export function renderSeats(container, schedule, onConfirm){
   const confirm = document.createElement('button');
   confirm.className = 'btn btn-primary';
   confirm.textContent = 'Confirmar seleção';
-
   actions.appendChild(confirm);
 
   container.appendChild(wrap);
@@ -60,7 +52,6 @@ export function renderSeats(container, schedule, onConfirm){
   const selectedSeats = new Set();
   const maxSelected = 6;
 
-  // ===== API: carrega poltronas se necessário
   async function loadSeats() {
     if (Array.isArray(schedule.seats) && schedule.seats.length) return true;
     try {
@@ -110,7 +101,6 @@ export function renderSeats(container, schedule, onConfirm){
     paxBox.innerHTML = '';
     selectedP.textContent = '';
 
-    // mesma matriz (11 colunas x 5 linhas) usada antes
     const rows = [
       [3,7,11,15,19,23,27,31,35,39,null],
       [4,8,12,16,20,24,28,32,36,40,null],
@@ -119,8 +109,8 @@ export function renderSeats(container, schedule, onConfirm){
       [1,5,9,13,17,21,25,29,33,37,41]
     ];
 
-    rows.forEach((row,r)=>{
-      row.forEach((cell,c)=>{
+    rows.forEach(row=>{
+      row.forEach(cell=>{
         if (cell===null){
           const w=document.createElement('div');
           w.className='walkway';
@@ -182,6 +172,17 @@ export function renderSeats(container, schedule, onConfirm){
     });
   }
 
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && selectedP.textContent) {
+      // limpa seleção rápida com ESC
+      selectedP.textContent = '';
+      paxBox.innerHTML = '';
+      Array.from(grid.querySelectorAll('.seat.selected')).forEach(s=>s.classList.remove('selected'));
+      selectedSeats.clear();
+    }
+  });
+
+  const confirm = container.querySelector('.btn.btn-primary');
   confirm.addEventListener('click', ()=>{
     const seats = [...selectedSeats];
     if (!seats.length){ alert('Primeiro selecione uma poltrona.'); return; }
@@ -202,8 +203,5 @@ export function renderSeats(container, schedule, onConfirm){
     onConfirm && onConfirm({ schedule, seats, passengers });
   });
 
-  (async ()=>{
-    const ok = await loadSeats();
-    if (ok) { draw(); }
-  })();
+  (async ()=>{ const ok = await loadSeats(); if (ok) draw(); })();
 }
