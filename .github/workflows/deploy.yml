@@ -1,6 +1,6 @@
 name: Deploy to Railway
 
-on:
+on: workflow_dispatch
   push:
     branches: [ main ]   # mude se sua branch de produção for outra
 
