@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Turin Transportes – Venda de Passagens</title>
   <link rel="stylesheet" href="style.css" />
-  <!-- Agora usamos módulos -->
   <script type="module" src="main.js"></script>
 </head>
 <body>
@@ -13,63 +12,54 @@
     <nav id="user-nav"></nav>
   </header>
 
-  <main>
-    <!-- CARD ÚNICO -->
-    <section id="app-card" class="app-card">
-      <!-- STEP 1: Formulário de busca -->
-      <div id="step-search" class="step step-active">
-        <h2 class="step-title">Encontre sua viagem</h2>
+  <main class="two-cols">
+    <!-- COLUNA ESQUERDA (FIXA) -->
+    <aside class="search-card">
+      <h2 class="step-title">Encontre sua viagem</h2>
+      <form id="search-form" class="form-vert">
+        <div class="form-row">
+          <label for="origin">Origem</label>
+          <input id="origin" list="origin-suggestions" placeholder="Cidade de origem" required autocomplete="off" />
+          <datalist id="origin-suggestions"></datalist>
+        </div>
 
-        <form id="search-form" class="grid-2">
-          <div class="form-row">
-            <label for="origin">Origem</label>
-            <input id="origin" list="origin-suggestions" placeholder="Cidade de origem" required autocomplete="off" />
-            <datalist id="origin-suggestions"></datalist>
-          </div>
+        <div class="form-row">
+          <label for="destination">Destino</label>
+          <input id="destination" list="destination-suggestions" placeholder="Cidade de destino" required autocomplete="off" />
+          <datalist id="destination-suggestions"></datalist>
+        </div>
 
-          <div class="form-row">
-            <label for="destination">Destino</label>
-            <input id="destination" list="destination-suggestions" placeholder="Cidade de destino" required autocomplete="off" />
-            <datalist id="destination-suggestions"></datalist>
-          </div>
+        <div class="form-row">
+          <label for="date">Data da ida</label>
+          <input id="date" type="date" required />
+        </div>
 
-          <div class="form-row">
-            <label for="date">Data da ida</label>
-            <input id="date" type="date" required />
-          </div>
+        <div class="form-row">
+          <label for="return-date">Data da volta (opcional)</label>
+          <input id="return-date" type="date" />
+        </div>
 
-          <div class="form-row">
-            <label for="return-date">Data da volta (opcional)</label>
-            <input id="return-date" type="date" />
-          </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="submit">Pesquisar</button>
+        </div>
+      </form>
+    </aside>
 
-          <div class="actions">
-            <button class="btn btn-primary" type="submit">Pesquisar</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- STEP 2: Lista de horários (IDA/ VOLTA) -->
-      <div id="step-schedules" class="step" hidden>
-        <h2 class="step-title">
-          <span id="legenda-lista">Viagens disponíveis (ida)</span>
-        </h2>
+    <!-- COLUNA DIREITA (DINÂMICA) -->
+    <section class="content-card">
+      <div id="panel-schedules" class="panel">
+        <h2 class="step-title"><span id="legend-list">Viagens disponíveis (ida)</span></h2>
         <div id="schedule-list"></div>
         <div id="no-results" class="mute"></div>
-        <div class="actions">
-          <button id="back-to-search" class="btn btn-ghost">Voltar</button>
-        </div>
       </div>
 
-      <!-- STEP 3: Seleção de poltronas -->
-      <div id="step-seats" class="step" hidden>
-        <h2 class="step-title">
-          <span id="legenda-seats">Escolha suas poltronas</span>
-        </h2>
+      <div id="panel-seats" class="panel" hidden>
+        <h2 class="step-title"><span id="legend-seats">Escolha suas poltronas</span></h2>
         <div id="seats-container"></div>
-        <div class="actions">
-          <button id="cancel-seats" class="btn btn-ghost">Voltar</button>
-        </div>
+      </div>
+
+      <div class="actions" id="content-actions" hidden>
+        <button id="btn-back" class="btn btn-ghost">Voltar</button>
       </div>
     </section>
   </main>
