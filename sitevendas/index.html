@@ -12,10 +12,12 @@
     <nav id="user-nav"></nav>
   </header>
 
+  <!-- SOMENTE 2 CARDS: sidebar fixa + conteúdo -->
   <main class="two-cols">
-    <!-- COLUNA ESQUERDA (FIXA) -->
+    <!-- CARD LATERAL (fixo) -->
     <aside class="search-card">
       <h2 class="step-title">Encontre sua viagem</h2>
+
       <form id="search-form" class="form-vert">
         <div class="form-row">
           <label for="origin">Origem</label>
@@ -45,22 +47,9 @@
       </form>
     </aside>
 
-    <!-- COLUNA DIREITA (DINÂMICA) -->
-    <section class="content-card">
-      <div id="panel-schedules" class="panel">
-        <h2 class="step-title"><span id="legend-list">Viagens disponíveis (ida)</span></h2>
-        <div id="schedule-list"></div>
-        <div id="no-results" class="mute"></div>
-      </div>
-
-      <div id="panel-seats" class="panel" hidden>
-        <h2 class="step-title"><span id="legend-seats">Escolha suas poltronas</span></h2>
-        <div id="seats-container"></div>
-      </div>
-
-      <div class="actions" id="content-actions" hidden>
-        <button id="btn-back" class="btn btn-ghost">Voltar</button>
-      </div>
+    <!-- CARD CENTRAL (começa vazio) -->
+    <section class="content-card" id="content-root">
+      <!-- é preenchido dinamicamente após Pesquisar -->
     </section>
   </main>
 
