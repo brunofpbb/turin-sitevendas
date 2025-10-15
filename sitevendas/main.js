@@ -243,7 +243,7 @@ attachAutocomplete(destInput,   acDest,   localities);
         body.innerHTML = parts.join('');
 
         const actions = document.createElement('div'); actions.className='schedule-actions'; actions.style.gridRow='1 / -1';
-        const btn = document.createElement('button'); btn.className='select-btn'; btn.textContent='Selecionar';
+        const btn = document.createElement('button'); btn.className='btn btn-primary'; btn.textContent='Selecionar';
         btn.addEventListener('click', ()=>{
           const schedule = {
             idViagem,
