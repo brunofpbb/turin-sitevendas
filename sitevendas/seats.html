@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Selecionar poltrona</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
   <script defer src="main.js"></script>
   <script defer src="seats.js"></script>
 </head>
@@ -12,21 +12,44 @@
     <h1>Turin Transportes – Seleção de poltrona</h1>
     <nav id="user-nav"></nav>
   </header>
-  <main>
-    <h2>Escolha sua poltrona</h2>
+
+  <main class="container">
+    <!-- O JS atualiza esse título para (ida)/(volta) -->
+    <h2 class="step-title">Escolha suas poltronas</h2>
     <p id="trip-info"></p>
-    <!-- Layout do ônibus: imagem da frente e assentos -->
-    <div id="bus-layout" class="bus-layout">
-      <!-- Use the blank bus image as the background -->
-      <img src="bus-blank.png" alt="Layout do ônibus" class="bus-image">
-      <div id="seat-map" class="seat-map"></div>
+
+    <!-- Layout do ônibus: imagem da frente + grid de assentos sobreposta -->
+    <div id="bus-layout" class="bus-layout" style="position:relative; overflow:hidden;">
+      <img src="bus-blank.png" alt="Layout do ônibus" class="bus-image" style="max-width:100%; height:auto;" />
+      <!-- IMPORTANTE: o JS procura .bus-grid / #seats-grid -->
+      <div id="seats-grid" class="bus-grid" style="position:absolute; top:0; left:0;"></div>
     </div>
-    <!-- Contêiner para os formulários dos passageiros -->
-    <div id="passenger-container" class="passenger-container"></div>
-    <p id="selected-seat"></p>
-    <button id="confirm-seat" disabled>Realizar Pagamento</button>
-    <button id="back-btn">Voltar</button>
+
+    <!-- Legenda (o JS insere aqui os “quadradinhos”) -->
+    <div id="legend-host"></div>
+
+    <!-- Contador -->
+    <p style="margin-top:10px">
+      Poltronas selecionadas: <b id="seats-count">0</b>
+    </p>
+
+    <!-- Linha de inputs do passageiro atual (o JS mostra/esconde) -->
+    <div id="passengers-row" style="display:none; margin-top:8px">
+      <div style="margin-bottom:6px"><b>Pol <span id="current-seat">—</span>:</b></div>
+      <div class="grid-row" style="display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap:10px">
+        <input id="pax-name"  type="text" placeholder="Nome" />
+        <input id="pax-cpf"   type="text" placeholder="CPF" />
+        <input id="pax-phone" type="text" placeholder="Telefone" />
+      </div>
+    </div>
+
+    <!-- Ações -->
+    <div class="seat-actions" style="margin-top:12px;">
+      <button id="btn-confirm" class="btn btn-primary">Confirmar seleção</button>
+      <button id="btn-back"    class="btn btn-ghost">Voltar</button>
+    </div>
   </main>
+
   <footer>
     <p>&copy; 2025 Turin Transportes</p>
   </footer>
