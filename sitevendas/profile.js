@@ -1,4 +1,4 @@
-// profile.js — lista compras pagas, botão cancelar com memória de cálculo e layout sem “folgas”
+// profile.js — cancelamento com modo "preview" e render estável
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -13,6 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const fmtBRL = (n)=> (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const pick   = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '—';
 
+  // Estado local: qual card está em "preview" (memória de cálculo)
+  let previewId = null;
+
   // regra: pode cancelar se faltarem >= 12h para a partida (hora São Paulo, UTC-3)
   const CAN_HOURS = 12;
   const ms12h = CAN_HOURS * 60 * 60 * 1000;
@@ -20,27 +23,26 @@ document.addEventListener('DOMContentLoaded', () => {
   function parseDeparture(schedule){
     const date = pick(schedule.date);
     const time = pick(schedule.departureTime, schedule.horaPartida, '00:00');
-    // ISO com timezone fixo -03:00 (São Paulo)
-    const s = `${date}T${String(time).padStart(5,'0')}:00-03:00`;
+    const s = `${date}T${String(time).padStart(5,'0')}:00-03:00`; // UTC−3
     const t = Date.parse(s);
     return Number.isFinite(t) ? new Date(t) : null;
   }
   function mayCancel(schedule){
     const dep = parseDeparture(schedule);
     if (!dep) return false;
-    const now = Date.now();
-    return (dep.getTime() - now) >= ms12h;
+    return (dep.getTime() - Date.now()) >= ms12h;
   }
 
-  function loadAll(){ return JSON.parse(localStorage.getItem('bookings') || '[]'); }
-  function saveAll(next){ localStorage.setItem('bookings', JSON.stringify(next)); }
+  const loadAll = ()=> JSON.parse(localStorage.getItem('bookings') || '[]');
+  const saveAll = (arr)=> localStorage.setItem('bookings', JSON.stringify(arr));
 
   function flagCancelled(id){
     const all = loadAll();
-    const idx = all.findIndex(b => String(b.id) === String(id));
-    if (idx === -1) return;
-    all[idx].cancelledAt = new Date().toISOString();
-    saveAll(all);
+    const i = all.findIndex(b => String(b.id) === String(id));
+    if (i >= 0) {
+      all[i].cancelledAt = new Date().toISOString();
+      saveAll(all);
+    }
   }
 
   function render(){
@@ -55,9 +57,16 @@ document.addEventListener('DOMContentLoaded', () => {
     listEl.innerHTML = paid.map(b=>{
       const s = b.schedule || {};
       const seats = (b.seats || []).join(', ');
-      const paxList = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
+      const pax   = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
       const cancelable = !b.cancelledAt && mayCancel(s);
       const statusText = b.cancelledAt ? 'Cancelada' : 'Pago';
+
+      // ——— quando for o card em preview, não renderiza o botão Cancelar (ele some)
+      const showPreview = previewId === String(b.id);
+
+      const paidAmount = Number(b.price || 0);
+      const fee  = +(paidAmount * 0.05).toFixed(2);
+      const back = +(paidAmount - fee).toFixed(2);
 
       return `
         <div class="schedule-card card-grid" data-id="${b.id}">
@@ -68,89 +77,72 @@ document.addEventListener('DOMContentLoaded', () => {
               <div><b>Saída:</b> ${pick(s.departureTime, s.horaPartida)}</div>
               <div><b>Total:</b> ${fmtBRL(b.price || 0)}</div>
             </div>
-            <div class="schedule-body">
+            <div class="schedule-body" ${showPreview ? 'style="display:none"' : ''}>
               <div><b>Poltronas:</b> ${seats || '—'}</div>
-              ${paxList.length ? `<div><b>Passageiros:</b> ${paxList.join(', ')}</div>` : ''}
+              ${pax.length ? `<div><b>Passageiros:</b> ${pax.join(', ')}</div>` : ''}
               <div><b>Status:</b> ${statusText}</div>
             </div>
-            <!-- área onde entra o preview de cancelamento -->
-            <div class="cancel-preview" hidden></div>
+
+            ${showPreview ? `
+              <div class="calc-box">
+                <div class="calc-cols">
+                  <div class="calc-left">
+                    <div class="calc-row"><span>Origem:</span><b>${pick(s.originName, s.origin, s.origem)}</b></div>
+                    <div class="calc-row"><span>Destino:</span><b>${pick(s.destinationName, s.destination, s.destino)}</b></div>
+                    <div class="calc-row"><span>Data:</span><b>${pick(s.date)}</b></div>
+                    <div class="calc-row"><span>Saída:</span><b>${pick(s.departureTime, s.horaPartida)}</b></div>
+                  </div>
+                  <div class="calc-right">
+                    <div class="calc-row"><span>Valor pago:</span><b>${fmtBRL(paidAmount)}</b></div>
+                    <div class="calc-row"><span>Multa (5%):</span><b>${fmtBRL(fee)}</b></div>
+                    <div class="calc-row total"><span>Valor a reembolsar:</span><b>${fmtBRL(back)}</b></div>
+                  </div>
+                </div>
+                <div class="actions" style="margin-top:10px">
+                  <button class="btn btn-primary" data-act="do-cancel" data-id="${b.id}">Realizar cancelamento</button>
+                  <button class="btn btn-ghost" data-act="close-preview">Voltar</button>
+                </div>
+              </div>
+            ` : ''}
           </div>
 
           <div class="card-right">
-            <button class="${cancelable ? 'btn btn-primary' : 'btn btn-disabled'} btn-cancel"
-                    ${cancelable ? '' : 'disabled'}
-                    data-id="${b.id}">
-              Cancelar
-            </button>
+            ${(!showPreview && !b.cancelledAt)
+              ? `<button class="${cancelable ? 'btn btn-primary' : 'btn btn-disabled'} btn-cancel"
+                         ${cancelable ? '' : 'disabled'}
+                         data-id="${b.id}">Cancelar</button>`
+              : ''}
           </div>
         </div>
       `;
     }).join('');
 
-    // binds
+    // Handlers — são recriados a cada render (evita “botões sem ação”)
     listEl.querySelectorAll('.btn-cancel').forEach(btn=>{
-      const id = btn.getAttribute('data-id');
-      btn.addEventListener('click', ()=> openCancelPreview(id));
+      btn.addEventListener('click', ()=>{
+        const id = btn.getAttribute('data-id');
+        previewId = id;       // entra em modo preview
+        render();             // refaz a lista (botão some, preview aparece)
+      });
     });
-  }
 
-  function openCancelPreview(id){
-    // pega card
-    const card = listEl.querySelector(`.schedule-card[data-id="${id}"]`);
-    if (!card) return;
-    const left   = card.querySelector('.card-left');
-    const body   = left.querySelector('.schedule-body');
-    const right  = card.querySelector('.card-right');
-    const btn    = right.querySelector('.btn-cancel');
-    const prevEl = left.querySelector('.cancel-preview');
+    listEl.querySelectorAll('[data-act="close-preview"]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        previewId = null;     // sai do preview
+        render();
+      });
+    });
 
-    // pega dados
-    const item = loadAll().find(b => String(b.id) === String(id));
-    if (!item) return;
-
-    const s = item.schedule || {};
-    const paid = Number(item.price || 0);
-    const fee  = +(paid * 0.05).toFixed(2);
-    const back = +(paid - fee).toFixed(2);
-
-    // mostra preview (memória de cálculo)
-    prevEl.innerHTML = `
-      <div class="calc-box">
-        <div class="calc-row"><span>Origem:</span><b>${s.originName || s.origin || s.origem || '—'}</b></div>
-        <div class="calc-row"><span>Destino:</span><b>${s.destinationName || s.destination || s.destino || '—'}</b></div>
-        <div class="calc-row"><span>Data:</span><b>${s.date || '—'}</b></div>
-        <div class="calc-row"><span>Saída:</span><b>${s.departureTime || s.horaPartida || '—'}</b></div>
-        <hr>
-        <div class="calc-row"><span>Valor pago:</span><b>${fmtBRL(paid)}</b></div>
-        <div class="calc-row"><span>Multa (5%):</span><b>${fmtBRL(fee)}</b></div>
-        <div class="calc-row total"><span>Valor a reembolsar:</span><b>${fmtBRL(back)}</b></div>
-        <div class="actions" style="margin-top:10px">
-          <button class="btn btn-primary" data-act="do-cancel">Realizar cancelamento</button>
-          <button class="btn btn-ghost" data-act="close-preview">Voltar</button>
-        </div>
-      </div>
-    `;
-    prevEl.hidden = false;
-
-    // esconde linhas originais
-    body.style.display = 'none';
-    btn.disabled = true; btn.className = 'btn btn-disabled';
-
-    // actions
-    prevEl.querySelector('[data-act="close-preview"]').onclick = ()=>{
-      prevEl.hidden = true;
-      body.style.display = '';
-      // reabilita o botão se ainda for cancelável
-      const can = mayCancel(s) && !item.cancelledAt;
-      btn.disabled = !can; btn.className = can ? 'btn btn-primary' : 'btn btn-disabled';
-    };
-    prevEl.querySelector('[data-act="do-cancel"]').onclick = ()=>{
-      if (!confirm('Confirmar cancelamento desta viagem?')) return;
-      flagCancelled(id);
-      render();
-      alert('Cancelamento realizado com sucesso. O valor a reembolsar será processado conforme as regras.');
-    };
+    listEl.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const id = btn.getAttribute('data-id');
+        if (!confirm('Confirmar cancelamento desta viagem?')) return;
+        flagCancelled(id);
+        previewId = null;
+        render();
+        alert('Cancelamento realizado com sucesso. O reembolso será processado conforme as regras.');
+      });
+    });
   }
 
   render();
