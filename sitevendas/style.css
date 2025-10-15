@@ -361,3 +361,53 @@ footer{
 .ac-item{ padding:8px 12px; font-size:.95rem; color:#263c26;
   cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ac-item:hover{ background:#f5f8f5; }
+
+/* === Resumo do Pedido (carrinho) === */
+.order-item{
+  position: relative;
+  padding: 8px 8px 6px 10px;
+  border-bottom: 1px solid #ebefeb;
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  transition: background .15s ease, border-color .15s ease;
+}
+.order-item:hover{
+  background: #f6faf6;
+  border-left-color: #0b5a2b; /* verde da marca */
+}
+.order-item .title{
+  display:flex; justify-content:space-between; gap:10px; font-weight:700;
+}
+.order-item .meta{ font-size:.92rem; color:#2a3b2a; }
+.order-item .price{ white-space:nowrap; }
+
+.item-remove{
+  position:absolute;
+  top:6px; right:6px;
+  width:26px; height:26px;
+  border-radius:6px;
+  border:1px solid #dfe5df;
+  background:#fff;
+  font-weight:700;
+  line-height:24px;
+  text-align:center;
+  cursor:pointer;
+  opacity:0;
+  transition:opacity .15s ease, background .15s ease;
+}
+.order-item:hover .item-remove{ opacity:1; }
+.item-remove:hover{ background:#f0f4f0; }
+
+.summary-total{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 10px; margin-top:6px;
+  background:#e7f4e9; border:1px solid #d6eadb; border-radius:8px;
+  font-weight:700;
+}
+.summary-actions{ margin-top:8px; display:flex; gap:8px; }
+
+/* Botão pagar com o mesmo visual do "Pesquisar" */
+#pay-button.btn-primary{ /* só garante a classe se o HTML ainda não tiver */
+  /* sua classe .btn .btn-primary já aplica o estilo */
+}
+
