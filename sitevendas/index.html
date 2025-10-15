@@ -17,36 +17,27 @@
   <!-- SOMENTE 2 CARDS: lateral fixo + central dinâmico -->
   <main class="two-cols">
     <!-- CARD LATERAL (sempre visível, colado à esquerda) -->
-    <aside class="search-card">
-      <h2 class="step-title">Encontre sua viagem</h2>
+<form id="search-form" class="search-form">
+  <label for="origin">Origem</label>
+  <input id="origin" type="text" placeholder="Cidade de origem" autocomplete="off" />
+  <div id="ac-origin" class="ac-panel" hidden></div>
 
-      <form id="search-form" class="form-vert">
-        <div class="form-row">
-          <label for="origin">Origem</label>
-          <input id="origin" list="origin-suggestions" placeholder="Cidade de origem" required autocomplete="off" />
-          <datalist id="origin-suggestions"></datalist>
-        </div>
+  <label for="destination">Destino</label>
+  <input id="destination" type="text" placeholder="Cidade de destino" autocomplete="off" />
+  <div id="ac-destination" class="ac-panel" hidden></div>
 
-        <div class="form-row">
-          <label for="destination">Destino</label>
-          <input id="destination" list="destination-suggestions" placeholder="Cidade de destino" required autocomplete="off" />
-          <datalist id="destination-suggestions"></datalist>
-        </div>
+  <label for="date">Data da ida</label>
+  <input id="date" type="date" />
 
-        <div class="form-row">
-          <label for="date">Data da ida</label>
-          <input id="date" type="date" required />
-        </div>
+  <label for="return-date">Data da volta (opcional)</label>
+  <input id="return-date" type="date" />
 
-        <div class="form-row">
-          <label for="return-date">Data da volta (opcional)</label>
-          <input id="return-date" type="date" />
-        </div>
+  <div class="search-actions">
+    <button type="submit" class="btn btn-primary">Pesquisar</button>
+    <a class="btn btn-ghost" href="https://turintransportes.com" target="_self" rel="noopener">Sair</a>
+  </div>
+</form>
 
-        <div class="actions">
-          <button class="btn btn-primary" type="submit">Pesquisar</button>
-        </div>
-      </form>
     </aside>
 
     <!-- CARD CENTRAL (inicia completamente vazio) -->
