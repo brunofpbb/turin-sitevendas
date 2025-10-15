@@ -189,4 +189,50 @@ footer{
 }
 .calc-row.total b{ color:#005b28; font-size:1.05rem; }
 
+/* cards: mais espaço entre reservas e borda suave */
+.schedule-card{
+  margin-bottom: 16px;           /* espaço entre um card e outro */
+  border: 1px solid #e4e8e4;
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* grade: conteúdo x botão, alinhado sem “pular linhas” */
+.card-grid{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+.card-left { grid-column: 1 / 2; }
+.card-right{ grid-column: 2 / 3; display:flex; align-items:center; }
+
+/* memória de cálculo: duas colunas (detalhes à esq., valores à dir.) */
+.calc-box{
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e7e7e7;
+  background:#fafafa;
+}
+.calc-cols{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+}
+.calc-row{
+  display:flex; justify-content:space-between; gap:12px;
+  line-height: 1.45;
+  margin: 2px 0;
+}
+.calc-row.total b{ color:#005b28; font-size:1.05rem; }
+
+/* botão desabilitado (cinza) */
+.btn-disabled{
+  background:#cfd6cf;
+  color:#666;
+  border:1px solid #cfd6cf;
+  cursor:not-allowed;
+}
+.btn-disabled:hover{ filter:none; }
 
