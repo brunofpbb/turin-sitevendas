@@ -1,51 +1,56 @@
-// seats.js — componente de poltronas usando a malha do backup (encaixe perfeito)
+// seats.js — componente de poltronas (encaixe no bus-blank + sem botões internos)
 // Exporta window.renderSeats(container, schedule, type) + window.destroySeats(container)
 
 (() => {
-  const STYLE_ID = 'seats-component-style-v2';
+  const STYLE_ID = 'seats-component-style-v3';
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
     const css = `
-:root{ --brand:#0b5a2b; --brand-700:#094a24; }
+:root{
+  --brand:#0b5a2b; --brand-700:#094a24;
+  /* offsets finos para a grade dentro da carcaça */
+  --grid-top: 58px;      /* ajuste vertical */
+  --grid-left: 130px;    /* ajuste horizontal */
+  --grid-right: 26px;
+  --seat-w: 36px;
+  --seat-h: 22px;
+  --gap-x: 10px;
+  --gap-y: 8px;
+}
 .seats-card .bus-wrap{ position:relative; overflow:hidden; }
 .seats-card .bus-img{ max-width:100%; height:auto; display:block; }
 .seats-card .grid{
   position:absolute; inset:0;
   display:grid;
-  grid-template-columns: repeat(11, 36px);
-  grid-auto-rows: 26px;
-  gap: 8px 10px;
-  /* offsets para encaixar na carcaça do bus-blank.png */
-  margin: 46px 22px 0 140px;
+  grid-template-columns: repeat(11, var(--seat-w));
+  grid-auto-rows: var(--seat-h);
+  gap: var(--gap-y) var(--gap-x);
+  margin: var(--grid-top) var(--grid-right) 0 var(--grid-left);
 }
 .seats-card .seat{
   background:#eaf5ea; color:#1a301a;
   border:1px solid #d8ead8; border-radius:6px;
-  min-width:30px; height:22px; line-height:20px; font-size:12px;
-  text-align:center; user-select:none; cursor:pointer;
+  min-width:var(--seat-w); height:var(--seat-h);
+  line-height:calc(var(--seat-h) - 2px);
+  font-size:12px; text-align:center; user-select:none; cursor:pointer;
 }
 .seats-card .seat.selected{
   background:var(--brand) !important; color:#fff !important; border-color:var(--brand-700) !important;
 }
-.seats-card .seat.disabled, .seats-card .seat.occupied{
+.seats-card .seat.occupied{
   background:#cfd6cf !important; color:#666 !important; border-color:#cfd6cf !important; cursor:not-allowed;
 }
-.seats-card .walkway{ width:36px; height:22px; opacity:0; }
+.seats-card .walkway{ width:var(--seat-w); height:var(--seat-h); opacity:0; }
 
 .seats-card .legend{ display:flex; align-items:center; gap:18px; margin:14px 0 6px; }
 .seats-card .legend .i{ display:flex; align-items:center; gap:8px; font-size:.95rem; color:#2a3b2a; }
 .seats-card .legend .sw{ width:16px; height:16px; border-radius:4px; border:1px solid #d8ead8; }
-.seats-card .sw.free{ background:#eaf5ea; }
-.seats-card .sw.sel{ background:var(--brand); border-color:var(--brand-700); }
-.seats-card .sw.occ{ background:#cfd6cf; border-color:#cfd6cf; }
+.seats-card .legend .sw.free{ background:#eaf5ea; }
+.seats-card .legend .sw.sel{ background:var(--brand); border-color:var(--brand-700); }
+.seats-card .legend .sw.occ{ background:#cfd6cf; border-color:#cfd6cf; }
 
 .seats-card .pax-row{ display:none; margin-top:8px; }
 .seats-card .pax-grid{ display:grid; grid-template-columns: 1.6fr 1fr 1fr; gap:10px; }
-.seats-card .actions{ display:flex; gap:10px; margin-top:12px; }
-
-.btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
-.btn-primary{ background:var(--brand); color:#fff; }
-.btn-ghost{ background:#e9ecef; color:#222; }
     `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
@@ -60,19 +65,7 @@
     const [Y,M,D] = iso.split('-'); return `${D}/${M}/${Y}`;
   };
 
-  // carrega “snapshot” da ida para restringir a volta
-  function loadOutboundSnapshot() {
-    const pax = JSON.parse(localStorage.getItem('outboundPassengers') || '[]');
-    const cnt = Number(localStorage.getItem('outboundSeatCount') || 0) || pax.length;
-    return { pax, cnt };
-  }
-  function saveOutboundSnapshot(passengers) {
-    localStorage.setItem('outboundPassengers', JSON.stringify(passengers));
-    localStorage.setItem('outboundSeatCount', String(passengers.length));
-  }
-
-  // malha do backup: 5 linhas x 11 colunas com corredor
-  // (estes números batem com o bus-blank.png)
+  // malha (encaixe do backup)
   const GRID_ROWS = [
     [ 3,  7, 11, 15, 19, 23, 27, 31, 35, 39, null],
     [ 4,  8, 12, 16, 20, 24, 28, 32, 36, 40, null],
@@ -81,24 +74,37 @@
     [ 1,  5,  9, 13, 17, 21, 25, 29, 33, 37, 41],
   ];
 
+  // ida → salva snapshot (para volta)
+  function saveOutboundSnapshot(passengers) {
+    localStorage.setItem('outboundPassengers', JSON.stringify(passengers));
+    localStorage.setItem('outboundSeatCount', String(passengers.length));
+  }
+  function loadOutboundSnapshot() {
+    const pax = JSON.parse(localStorage.getItem('outboundPassengers') || '[]');
+    const cnt = Number(localStorage.getItem('outboundSeatCount') || 0) || pax.length;
+    return { pax, cnt };
+  }
+
   // API pública
   window.renderSeats = function renderSeats(container, schedule, type){
     ensureStyles();
     if (!container) throw new Error('renderSeats: container inválido');
 
-    // estado por instância
     const state = {
-      root: container, schedule: schedule || {}, type: (type || 'ida'),
-      seats: [], passengers: {}, occupied: []
+      root: container,
+      schedule: schedule || {},
+      type: (type || 'ida'),
+      seats: [],
+      passengers: {}
     };
 
-    // header/infos (opcional)
-    const origin = pick(schedule.originName, schedule.origin, schedule.origem, '');
-    const dest   = pick(schedule.destinationName, schedule.destination, schedule.destino, '');
+    // Infos topo (opcional)
+    const orig = pick(schedule.originName, schedule.origin, schedule.origem, '');
+    const dest = pick(schedule.destinationName, schedule.destination, schedule.destino, '');
     const dataBR = fmtDateBR(schedule.date || '');
     const hora   = pick(schedule.departureTime, schedule.horaPartida, '');
 
-    // ida/volta: restrições e auto-preenchimento
+    // Volta: restringe quantidade e pré-preenche
     let maxSelectable = Infinity;
     let paxFromOutbound = [];
     if (state.type === 'volta') {
@@ -107,7 +113,7 @@
       paxFromOutbound = snap.pax || [];
     }
 
-    // scaffold de UI
+    // Scaffold
     state.root.classList.add('seats-card');
     state.root.innerHTML = `
       <div class="bus-wrap">
@@ -122,7 +128,7 @@
       </div>
 
       <p class="mute" style="margin:6px 0 2px">
-        <b>${origin}</b> → <b>${dest}</b> — ${dataBR} às ${hora} (${state.type})
+        <b>${orig}</b> → <b>${dest}</b> — ${dataBR} às ${hora} (${state.type})
       </p>
       <p style="margin-top:2px">Poltronas selecionadas: <b data-el="count">0</b></p>
 
@@ -134,37 +140,36 @@
           <input data-el="pax-phone" type="text" placeholder="Telefone" />
         </div>
       </div>
-
-      <div class="actions">
-        <button class="btn btn-primary" data-el="confirm">Confirmar seleção</button>
-        <button class="btn btn-ghost"   data-el="back">Voltar</button>
-      </div>
     `;
 
-    // refs rápidas
+    // Refs
     const q = (sel) => state.root.querySelector(sel);
-    const grid = q('[data-el="grid"]');
-    const countEl = q('[data-el="count"]');
-    const paxRow  = q('[data-el="pax-row"]');
-    const curSeat = q('[data-el="current-seat"]');
-    const nameI   = q('[data-el="pax-name"]');
-    const cpfI    = q('[data-el="pax-cpf"]');
-    const telI    = q('[data-el="pax-phone"]');
-    const btnConfirm = q('[data-el="confirm"]');
-    const btnBack    = q('[data-el="back"]');
+    const grid   = q('[data-el="grid"]');
+    const countE = q('[data-el="count"]');
+    const paxRow = q('[data-el="pax-row"]');
+    const curSeat= q('[data-el="current-seat"]');
+    const nameI  = q('[data-el="pax-name"]');
+    const cpfI   = q('[data-el="pax-cpf"]');
+    const telI   = q('[data-el="pax-phone"]');
 
-    // ocupa/indisponível (usa dados do schedule.seats igual ao backup)
+    // Dados do backend (padrão do seu projeto)
     const seatsApi = Array.isArray(schedule.seats) ? schedule.seats : [];
-    const isUnavailable = (num) => {
-      const sData = seatsApi.find(s => Number(s.number) === num);
-      const isForcedBlocked = (num === 1 || num === 2);
-      const isInactive = sData?.situacao === 3;
-      const isOccupied = !!sData?.occupied;
-      const isMissing  = !sData;
-      return isForcedBlocked || isInactive || isOccupied || isMissing;
+
+    // Regras de bloqueio:
+    //  - 1 e 2 sempre bloqueadas
+    //  - se existir entrada no schedule.seats:
+    //      situacao===3 (inativo) ou occupied===true => bloqueado
+    //  - se NÃO existir entrada => **livre**
+    const isBlocked = (num) => {
+      if (num === 1 || num === 2) return true;
+      const d = seatsApi.find(s => Number(s.number) === num);
+      if (!d) return false; // <<<<<< COM ESSA LINHA, “sem dado” vira disponível
+      if (Number(d.situacao) === 3) return true;
+      if (d.occupied === true) return true;
+      return false;
     };
 
-    // monta malha com o mesmo mapeamento do backup
+    // Monta malha
     GRID_ROWS.forEach((row, r) => {
       row.forEach((cell, c) => {
         const rowPos = r+1, colPos = c+1;
@@ -181,12 +186,14 @@
         seat.textContent = String(cell);
         seat.style.gridRowStart = rowPos;
         seat.style.gridColumnStart = colPos;
-        if (isUnavailable(cell)) {
+
+        if (isBlocked(cell)) {
           seat.classList.add('occupied');
           seat.setAttribute('aria-disabled','true');
           grid.appendChild(seat);
           return;
         }
+
         seat.addEventListener('click', () => {
           const i = state.seats.indexOf(cell);
           if (i>=0){
@@ -201,8 +208,7 @@
             }
             state.seats.push(cell);
             seat.classList.add('selected');
-
-            // pré-preenche (volta) na mesma ordem
+            // Pré-preenche na volta conforme ordem
             if (state.type==='volta' && paxFromOutbound.length){
               const idx = state.seats.length - 1;
               const src = paxFromOutbound[idx];
@@ -212,8 +218,9 @@
             }
             updatePaxEditor();
           }
-          countEl.textContent = state.seats.length;
+          countE.textContent = state.seats.length;
         });
+
         grid.appendChild(seat);
       });
     });
@@ -240,34 +247,26 @@
     }
     bindPaxInputs();
 
-    btnConfirm.addEventListener('click', () => {
-      if (state.type==='volta' && state.seats.length !== maxSelectable){
-        alert(`Selecione ${maxSelectable} poltronas para a volta.`);
-        return;
+    // >>> NÃO criamos botões aqui para evitar duplicidade <<<
+    // Em vez disso, expomos handlers para os botões externos (do host):
+    state.root.__seatsHandlers = {
+      confirm(){
+        if (state.type==='volta' && isFinite(maxSelectable) && state.seats.length !== maxSelectable){
+          alert(`Selecione ${maxSelectable} poltronas para a volta.`);
+          return;
+        }
+        const falta = state.seats.some(n => !state.passengers[n] || !state.passengers[n].name);
+        if (falta){ alert('Preencha o nome de todos os passageiros.'); return; }
+        const passengers = state.seats.map(n => ({ seatNumber:n, ...(state.passengers[n]||{}) }));
+        if (state.type==='ida') saveOutboundSnapshot(passengers);
+
+        state.root.dispatchEvent(new CustomEvent('seats:confirm', {
+          detail: { seats: state.seats.slice(), passengers, schedule: state.schedule, type: state.type }
+        }));
+      },
+      back(){
+        state.root.dispatchEvent(new CustomEvent('seats:back'));
       }
-      const falta = state.seats.some(n => !state.passengers[n] || !state.passengers[n].name);
-      if (falta){ alert('Preencha o nome de todos os passageiros.'); return; }
-
-      const passengers = state.seats.map(n => ({ seatNumber:n, ...(state.passengers[n]||{}) }));
-
-      // salva snapshot da ida (para usar na volta)
-      if (state.type==='ida') saveOutboundSnapshot(passengers);
-
-      // Emite evento para o host (main.js coleta e segue o fluxo)
-      state.root.dispatchEvent(new CustomEvent('seats:confirm', {
-        detail: { seats: state.seats.slice(), passengers, schedule: state.schedule, type: state.type }
-      }));
-    });
-
-    btnBack.addEventListener('click', () => {
-      state.root.dispatchEvent(new CustomEvent('seats:back'));
-    });
-
-    // retorna mini-API e facilita destruir
-    return {
-      getSelected: () => state.seats.slice(),
-      getPassengers: () => state.seats.map(n => ({ seatNumber:n, ...(state.passengers[n]||{}) })),
-      destroy(){ container.innerHTML=''; }
     };
   };
 
