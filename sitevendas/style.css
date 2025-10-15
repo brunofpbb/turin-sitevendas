@@ -411,3 +411,82 @@ footer{
   /* sua classe .btn .btn-primary já aplica o estilo */
 }
 
+
+
+
+
+
+
+
+/* ======== Cores de marca / Botões ======== */
+:root{
+  --brand: #0b5a2b;        /* mesma cor do .btn.btn-primary já usado no site */
+  --brand-700: #094a24;
+}
+
+/* Assentos */
+.seat {
+  background: #eaf5ea;
+  color: #1a301a;
+  border: 1px solid #d8ead8;
+  border-radius: 6px;
+  min-width: 30px;
+  height: 22px;
+  line-height: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
+}
+.seat:hover { filter: brightness(.98); }
+
+/* Selecionado = mesma cor do botão Pesquisar */
+.seat.selected{
+  background: var(--brand) !important;
+  color: #fff !important;
+  border-color: var(--brand-700) !important;
+}
+
+/* Ocupado */
+.seat.disabled{
+  background: #cfd6cf !important;
+  color: #666 !important;
+  border-color: #cfd6cf !important;
+  cursor: not-allowed;
+}
+
+/* ======== Legenda ======== */
+.seat-legend{
+  display:flex;
+  align-items:center;
+  gap: 18px;
+  margin: 10px 0 4px;
+}
+.seat-legend .item{
+  display:flex; align-items:center; gap:8px;
+  font-size:.95rem; color:#2a3b2a;
+}
+.seat-legend .swatch{
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  border: 1px solid #d8ead8;
+}
+.swatch--free      { background:#eaf5ea; }
+.swatch--selected  { background:var(--brand); border-color:var(--brand-700); }
+.swatch--occupied  { background:#cfd6cf; border-color:#cfd6cf; }
+
+/* ======== Distribuição no ônibus (ajuste fino) ======== */
+/* grade levemente mais espaçada; empurra um pouco pra dentro da carcaça */
+.bus-grid{
+  display:grid;
+  grid-template-columns: repeat(11, 36px);
+  grid-auto-rows: 26px;
+  gap: 8px 10px;
+  margin: 0 18px 0 140px; /* empurra para dentro da carcaça esquerda */
+}
+
+/* ======== Botões na ordem pedida ======== */
+.seat-actions{
+  display:flex; gap:10px; margin-top: 10px;
+}
+
