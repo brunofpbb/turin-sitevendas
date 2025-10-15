@@ -1,188 +1,243 @@
-// seats.js – componente sem botão próprio; preserva dados ao alternar poltronas
+// seats.js — seleção de poltronas (ida/volta) com sincronização de passageiros
 (function(){
-  function renderSeats(container, schedule /* onConfirm não é usado aqui */){
-    container.innerHTML = '';
+  // Utils
+  const $  = (q, r=document) => r.querySelector(q);
+  const $$ = (q, r=document) => Array.from(r.querySelectorAll(q));
+  const fmtDateBR = (iso) => {
+    if (!iso || !iso.includes('-')) return iso || '';
+    const [Y,M,D] = iso.split('-');
+    return `${D}/${M}/${Y}`;
+  };
 
-    // Cabeçalho
-    const info = document.createElement('div');
-    info.style.marginBottom = '8px';
-    const [y,m,d] = String(schedule.date||'').split('-');
-    const dataBR = (d&&m&&y) ? `${d}/${m}/${y}` : (schedule.date||'');
-    info.innerHTML = `<strong>${schedule.originName||''}</strong> &rarr; <strong>${schedule.destinationName||''}</strong> — ${dataBR} às ${schedule.departureTime||''}`;
-    container.appendChild(info);
+  // Estado geral
+  const state = {
+    schedule: JSON.parse(sessionStorage.getItem('currentSchedule') || 'null'), // preencha isso na navegação
+    type:     sessionStorage.getItem('tripType') || detectTripTypeFromTitle(), // 'ida' | 'volta'
+    seats: [],            // lista de números selecionados
+    occupied: [],         // vindo do backend
+    passengers: {},       // { [seatNumber]: {name, cpf, phone} }
+    maxSelectable: Infinity,
+    passengersFromOutbound: [] // quando for volta
+  };
 
-    // Estrutura do ônibus
-    const wrap = document.createElement('div'); wrap.className = 'bus-wrap';
-    const bus  = document.createElement('div'); bus.className  = 'bus-bg';
-    const grid = document.createElement('div'); grid.className = 'seat-grid';
-    bus.appendChild(grid); wrap.appendChild(bus);
-
-    const legend = document.createElement('div'); legend.className='legend';
-    legend.innerHTML = `
-      <span><i class="dot"></i>Disponível</span>
-      <span><i class="dot sel"></i>Selecionado</span>
-      <span><i class="dot occ"></i>Ocupado</span>
-    `;
-    wrap.appendChild(legend);
-
-    const selectedP = document.createElement('p'); selectedP.style.margin='6px 0 10px';
-    const paxBox = document.createElement('div'); paxBox.className='passenger-container';
-
-    container.appendChild(wrap);
-    container.appendChild(selectedP);
-    container.appendChild(paxBox);
-
-    // ===== Estado
-    const maxSelected = 6;
-    let selectedSeats = [];                   // [36, 14, ...]
-    const passengersBySeat = new Map();       // 36 -> {name, cpf, phone}
-
-    // ===== Carrega poltronas
-    async function loadSeats() {
-      if (Array.isArray(schedule.seats) && schedule.seats.length) return true;
-      try {
-        const resp = await fetch('/api/poltronas', {
-          method: 'POST', headers: { 'Content-Type':'application/json' },
-          body: JSON.stringify({
-            idViagem: schedule.idViagem,
-            idTipoVeiculo: schedule.idTipoVeiculo,
-            idLocOrigem: schedule.originId,
-            idLocDestino: schedule.destinationId
-          })
-        });
-        const raw = await resp.json();
-        const data = Array.isArray(raw) ? (raw[0]||{}) : raw;
-
-        let poltronas = [];
-        if (data?.PoltronaXmlRetorno) {
-          const p = data.PoltronaXmlRetorno;
-          poltronas = Array.isArray(p) ? p : (Array.isArray(p?.Poltrona) ? p.Poltrona : [p]);
-        } else if (data?.LaypoltronaXml?.PoltronaXmlRetorno) {
-          poltronas = data.LaypoltronaXml.PoltronaXmlRetorno;
-        }
-
-        schedule.seats = (poltronas||[]).map(p=>{
-          const number   = parseInt(p.Caption || p.caption || p.Numero || p.NumeroPoltrona || p.Poltrona, 10);
-          const situacao = parseInt(p.Situacao ?? p.situacao ?? 0, 10); // 0 livre, 3 inativo
-          return { number, situacao, occupied: situacao !== 0 };
-        }).filter(s => Number.isFinite(s.number) && s.number>=1 && s.number<=42);
-
-        return true;
-      } catch(e){ console.error('poltronas:', e); return false; }
-    }
-
-    // ===== Desenho
-    const rows = [
-      [3,7,11,15,19,23,27,31,35,39,null],
-      [4,8,12,16,20,24,28,32,36,40,null],
-      [null,null,null,null,null,null,null,null,null,null,null],
-      [2,6,10,14,18,22,26,30,34,38,42],
-      [1,5,9,13,17,21,25,29,33,37,41]
-    ];
-
-    function draw(){
-      grid.innerHTML = '';
-      selectedP.textContent = selectedSeats.length ? `Poltronas selecionadas: ${selectedSeats.join(', ')}` : '';
-      // NÃO limpa paxBox aqui – ele será re-renderizado preservando valores
-      drawPassengers(); // inicial
-
-      rows.forEach(row=>{
-        row.forEach(cell=>{
-          const div = document.createElement('div');
-          if (cell===null){ div.className='walkway'; grid.appendChild(div); return; }
-
-          div.className = 'seat';
-          div.textContent = cell;
-          const seatData = (schedule.seats||[]).find(s => Number(s.number)===cell);
-          const forced = (cell===1 || cell===2);
-          const inativo = seatData?.situacao===3;
-          const ocupado = !!seatData?.occupied;
-
-          if (forced || inativo || ocupado || !seatData){
-            div.classList.add('occupied');
-            div.setAttribute('aria-disabled','true');
-          } else {
-            if (selectedSeats.includes(cell)) div.classList.add('selected');
-            div.addEventListener('click', ()=>{
-              toggleSeat(cell, div);
-            });
-          }
-          grid.appendChild(div);
-        });
-      });
-    }
-
-    function toggleSeat(n, div){
-      const already = selectedSeats.includes(n);
-      if (!already){
-        if (selectedSeats.length>=maxSelected){ alert(`Máximo ${maxSelected} poltronas.`); return; }
-        selectedSeats.push(n);
-        // inicia com valores já existentes (se houver) ou vazios
-        if (!passengersBySeat.has(n)) passengersBySeat.set(n, { name:'', cpf:'', phone:'' });
-        div.classList.add('selected');
-      }else{
-        selectedSeats = selectedSeats.filter(x=>x!==n);
-        passengersBySeat.delete(n);
-        div.classList.remove('selected');
-      }
-      selectedP.textContent = selectedSeats.length ? `Poltronas selecionadas: ${selectedSeats.join(', ')}` : '';
-      drawPassengers(); // re-renderiza, mas PRESERVANDO os valores em passengersBySeat
-    }
-
-    function drawPassengers(){
-      // salva os valores digitados ANTES de redesenhar
-      for (const row of paxBox.querySelectorAll('.passenger-row')) {
-        const seatNumber = parseInt(row.dataset.seatNumber,10);
-        const name  = row.querySelector('input[name="name"]')?.value || '';
-        const cpf   = row.querySelector('input[name="cpf"]')?.value || '';
-        const phone = row.querySelector('input[name="phone"]')?.value || '';
-        if (!passengersBySeat.has(seatNumber)) passengersBySeat.set(seatNumber, { name, cpf, phone });
-        else passengersBySeat.set(seatNumber, { ...passengersBySeat.get(seatNumber), name, cpf, phone });
-      }
-
-      paxBox.innerHTML = '';
-      selectedSeats.forEach(n=>{
-        const vals = passengersBySeat.get(n) || { name:'', cpf:'', phone:'' };
-        const row = document.createElement('div');
-        row.className = 'passenger-row';
-        row.dataset.seatNumber = String(n);
-        row.innerHTML = `
-          <span class="seat-label">Pol ${n}:</span>
-          <input type="text" name="name"  placeholder="Nome"    value="${vals.name||''}" />
-          <input type="text" name="cpf"   placeholder="CPF"     value="${vals.cpf||''}" />
-          <input type="tel"  name="phone" placeholder="Telefone" value="${vals.phone||''}" />
-        `;
-        // atualiza o map a cada digitação
-        row.querySelectorAll('input').forEach(inp=>{
-          inp.addEventListener('input', ()=>{
-            const n2 = parseInt(row.dataset.seatNumber,10);
-            const v  = {
-              name:  row.querySelector('input[name="name"]').value,
-              cpf:   row.querySelector('input[name="cpf"]').value,
-              phone: row.querySelector('input[name="phone"]').value
-            };
-            passengersBySeat.set(n2, v);
-          });
-        });
-        paxBox.appendChild(row);
-      });
-    }
-
-    // ===== Coletor para o botão externo
-    container.__sv_collect = function(){
-      if (!selectedSeats.length) return { ok:false, error:'Selecione ao menos 1 poltrona.' };
-      const passengers = selectedSeats.map(n=>{
-        const v = passengersBySeat.get(n) || {name:'',cpf:'',phone:''};
-        return { seatNumber:n, name:v.name?.trim(), cpf:v.cpf?.trim(), phone:v.phone?.trim() };
-      });
-      const incompleto = passengers.some(p => !p.name || !p.cpf || !p.phone);
-      if (incompleto) return { ok:false, error:'Preencha todos os dados dos passageiros.' };
-      return { ok:true, payload:{ schedule, seats:selectedSeats.slice(), passengers } };
-    };
-
-    // ===== Inicializa
-    (async ()=>{ await loadSeats(); draw(); })();
+  function detectTripTypeFromTitle(){
+    const h2 = $('.step-title, h2');
+    if (h2 && /volta/i.test(h2.textContent)) return 'volta';
+    return 'ida';
   }
 
-  window.renderSeats = renderSeats;
+  // Carrega info de ida para a volta
+  function loadOutboundDataForReturn(){
+    if (state.type !== 'volta') return;
+
+    // guardamos na ida:
+    // localStorage.setItem('outboundPassengers', JSON.stringify(passengersArray));
+    // localStorage.setItem('outboundSeatCount', String(passengersArray.length));
+    const ps = JSON.parse(localStorage.getItem('outboundPassengers') || '[]');
+    const cnt = Number(localStorage.getItem('outboundSeatCount') || 0) || ps.length;
+
+    state.passengersFromOutbound = ps;
+    state.maxSelectable = Math.max(0, cnt) || ps.length || 0;
+  }
+
+  // Na ida, quando confirmar, salve passageiros/quantidade
+  function saveOutboundSnapshotIfNeeded(){
+    if (state.type !== 'ida') return;
+    const pax = Object.values(state.passengers).filter(p => p && p.name);
+    if (!pax.length) return;
+    localStorage.setItem('outboundPassengers', JSON.stringify(pax));
+    localStorage.setItem('outboundSeatCount', String(pax.length));
+  }
+
+  // --- Montagem da grade (use sua fonte de layout real; aqui usamos 42 poltronas padrão 2+2) ---
+  const totalSeats = 42;
+  function renderGrid(container){
+    container.innerHTML = '';
+    for (let n=1; n<=totalSeats; n++){
+      const div = document.createElement('div');
+      div.className = 'seat';
+      div.textContent = n;
+      if (state.occupied.includes(n)) div.classList.add('disabled');
+
+      if (!div.classList.contains('disabled')){
+        div.addEventListener('click', () => toggleSeat(n, div));
+      }
+      container.appendChild(div);
+    }
+    // aplica classe selected para já selecionados
+    $$(':scope > .seat', container).forEach(el => {
+      const num = Number(el.textContent);
+      if (state.seats.includes(num)) el.classList.add('selected');
+    });
+  }
+
+  // Alterna seleção respeitando limite na volta
+  function toggleSeat(n, el){
+    const idx = state.seats.indexOf(n);
+    if (idx >= 0){
+      state.seats.splice(idx,1);
+      el.classList.remove('selected');
+      delete state.passengers[n];
+      updatePassengersRow();
+      updateCounter();
+      return;
+    }
+    // limite na volta
+    if (state.type === 'volta' && state.seats.length >= state.maxSelectable){
+      alert(`Para a volta, selecione no máximo ${state.maxSelectable} poltronas (mesma quantidade da ida).`);
+      return;
+    }
+    state.seats.push(n);
+    el.classList.add('selected');
+
+    // Pré-preenche passageiros na volta, na ordem
+    if (state.type === 'volta' && state.passengersFromOutbound.length){
+      const i = state.seats.length - 1;
+      const src = state.passengersFromOutbound[i];
+      if (src){
+        state.passengers[n] = { name: src.name || '', cpf: src.cpf || '', phone: src.phone || '' };
+      }
+    } else {
+      // cria slot vazio; usuário preenche
+      state.passengers[n] = state.passengers[n] || { name:'', cpf:'', phone:'' };
+    }
+
+    updatePassengersRow();
+    updateCounter();
+  }
+
+  // UI: contador + legenda
+  function renderLegend(){
+    const legend = $('.seat-legend') || document.createElement('div');
+    legend.className = 'seat-legend';
+    legend.innerHTML = `
+      <div class="item"><span class="swatch swatch--free"></span> Disponível</div>
+      <div class="item"><span class="swatch swatch--selected"></span> Selecionado</div>
+      <div class="item"><span class="swatch swatch--occupied"></span> Ocupado</div>
+    `;
+    const host = $('#legend-host') || $('.legend-host') || $('.legend') || $('.step-title')?.parentElement;
+    if (host && !host.querySelector('.seat-legend')) host.appendChild(legend);
+  }
+
+  function updateCounter(){
+    const el = $('#seats-count');
+    if (el) el.textContent = state.seats.length;
+  }
+
+  // UI: linha de dados do passageiro (um por vez — como está na sua tela)
+  function updatePassengersRow(){
+    const wrap = $('#passengers-row');
+    const seatSpan = $('#current-seat');
+    const nameI = $('#pax-name');
+    const cpfI  = $('#pax-cpf');
+    const telI  = $('#pax-phone');
+
+    if (!wrap) return;
+    // pega o último seat selecionado para edição rápida
+    const current = state.seats[state.seats.length - 1];
+    if (!current){
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = '';
+    seatSpan.textContent = current;
+
+    const data = state.passengers[current] || {name:'', cpf:'', phone:''};
+    nameI.value = data.name || '';
+    cpfI.value  = data.cpf || '';
+    telI.value  = data.phone || '';
+  }
+
+  function bindPassengerInputs(){
+    const nameI = $('#pax-name');
+    const cpfI  = $('#pax-cpf');
+    const telI  = $('#pax-phone');
+
+    nameI.addEventListener('input', ()=>{
+      const current = state.seats[state.seats.length - 1];
+      if (current) (state.passengers[current] ||= {}).name = nameI.value;
+    });
+    cpfI.addEventListener('input', ()=>{
+      const current = state.seats[state.seats.length - 1];
+      if (current) (state.passengers[current] ||= {}).cpf = cpfI.value;
+    });
+    telI.addEventListener('input', ()=>{
+      const current = state.seats[state.seats.length - 1];
+      if (current) (state.passengers[current] ||= {}).phone = telI.value;
+    });
+  }
+
+  // Confirmação
+  function handleConfirm(){
+    // valida limite na volta: precisa ser igual à ida
+    if (state.type === 'volta' && state.seats.length !== state.maxSelectable){
+      alert(`Selecione ${state.maxSelectable} poltronas para a volta.`);
+      return;
+    }
+    // valida nomes pelo menos
+    const miss = state.seats.some(n => !state.passengers[n] || !state.passengers[n].name);
+    if (miss){
+      alert('Preencha o nome de todos os passageiros.');
+      return;
+    }
+
+    // aqui você integra com a sua estrutura de "bookings" / "pendingPurchase"
+    // exemplo: empurra para localStorage.bookings como item não pago
+    const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+    const schedule = state.schedule || {};
+    const passengers = state.seats.map(n => ({ seatNumber: n, ...(state.passengers[n] || {}) }));
+    bookings.push({
+      id: 'b' + Date.now(),
+      schedule,
+      seats: state.seats.slice(),
+      passengers,
+      price: schedule.price,
+      paid: false,
+      direction: state.type // 'ida' | 'volta'
+    });
+    localStorage.setItem('bookings', JSON.stringify(bookings));
+
+    // snapshot da ida (para usar na volta)
+    saveOutboundSnapshotIfNeeded();
+
+    // redirecione para a próxima etapa (seu fluxo existente)
+    location.href = 'payment.html';
+  }
+
+  // Voltar
+  function handleBack(){
+    history.back();
+  }
+
+  // =============== Boot ===============
+  document.addEventListener('DOMContentLoaded', init); // se estiver carregando via defer, opcional
+
+  function init(){
+    // título/infos topo
+    const title = $('.step-title') || $('h2');
+    if (title && state.type) {
+      title.textContent = `Escolha suas poltronas (${state.type})`;
+    }
+    // contador
+    const counterEl = $('#seats-count');
+    if (counterEl) counterEl.textContent = '0';
+
+    // limite para volta + carregar passageiros de ida
+    loadOutboundDataForReturn();
+
+    // render legenda
+    renderLegend();
+
+    // render grade
+    const grid = $('.bus-grid') || $('#bus-grid') || $('#seats-grid');
+    if (grid) renderGrid(grid);
+
+    bindPassengerInputs();
+
+    // Botões – ordem: Confirmar (verde) à esquerda e Voltar (cinza) depois
+    const confirmBtn = $('#btn-confirm') || $('#confirm-btn');
+    const backBtn    = $('#btn-back')    || $('#back-btn');
+    if (confirmBtn) confirmBtn.addEventListener('click', handleConfirm);
+    if (backBtn)    backBtn.addEventListener('click', handleBack);
+  }
 })();
