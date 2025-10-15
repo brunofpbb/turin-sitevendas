@@ -236,3 +236,25 @@ footer{
 }
 .btn-disabled:hover{ filter:none; }
 
+/* Centralizar o memorial de cálculo e os botões */
+.calc-box{
+  max-width: 620px;     /* largura fixa agradável */
+  margin: 10px auto;    /* centraliza o bloco dentro do card */
+}
+
+.calc-box .actions{
+  display: flex;
+  justify-content: center;  /* centraliza os dois botões */
+  gap: 10px;
+}
+
+/* Mantém o conteúdo em duas colunas, mas o bloco todo fica centralizado */
+.calc-cols{
+  grid-template-columns: 1fr 1fr;
+  column-gap: 24px;
+  justify-content: center;
+}
+
+/* Se quiser tudo centralizado (texto também), descomente as duas linhas abaixo */
+ .calc-left, .calc-right{ text-align: center; }
+
