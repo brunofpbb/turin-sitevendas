@@ -1,9 +1,66 @@
-<main class="auth-wrapper">
-  <section class="auth-card" style="width: 980px;">
-    <h2 class="step-title">Reservas</h2>
-    <div id="trips-list"></div>
-    <div class="actions" style="margin-top:12px">
-      <a class="btn btn-ghost" href="index.html">Voltar</a>
-    </div>
-  </section>
-</main>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Turin Transportes – Minhas Viagens</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Pequeno helper só para popular o nav (não carregamos main.js aqui) -->
+  <script>
+    function updateUserNav(){
+      const nav = document.getElementById('user-nav');
+      if (!nav) return;
+      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      nav.innerHTML = '';
+      if (user){
+        const a = document.createElement('a');
+        a.href = 'profile.html';
+        a.textContent = `Minhas viagens (${user.name || user.email})`;
+        nav.appendChild(a);
+
+        const s = document.createElement('a');
+        s.href = '#';
+        s.style.marginLeft = '12px';
+        s.textContent = 'Sair';
+        s.addEventListener('click', () => {
+          localStorage.removeItem('user');
+          updateUserNav();
+          location.href = 'index.html';
+        });
+        nav.appendChild(s);
+      } else {
+        const a = document.createElement('a');
+        a.href = 'login.html';
+        a.textContent = 'Entrar';
+        a.addEventListener('click', ()=>{
+          localStorage.setItem('postLoginRedirect', 'profile.html');
+        });
+        nav.appendChild(a);
+      }
+    }
+  </script>
+  <script src="profile.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Turin Transportes – Minhas Viagens</h1>
+    <nav id="user-nav"></nav>
+  </header>
+
+  <!-- Mesmo visual das outras telas: card central dentro de um wrapper -->
+  <main class="auth-wrapper">
+    <section class="auth-card" style="width: 980px;">
+      <h2 class="step-title">Reservas</h2>
+      <div id="trips-list"></div>
+
+      <div class="actions" style="margin-top:12px">
+        <a class="btn btn-ghost" href="index.html">Voltar</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Turin Transportes</p>
+  </footer>
+</body>
+</html>
