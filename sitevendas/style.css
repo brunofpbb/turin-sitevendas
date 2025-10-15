@@ -132,3 +132,19 @@ footer{
   .two-cols-pay{ grid-template-columns:1fr; padding:0 16px; }
   .summary-card{ position:static; }
 }
+
+/* botão maior (usado no Voltar) */
+.btn-lg{ padding:10px 18px; font-size:1rem; }
+
+/* botão cancelar desabilitado (cinza) */
+.btn-disabled{
+  background:#cfd6cf;
+  color:#666;
+  border:1px solid #cfd6cf;
+  cursor:not-allowed;
+}
+.btn-disabled:hover{ filter:none; }
+
+/* título central já vem inline; mantemos aqui se preferir global */
+/* .auth-card .step-title{ text-align:center; } */
+
