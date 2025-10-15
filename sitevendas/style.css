@@ -490,3 +490,15 @@ footer{
   display:flex; gap:10px; margin-top: 10px;
 }
 
+
+
+
+
+/* Ajuste fino do encaixe dos assentos no bus-blank */
+:root{
+  /* mexa nessas 2 variáveis se precisar alinhar 2–4px */
+  --grid-top: 58px;   /* sobe/desce as poltronas */
+  --grid-left: 130px; /* empurra pra direita/esquerda */
+}
+
+/* Deixe o botão “Confirmar seleção” e “Voltar” externos como já estão (sem duplicar) */
