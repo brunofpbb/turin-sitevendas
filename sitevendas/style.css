@@ -258,3 +258,62 @@ footer{
 /* Se quiser tudo centralizado (texto também), descomente as duas linhas abaixo */
  .calc-left, .calc-right{ text-align: center; }
 
+/* === Card fixo (form) em coluna, botões no rodapé === */
+.search-form{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-height: 420px;           /* ajuste fino conforme sua altura do card */
+}
+.search-actions{
+  margin-top:auto;             /* empurra ações para o rodapé do card */
+  display:flex;
+  gap:10px;
+}
+
+/* Inputs do card fixo */
+.search-form label{
+  font-weight:600;
+}
+.search-form input[type="text"],
+.search-form input[type="date"]{
+  height: 36px;
+  padding: 6px 10px;
+  border:1px solid #dfe5df;
+  border-radius:6px;
+}
+
+/* === Autocomplete discreto === */
+.ac-panel{
+  position: relative; /* contexto */
+  height: 0;          /* não ocupa espaço; lista é absoluta */
+}
+.ac-panel .ac-list{
+  position:absolute;
+  top:-2px; left:0; right:0;
+  background:#fff;
+  border:1px solid #e5ebe5;
+  border-radius:10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.06);
+  padding:6px 0;
+  z-index: 20;
+  max-height: 260px;
+  overflow:auto;
+}
+.ac-item{
+  padding:8px 12px;
+  font-size: .95rem;
+  color:#263c26;
+  cursor:pointer;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.ac-item:hover{
+  background:#f5f8f5;
+}
+
+/* Em telas pequenas, lista um pouco mais estreita */
+@media (max-width: 640px){
+  .ac-panel .ac-list{ font-size:.94rem; }
+}
