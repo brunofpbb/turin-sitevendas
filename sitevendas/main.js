@@ -34,24 +34,62 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===== Central começa vazio
   clearCentral();
 
-  // ===== Sugestões (datalist com filtro ao digitar – começa com todas)
-  function fillAll(dl){
-    dl.innerHTML = '';
-    localities.forEach(l => {
-      const o = document.createElement('option'); o.value = l.descricao; dl.appendChild(o);
+// ===== Autocomplete discreto (substitui datalist)
+const acOrigin = document.querySelector('#ac-origin');
+const acDest   = document.querySelector('#ac-destination');
+
+function buildList(items, onPick){
+  const wrap = document.createElement('div');
+  wrap.className = 'ac-list';
+  items.forEach(it=>{
+    const li = document.createElement('div');
+    li.className = 'ac-item';
+    li.textContent = it.descricao;
+    li.addEventListener('mousedown', (e)=>{ // evita perder foco antes do clique
+      e.preventDefault();
+      onPick(it);
     });
+    wrap.appendChild(li);
+  });
+  return wrap;
+}
+
+function attachAutocomplete(input, panel, source){
+  function close(){
+    panel.innerHTML = '';
+    panel.hidden = true;
   }
-  function updateSuggestions(input, dl){
-    const s = input.value.toLowerCase();
-    dl.innerHTML = '';
-    const list = s ? localities.filter(l => l.descricao.toLowerCase().includes(s)) : localities;
-    list.forEach(l => {
-      const o = document.createElement('option'); o.value = l.descricao; dl.appendChild(o);
-    });
+  function openWith(list){
+    panel.innerHTML = '';
+    panel.appendChild(buildList(list, (it)=>{
+      input.value = it.descricao;
+      close();
+    }));
+    panel.hidden = false;
   }
-  fillAll(dlOrigin); fillAll(dlDest);
-  originInput.addEventListener('input', ()=> updateSuggestions(originInput, dlOrigin));
-  destInput.addEventListener('input',   ()=> updateSuggestions(destInput,   dlDest));
+
+  input.addEventListener('input', ()=>{
+    const s = input.value.trim().toLowerCase();
+    const list = s
+      ? source.filter(l => l.descricao.toLowerCase().includes(s)).slice(0,8)
+      : source.slice(0,8);
+    list.length ? openWith(list) : close();
+  });
+
+  input.addEventListener('focus', ()=>{
+    const s = input.value.trim().toLowerCase();
+    const list = s
+      ? source.filter(l => l.descricao.toLowerCase().includes(s)).slice(0,8)
+      : source.slice(0,8);
+    list.length ? openWith(list) : close();
+  });
+
+  input.addEventListener('blur', ()=> setTimeout(close, 100));
+}
+
+attachAutocomplete(originInput, acOrigin, localities);
+attachAutocomplete(destInput,   acDest,   localities);
+
 
   // ===== Datas mínimas
   [dateInput, retInput].forEach(inp=>{
