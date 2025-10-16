@@ -64,7 +64,8 @@
 .seats-onepage .info-line{ margin:6px 0 4px; color:#2a3b2a; }
 .seats-onepage .counter{ margin-bottom:8px; }
 
-.seats-onepage .pax { display:none; margin-top:8px; }
+.seats-onepage .pax { display:none; margin-top:12px; }
+.seats-onepage .pax.show{ display:block !important; } /* força exibir mesmo c/ CSS global */
 .seats-onepage .pax-table{
   display:grid;
   grid-template-columns: 74px 1.5fr 1fr 1fr;
@@ -260,14 +261,15 @@
 
     // ===== renderiza TODAS as linhas de passageiros
     function renderPaxList(){
-      if (!state.seats.length){
-        paxBox.style.display = 'none';
+      const show = state.seats.length > 0;
+      paxBox.classList.toggle('show', show);   // força visibilidade
+      if (!show){
         paxListEl.innerHTML = '';
         return;
       }
-      paxBox.style.display = '';
       paxListEl.innerHTML = '';
 
+      // ordena poltronas para formulário ficar previsível
       const ordered = state.seats.slice().sort((a,b)=>a-b);
 
       ordered.forEach(num=>{
