@@ -3,7 +3,7 @@
 
 (() => {
   // ====== Ajustes finos do encaixe (ajuste 1–3px se necessário) ======
-  const TOP_OFFSET  = 31;   // px (sobe/desce a grade sobre o bus-blank)
+  const TOP_OFFSET  = 33;   // px (sobe/desce a grade sobre o bus-blank)
   const LEFT_OFFSET = 130;  // px (empurra grade p/ direita/esquerda)
   const CELL_W = 40;        // largura da célula (assento)
   const CELL_H = 30;        // altura da célula
@@ -76,8 +76,18 @@
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
 
-/* Seus elementos de passageiros (usa suas classes existentes) */
+/* container de passageiros (usa classes do projeto) */
 .seats-onepage .passenger-container{ margin-top:10px; }
+.seats-onepage .pax-table{ display:block; }
+
+/* visual dos "campos" somente leitura (volta) */
+.seats-onepage .passenger-row{
+  display:grid; grid-template-columns: 80px 1fr 1fr 1fr; gap:10px; margin-bottom:6px; align-items:center;
+}
+.seats-onepage .passenger-row .seat-label{ font-weight:600; }
+.seats-onepage .passenger-row.readonly span.value{
+  padding:8px 10px; background:#f7f8f8; border:1px solid #e1e4e8; border-radius:6px;
+}
     `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
@@ -90,6 +100,8 @@
     if (!iso || !iso.includes('-')) return iso || '';
     const [Y,M,D] = iso.split('-'); return `${D}/${M}/${Y}`;
   };
+  const esc = (s) =>
+    String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
   // ida/volta (snapshot de passageiros)
   function saveOutboundSnapshot(passengers) {
@@ -104,12 +116,10 @@
 
   // >>> DETECÇÃO ROBUSTA DE EXECUTIVO <<<
   function isExecutive(schedule){
-    // 1) Varre o objeto inteiro por palavras-chave (cobre variações de campos)
     const textAll = JSON.stringify(schedule ?? {}).toLowerCase();
-    if (textAll.includes('executivo') || textAll.includes('semi') && textAll.includes('leito') || textAll.includes('leito')) return true;
+    if (textAll.includes('executivo') || (textAll.includes('semi') && textAll.includes('leito')) || textAll.includes('leito')) return true;
     if (textAll.includes('convenc')) return false;
 
-    // 2) Heurística com a lista de assentos (se houver)
     const toNum = (x) => {
       if (x == null) return 0;
       if (typeof x === 'object' && 'number' in x) return Number(x.number) || 0;
@@ -123,8 +133,7 @@
     if (maxSeat > 28) return true;
     if (maxSeat > 0 && maxSeat <= 28) return false;
 
-    // 3) Fallback: se não dá pra inferir, NÃO limita por 28 (assume executivo)
-    // Preferimos não bloquear indevidamente.
+    // fallback: não limitar por 28 se não dá pra inferir
     return true;
   }
 
@@ -149,7 +158,6 @@
       <div class="info-line"><span id="tripInfo"></span></div>
       <div class="counter"><b>Poltronas selecionadas:</b> <span id="selCount">0</span></div>
 
-      <!-- usa as SUAS classes do CSS -->
       <div class="passenger-container" id="paxBox" style="display:none">
         <div class="pax-table" id="paxList"></div>
       </div>
@@ -169,7 +177,7 @@
     const btnConfirm = container.querySelector('#btnConfirm');
     const btnBack    = container.querySelector('#btnBack');
 
-    // cabeçalho (em negrito via CSS .info-line)
+    // cabeçalho
     const origin = pick(schedule.originName, schedule.origin, schedule.origem, '');
     const dest   = pick(schedule.destinationName, schedule.destination, schedule.destino, '');
     const dateBR = fmtDateBR(schedule.date || '');
@@ -185,22 +193,20 @@
       pax: {}           // { poltrona: {name, cpf, phone} }
     };
 
-    // dados opcionais de assento vindos da API (ocupado/ativo)
+    // dados opcionais de assento vindos da API
     const seatData = Array.isArray(schedule?.seats) ? schedule.seats : [];
 
     const isSeatBlocked = (num) => {
-      if (num === 1 || num === 2) return true;            // regra fixa
-      // >>> BLOQUEIA >28 APENAS SE NÃO FOR EXECUTIVO <<<
-      if (!state.exec && num > 28) return true;
-
+      if (num === 1 || num === 2) return true;          // regra fixa
+      if (!state.exec && num > 28) return true;         // convencional limita a 28
       const sd = seatData.find(s => {
         const n = (typeof s === 'object' && 'number' in s) ? Number(s.number) : Number(s);
         return n === num;
       });
-      if (!sd) return false;                              // sem dado => livre
+      if (!sd) return false;
       if (typeof sd === 'object') {
-        if (Number(sd.situacao) === 3) return true;       // inativo
-        if (sd.occupied === true) return true;            // ocupado
+        if (Number(sd.situacao) === 3) return true;     // inativo
+        if (sd.occupied === true) return true;          // ocupado
       }
       return false;
     };
@@ -214,7 +220,7 @@
       obPax = snap.pax || [];
     }
 
-    // ===== desenha grid de assentos
+    // desenha grid
     GRID.forEach((row, r) => {
       row.forEach((cell, c) => {
         const rr = r+1, cc = c+1;
@@ -273,35 +279,45 @@
       });
     });
 
-    // ===== renderiza TODAS as linhas de passageiros (usa SUAS classes de CSS)
+    // Renderiza linhas de passageiros
     function renderPaxList(){
       const show = state.seats.length > 0;
-      paxBox.style.display = show ? 'block' : 'none'; // força visibilidade
+      paxBox.style.display = show ? 'block' : 'none';
       paxListEl.innerHTML = '';
       if (!show) return;
 
-      // ordena poltronas para formulário ficar previsível
+      const readonly = (state.type === 'volta'); // <<< aqui: volta = somente leitura
       const ordered = state.seats.slice().sort((a,b)=>a-b);
 
       ordered.forEach(num=>{
         const d = state.pax[num] || (state.pax[num] = { name:'', cpf:'', phone:'' });
-
         const row = document.createElement('div');
-        row.className = 'passenger-row';
-        row.innerHTML = `
-          <span class="seat-label">Pol ${num}</span>
-          <input type="text" name="name"  placeholder="Nome"     value="${d.name  || ''}" data-field="name"  data-seat="${num}" />
-          <input type="text" name="cpf"   placeholder="CPF"      value="${d.cpf   || ''}" data-field="cpf"   data-seat="${num}" />
-          <input type="text" name="phone" placeholder="Telefone" value="${d.phone || ''}" data-field="phone" data-seat="${num}" />
-        `;
+        row.className = 'passenger-row' + (readonly ? ' readonly' : '');
 
-        row.querySelectorAll('input').forEach(inp=>{
-          inp.addEventListener('input', (ev)=>{
-            const seat  = Number(ev.target.getAttribute('data-seat'));
-            const field = ev.target.getAttribute('data-field');
-            (state.pax[seat] ||= {})[field] = ev.target.value;
+        if (readonly){
+          // Exibição somente leitura na volta
+          row.innerHTML = `
+            <span class="seat-label">Pol ${num}</span>
+            <span class="value">${esc(d.name || '')}</span>
+            <span class="value">${esc(d.cpf || '')}</span>
+            <span class="value">${esc(d.phone || '')}</span>
+          `;
+        } else {
+          // Inputs editáveis na ida
+          row.innerHTML = `
+            <span class="seat-label">Pol ${num}</span>
+            <input type="text" name="name"  placeholder="Nome"     value="${esc(d.name  || '')}" data-field="name"  data-seat="${num}" />
+            <input type="text" name="cpf"   placeholder="CPF"      value="${esc(d.cpf   || '')}" data-field="cpf"   data-seat="${num}" />
+            <input type="text" name="phone" placeholder="Telefone" value="${esc(d.phone || '')}" data-field="phone" data-seat="${num}" />
+          `;
+          row.querySelectorAll('input').forEach(inp=>{
+            inp.addEventListener('input', (ev)=>{
+              const seat  = Number(ev.target.getAttribute('data-seat'));
+              const field = ev.target.getAttribute('data-field');
+              (state.pax[seat] ||= {})[field] = ev.target.value;
+            });
           });
-        });
+        }
 
         paxListEl.appendChild(row);
       });
