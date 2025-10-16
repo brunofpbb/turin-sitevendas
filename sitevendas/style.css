@@ -502,3 +502,57 @@ footer{
 }
 
 /* Deixe o botão “Confirmar seleção” e “Voltar” externos como já estão (sem duplicar) */
+
+
+/* ===== Login / Autenticação ===== */
+.login-page main {
+  max-width: 520px;
+  margin: 24px auto;
+  background: #fff;
+  padding: 0; /* o card abaixo já tem padding */
+  box-shadow: none;
+}
+
+.auth-card {
+  background: #fff;
+  border: 1px solid #ced6de;
+  border-radius: 12px;
+  padding: 20px 22px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.06);
+}
+
+.auth-title { margin: 0 0 6px; }
+
+.login-form .form-row { margin-bottom: 12px; }
+.login-form .form-row label { font-weight: 600; margin-bottom: 6px; display:block; }
+.login-form input[type="email"],
+.login-form input[type="text"] {
+  width: 100%;
+  padding: .6rem .7rem;
+  border: 1px solid #cfd7df;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.actions { margin-top: 8px; }
+.inline { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn { cursor: pointer; border: none; border-radius: 8px; padding: .65rem 1.1rem; font-size: 1rem; }
+.btn-success { background: #005b28; color: #fff; }
+.btn-success:hover { background: #007a3b; }
+.btn-ghost { background: #eef3f7; color: #24323f; }
+.btn-ghost:hover { background: #e2e9ef; }
+
+.hint { color: #5f6b76; font-size: .9rem; }
+.muted { color: #6a7680; }
+
+.status-line { margin-top: 6px; min-height: 1.2rem; }
+
+.is-loading { opacity: .75; pointer-events: none; }
+
+/* rodapé sempre centralizado (compatível com demais telas) */
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+main { flex: 1 0 auto; }
+footer { text-align: center; flex: 0 0 auto; }
+
