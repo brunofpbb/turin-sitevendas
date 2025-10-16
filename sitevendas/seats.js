@@ -3,8 +3,8 @@
 
 (() => {
   // ====== Ajustes finos do encaixe (ajuste 1–3px se necessário) ======
-  const TOP_OFFSET  = 28;   // px (sobe/desce a grade sobre o bus-blank)
-  const LEFT_OFFSET = 150;  // px (empurra grade p/ direita/esquerda)
+  const TOP_OFFSET  = 26;   // px (sobe/desce a grade sobre o bus-blank)
+  const LEFT_OFFSET = 145;  // px (empurra grade p/ direita/esquerda)
   const CELL_W = 40;        // largura da célula (assento)
   const CELL_H = 30;        // altura da célula
   const GAP_X  = 15;        // espaço horizontal entre assentos
@@ -90,14 +90,39 @@
     return { pax, cnt };
   }
 
-  function isExecutive(schedule){
-    const t = (pick(schedule?.category, schedule?.tipo, schedule?.busType, '')+'').toLowerCase();
-    if (t.includes('exec')) return true;
-    if (t.includes('convenc')) return false;
-    const label = (schedule?.classLabel || schedule?.service || '')+'';
-    if (label.toLowerCase().includes('exec')) return true;
-    return false;
-  }
+function isExecutive(schedule){
+  // Junta todos os campos textuais que podem indicar a classe
+  const text = [
+    schedule?.category,
+    schedule?.tipo,
+    schedule?.busType,
+    schedule?.classLabel,
+    schedule?.service,
+    schedule?.vehicleClass,
+    schedule?.modalidade,
+    schedule?.category_name,
+  ]
+  .filter(Boolean)
+  .join(' ')
+  .toLowerCase();
+
+  // Sinais claros de executivo/leito
+  if (/exec/.test(text) || /leito/.test(text) || /semi.?leito/.test(text)) return true;
+  if (/convenc/.test(text) || /convencional/.test(text)) return false;
+
+  // Fallback por quantidade de assentos do próprio schedule
+  // (se há poltronas numeradas acima de 28, consideramos executivo)
+  const maxSeat =
+    Array.isArray(schedule?.seats) && schedule.seats.length
+      ? Math.max(...schedule.seats.map(s => Number(s.number) || 0), 0)
+      : 0;
+
+  if (maxSeat > 28) return true;
+
+  // Se não deu para inferir, assume convencional para não abrir poltronas inexistentes
+  return false;
+}
+
 
   // ===== API pública =====
   window.renderSeats = function renderSeats(container, schedule, wayType){
