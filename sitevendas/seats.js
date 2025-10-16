@@ -19,14 +19,13 @@
     [ 1,  5,  9, 13, 17, 21, 25, 29, 33, 37, 41],
   ];
 
-  // ===== estilos isolados do componente =====
+  // ===== estilos mínimos do componente (isolados) =====
   const STYLE_ID = 'seats-onepage-style';
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
     const css = `
 :root{ --brand:#0b5a2b; --brand-700:#094a24; }
 
-.seats-onepage { }
 .seats-onepage .bus-wrap{ position:relative; overflow:hidden; }
 .seats-onepage .bus-img{ max-width:100%; height:auto; display:block; }
 
@@ -37,6 +36,7 @@
   grid-template-columns: repeat(11, ${CELL_W}px);
   grid-auto-rows: ${CELL_H}px;
   column-gap:${GAP_X}px; row-gap:${GAP_Y}px;
+  z-index: 2;
 }
 
 .seats-onepage .seat{
@@ -54,35 +54,13 @@
 }
 .seats-onepage .walkway{ width:${CELL_W}px; height:${CELL_H}px; opacity:0; }
 
-.seats-onepage .legend{ display:flex; align-items:center; gap:18px; margin:14px 0 6px; }
-.seats-onepage .legend .i{ display:flex; align-items:center; gap:8px; font-size:.95rem; color:#2a3b2a; }
-.seats-onepage .legend .sw{ width:18px; height:18px; border-radius:4px; border:1px solid #d8ead8; }
-.seats-onepage .sw.free{ background:#eaf5ea; }
-.seats-onepage .sw.sel{ background:var(--brand); border-color:var(--brand-700); }
-.seats-onepage .sw.occ{ background:#cfd6cf; border-color:#cfd6cf; }
+.seats-onepage .legend{ display:flex; align-items:center; gap:16px; margin:14px 0 6px; color:#2a3b2a; }
+.seats-onepage .legend .dot{display:inline-block;width:18px;height:14px;border:1px solid #d8ead8;background:#eaf5ea;margin-right:6px;border-radius:4px}
+.seats-onepage .legend .sel{ background:#0b5a2b; border-color:#094a24 }
+.seats-onepage .legend .occ{ background:#cfd6cf; border-color:#cfd6cf }
 
 .seats-onepage .info-line{ margin:6px 0 4px; color:#2a3b2a; }
-.seats-onepage .counter{ margin-bottom:8px; }
-
-.seats-onepage .pax { display:none; margin-top:12px; }
-.seats-onepage .pax.show{ display:block !important; } /* força exibir mesmo c/ CSS global */
-.seats-onepage .pax-table{
-  display:grid;
-  grid-template-columns: 74px 1.5fr 1fr 1fr;
-  gap:10px;
-  align-items:center;
-}
-.seats-onepage .pax-row .seat-tag{ font-weight:600; color:#1d3a1d; }
-.seats-onepage input[type="text"]{
-  padding:7px 10px;
-  border:1px solid #d9e4d9;
-  border-radius:6px;
-  outline:none;
-}
-.seats-onepage input[type="text"]:focus{
-  border-color:#98c39b;
-  box-shadow:0 0 0 3px rgba(11,90,43,.09);
-}
+.seats-onepage .counter{ margin-bottom:10px; }
 
 .seats-onepage .actions{ display:flex; gap:10px; margin-top:12px; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
@@ -134,16 +112,16 @@
       </div>
 
       <div class="legend">
-        <div class="i"><span class="sw free"></span> Disponível</div>
-        <div class="i"><span class="sw sel"></span> Selecionado</div>
-        <div class="i"><span class="sw occ"></span> Ocupado</div>
+        <div><span class="dot"></span> Disponível</div>
+        <div><span class="dot sel"></span> Selecionado</div>
+        <div><span class="dot occ"></span> Ocupado</div>
       </div>
 
       <div class="info-line" id="tripInfo"></div>
       <div class="counter">Poltronas selecionadas: <b id="selCount">0</b></div>
 
-      <div class="pax" id="paxBox">
-        <div style="margin-bottom:6px"><b>Passageiros</b></div>
+      <!-- usa as SUAS classes do CSS -->
+      <div class="passenger-container" id="paxBox" style="display:none">
         <div class="pax-table" id="paxList"></div>
       </div>
 
@@ -259,15 +237,12 @@
       });
     });
 
-    // ===== renderiza TODAS as linhas de passageiros
+    // ===== renderiza TODAS as linhas de passageiros (usa SUAS classes de CSS)
     function renderPaxList(){
       const show = state.seats.length > 0;
-      paxBox.classList.toggle('show', show);   // força visibilidade
-      if (!show){
-        paxListEl.innerHTML = '';
-        return;
-      }
+      paxBox.style.display = show ? 'block' : 'none'; // força visibilidade
       paxListEl.innerHTML = '';
+      if (!show) return;
 
       // ordena poltronas para formulário ficar previsível
       const ordered = state.seats.slice().sort((a,b)=>a-b);
@@ -276,12 +251,12 @@
         const d = state.pax[num] || (state.pax[num] = { name:'', cpf:'', phone:'' });
 
         const row = document.createElement('div');
-        row.className = 'pax-row';
+        row.className = 'passenger-row';
         row.innerHTML = `
-          <div class="seat-tag">Pol ${num}</div>
-          <input type="text" placeholder="Nome"     value="${d.name  || ''}" data-field="name"  data-seat="${num}" />
-          <input type="text" placeholder="CPF"      value="${d.cpf   || ''}" data-field="cpf"   data-seat="${num}" />
-          <input type="text" placeholder="Telefone" value="${d.phone || ''}" data-field="phone" data-seat="${num}" />
+          <span class="seat-label">Pol ${num}</span>
+          <input type="text" name="name"  placeholder="Nome"     value="${d.name  || ''}" data-field="name"  data-seat="${num}" />
+          <input type="text" name="cpf"   placeholder="CPF"      value="${d.cpf   || ''}" data-field="cpf"   data-seat="${num}" />
+          <input type="text" name="phone" placeholder="Telefone" value="${d.phone || ''}" data-field="phone" data-seat="${num}" />
         `;
 
         row.querySelectorAll('input').forEach(inp=>{
