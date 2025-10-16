@@ -534,7 +534,7 @@ footer{
   font-size: 1rem;
 }
 
-.actions { margin-top: 15px; }
+.actions {padding: 24px; margin-top: 8px; }
 .inline { display: flex; gap: 10px; flex-wrap: wrap; }
 
 .btn { cursor: pointer; border: none; border-radius: 8px; padding: .65rem 1.1rem; font-size: 1rem; }
@@ -543,7 +543,7 @@ footer{
 .btn-ghost { background: #eef3f7; color: #24323f; }
 .btn-ghost:hover { background: #e2e9ef; }
 
-.hint { margin-top: 3px; color: #5f6b76; font-size: .9rem; }
+.hint { padding: 3px; color: #5f6b76; font-size: .9rem; }
 .muted { color: #6a7680; }
 
 .status-line { margin-top: 6px; min-height: 1.2rem; }
