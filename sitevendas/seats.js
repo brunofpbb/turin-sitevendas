@@ -2,13 +2,13 @@
 // Monta a UI inteira dentro do container, independentemente do HTML.
 
 (() => {
-  // ====== Ajustes finos do encaixe (se quiser, mexa 1–3px) ======
+  // ====== Ajustes finos do encaixe (ajuste 1–3px se necessário) ======
   const TOP_OFFSET  = 28;   // px (sobe/desce a grade sobre o bus-blank)
   const LEFT_OFFSET = 150;  // px (empurra grade p/ direita/esquerda)
   const CELL_W = 40;        // largura da célula (assento)
   const CELL_H = 30;        // altura da célula
   const GAP_X  = 15;        // espaço horizontal entre assentos
-  const GAP_Y  = 10;         // espaço vertical entre assentos
+  const GAP_Y  = 10;        // espaço vertical entre assentos
 
   // malha que encaixa com o bus-blank.png (5 linhas x 11 colunas)
   const GRID = [
@@ -56,7 +56,7 @@
 
 .seats-onepage .legend{ display:flex; align-items:center; gap:18px; margin:14px 0 6px; }
 .seats-onepage .legend .i{ display:flex; align-items:center; gap:8px; font-size:.95rem; color:#2a3b2a; }
-.seats-onepage .legend .sw{ width:16px; height:16px; border-radius:4px; border:1px solid #d8ead8; }
+.seats-onepage .legend .sw{ width:18px; height:18px; border-radius:4px; border:1px solid #d8ead8; }
 .seats-onepage .sw.free{ background:#eaf5ea; }
 .seats-onepage .sw.sel{ background:var(--brand); border-color:var(--brand-700); }
 .seats-onepage .sw.occ{ background:#cfd6cf; border-color:#cfd6cf; }
@@ -64,8 +64,24 @@
 .seats-onepage .info-line{ margin:6px 0 4px; color:#2a3b2a; }
 .seats-onepage .counter{ margin-bottom:8px; }
 
-.seats-onepage .pax { display:none; margin-top:6px; }
-.seats-onepage .pax-grid{ display:grid; grid-template-columns: 1.6fr 1fr 1fr; gap:10px; }
+.seats-onepage .pax { display:none; margin-top:8px; }
+.seats-onepage .pax-table{
+  display:grid;
+  grid-template-columns: 74px 1.5fr 1fr 1fr;
+  gap:10px;
+  align-items:center;
+}
+.seats-onepage .pax-row .seat-tag{ font-weight:600; color:#1d3a1d; }
+.seats-onepage input[type="text"]{
+  padding:7px 10px;
+  border:1px solid #d9e4d9;
+  border-radius:6px;
+  outline:none;
+}
+.seats-onepage input[type="text"]:focus{
+  border-color:#98c39b;
+  box-shadow:0 0 0 3px rgba(11,90,43,.09);
+}
 
 .seats-onepage .actions{ display:flex; gap:10px; margin-top:12px; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
@@ -84,7 +100,7 @@
     const [Y,M,D] = iso.split('-'); return `${D}/${M}/${Y}`;
   };
 
-  // ida/volta
+  // ida/volta (snapshot de passageiros)
   function saveOutboundSnapshot(passengers) {
     localStorage.setItem('outboundPassengers', JSON.stringify(passengers));
     localStorage.setItem('outboundSeatCount', String(passengers.length));
@@ -109,7 +125,6 @@
     ensureStyles();
     if (!container) throw new Error('renderSeats: container inválido');
 
-    // limpa e monta a estrutura completa
     container.classList.add('seats-onepage');
     container.innerHTML = `
       <div class="bus-wrap">
@@ -127,12 +142,8 @@
       <div class="counter">Poltronas selecionadas: <b id="selCount">0</b></div>
 
       <div class="pax" id="paxBox">
-        <div style="margin-bottom:6px"><b>Pol <span id="curSeat">—</span>:</b></div>
-        <div class="pax-grid">
-          <input id="paxName"  type="text" placeholder="Nome" />
-          <input id="paxCpf"   type="text" placeholder="CPF" />
-          <input id="paxPhone" type="text" placeholder="Telefone" />
-        </div>
+        <div style="margin-bottom:6px"><b>Passageiros</b></div>
+        <div class="pax-table" id="paxList"></div>
       </div>
 
       <div class="actions">
@@ -142,33 +153,31 @@
     `;
 
     // refs
-    const gridEl   = container.querySelector('#busGrid');
-    const tripInfo = container.querySelector('#tripInfo');
-    const selCount = container.querySelector('#selCount');
-    const paxBox   = container.querySelector('#paxBox');
-    const curSeat  = container.querySelector('#curSeat');
-    const nameI    = container.querySelector('#paxName');
-    const cpfI     = container.querySelector('#paxCpf');
-    const phoneI   = container.querySelector('#paxPhone');
+    const gridEl     = container.querySelector('#busGrid');
+    const tripInfo   = container.querySelector('#tripInfo');
+    const selCountEl = container.querySelector('#selCount');
+    const paxBox     = container.querySelector('#paxBox');
+    const paxListEl  = container.querySelector('#paxList');
     const btnConfirm = container.querySelector('#btnConfirm');
     const btnBack    = container.querySelector('#btnBack');
 
-    // infos do topo
+    // cabeçalho
     const origin = pick(schedule.originName, schedule.origin, schedule.origem, '');
     const dest   = pick(schedule.destinationName, schedule.destination, schedule.destino, '');
     const dateBR = fmtDateBR(schedule.date || '');
     const time   = pick(schedule.departureTime, schedule.horaPartida, '');
-
     tripInfo.textContent = `${origin} → ${dest} — ${dateBR} às ${time} (${wayType||'ida'})`;
 
+    // estado
     const state = {
       type: (wayType || 'ida'),
       schedule: schedule || {},
       exec: isExecutive(schedule),
       seats: [],
-      pax: {}
+      pax: {}           // { poltrona: {name, cpf, phone} }
     };
 
+    // dados opcionais de assento vindos da API (ocupado/ativo)
     const seatData = Array.isArray(schedule?.seats) ? schedule.seats : [];
 
     const isSeatBlocked = (num) => {
@@ -181,7 +190,7 @@
       return false;
     };
 
-    // volta: trava qte e pré-preenche
+    // volta: trava quantidade e pré-preenche
     let maxSelectable = Infinity;
     let obPax = [];
     if (state.type === 'volta'){
@@ -190,7 +199,7 @@
       obPax = snap.pax || [];
     }
 
-    // desenha grid
+    // ===== desenha grid de assentos
     GRID.forEach((row, r) => {
       row.forEach((cell, c) => {
         const rr = r+1, cc = c+1;
@@ -218,18 +227,21 @@
         seat.addEventListener('click', () => {
           const i = state.seats.indexOf(cell);
           if (i>=0){
+            // removendo
             state.seats.splice(i,1);
             seat.classList.remove('selected');
             delete state.pax[cell];
-            updatePax();
+            renderPaxList();
           }else{
+            // adicionando
             if (state.type==='volta' && state.seats.length >= maxSelectable){
               alert(`Para a volta selecione exatamente ${maxSelectable} poltronas.`);
               return;
             }
             state.seats.push(cell);
             seat.classList.add('selected');
-            // pré-preenche na volta
+
+            // pré-preenche na volta pela ordem
             if (state.type==='volta' && obPax.length){
               const idx = state.seats.length - 1;
               const src = obPax[idx];
@@ -237,48 +249,72 @@
             } else {
               state.pax[cell] ||= { name:'', cpf:'', phone:'' };
             }
-            updatePax();
+            renderPaxList();
           }
-          selCount.textContent = String(state.seats.length);
+          selCountEl.textContent = String(state.seats.length);
         });
 
         gridEl.appendChild(seat);
       });
     });
 
-    function updatePax(){
-      const last = state.seats[state.seats.length-1];
-      if (!last){ paxBox.style.display='none'; return; }
+    // ===== renderiza TODAS as linhas de passageiros
+    function renderPaxList(){
+      if (!state.seats.length){
+        paxBox.style.display = 'none';
+        paxListEl.innerHTML = '';
+        return;
+      }
       paxBox.style.display = '';
-      curSeat.textContent = last;
-      const d = state.pax[last] || {name:'', cpf:'', phone:''};
-      nameI.value  = d.name  || '';
-      cpfI.value   = d.cpf   || '';
-      phoneI.value = d.phone || '';
-    }
-    function bindInputs(){
-      const w = () => {
-        const last = state.seats[state.seats.length-1];
-        if (!last) return;
-        (state.pax[last] ||= {}).name  = nameI.value;
-        (state.pax[last] ||= {}).cpf   = cpfI.value;
-        (state.pax[last] ||= {}).phone = phoneI.value;
-      };
-      nameI.addEventListener('input', w);
-      cpfI.addEventListener('input', w);
-      phoneI.addEventListener('input', w);
-    }
-    bindInputs();
+      paxListEl.innerHTML = '';
 
-    // botões na ordem correta
+      const ordered = state.seats.slice().sort((a,b)=>a-b);
+
+      ordered.forEach(num=>{
+        const d = state.pax[num] || (state.pax[num] = { name:'', cpf:'', phone:'' });
+
+        const row = document.createElement('div');
+        row.className = 'pax-row';
+        row.innerHTML = `
+          <div class="seat-tag">Pol ${num}</div>
+          <input type="text" placeholder="Nome"     value="${d.name  || ''}" data-field="name"  data-seat="${num}" />
+          <input type="text" placeholder="CPF"      value="${d.cpf   || ''}" data-field="cpf"   data-seat="${num}" />
+          <input type="text" placeholder="Telefone" value="${d.phone || ''}" data-field="phone" data-seat="${num}" />
+        `;
+
+        row.querySelectorAll('input').forEach(inp=>{
+          inp.addEventListener('input', (ev)=>{
+            const seat  = Number(ev.target.getAttribute('data-seat'));
+            const field = ev.target.getAttribute('data-field');
+            (state.pax[seat] ||= {})[field] = ev.target.value;
+          });
+        });
+
+        paxListEl.appendChild(row);
+      });
+    }
+
+    // ===== ações
     btnConfirm.addEventListener('click', () => {
       if (state.type==='volta' && isFinite(maxSelectable) && state.seats.length !== maxSelectable){
         alert(`Selecione exatamente ${maxSelectable} poltronas para a volta.`);
         return;
       }
-      const falta = state.seats.some(n => !state.pax[n] || !state.pax[n].name);
-      if (falta){ alert('Preencha o nome de todos os passageiros.'); return; }
-      const passengers = state.seats.map(n => ({ seatNumber:n, ...(state.pax[n]||{}) }));
+      if (!state.seats.length){
+        alert('Selecione ao menos uma poltrona.');
+        return;
+      }
+      const faltaNome = state.seats.some(n => !state.pax[n] || !state.pax[n].name);
+      if (faltaNome){
+        alert('Preencha o nome de todos os passageiros.');
+        return;
+      }
+
+      const passengers = state.seats
+        .slice()
+        .sort((a,b)=>a-b)
+        .map(n => ({ seatNumber:n, ...(state.pax[n]||{}) }));
+
       if (state.type==='ida') saveOutboundSnapshot(passengers);
 
       container.dispatchEvent(new CustomEvent('seats:confirm', {
