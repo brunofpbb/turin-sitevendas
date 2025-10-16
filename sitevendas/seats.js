@@ -3,7 +3,7 @@
 
 (() => {
   // ====== Ajustes finos do encaixe (ajuste 1–3px se necessário) ======
-  const TOP_OFFSET  = 30;   // px (sobe/desce a grade sobre o bus-blank)
+  const TOP_OFFSET  = 31;   // px (sobe/desce a grade sobre o bus-blank)
   const LEFT_OFFSET = 130;  // px (empurra grade p/ direita/esquerda)
   const CELL_W = 40;        // largura da célula (assento)
   const CELL_H = 30;        // altura da célula
@@ -54,18 +54,30 @@
 }
 .seats-onepage .walkway{ width:${CELL_W}px; height:${CELL_H}px; opacity:0; }
 
-.seats-onepage .legend{ display:flex; align-items:center; gap:16px; margin:14px 0 6px; color:#2a3b2a; }
-.seats-onepage .legend .dot{display:inline-block;width:18px;height:14px;border:1px solid #d8ead8;background:#eaf5ea;margin-right:6px;border-radius:4px}
+/* === LEGENDA (maior e centralizada) === */
+.seats-onepage .legend{
+  display:flex; justify-content:center; align-items:center;
+  gap:24px; margin:14px 0 12px; color:#2a3b2a; font-size:1rem;
+}
+.seats-onepage .legend .dot{
+  display:inline-block; width:20px; height:16px; border-radius:4px;
+  border:1px solid #d8ead8; background:#eaf5ea; margin-right:8px;
+}
 .seats-onepage .legend .sel{ background:#0b5a2b; border-color:#094a24 }
 .seats-onepage .legend .occ{ background:#cfd6cf; border-color:#cfd6cf }
 
-.seats-onepage .info-line{ margin:6px 0 4px; color:#2a3b2a; }
-.seats-onepage .counter{ margin-bottom:10px; }
+/* info da viagem em negrito */
+.seats-onepage .info-line{ margin:6px 0 4px; color:#2a3b2a; font-weight:700; }
+/* contador em negrito também */
+.seats-onepage .counter{ margin-bottom:10px; font-weight:700; }
 
 .seats-onepage .actions{ display:flex; gap:10px; margin-top:12px; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
+
+/* Seus elementos de passageiros (usa suas classes existentes) */
+.seats-onepage .passenger-container{ margin-top:10px; }
     `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
@@ -90,39 +102,31 @@
     return { pax, cnt };
   }
 
-function isExecutive(schedule){
-  // Junta todos os campos textuais que podem indicar a classe
-  const text = [
-    schedule?.category,
-    schedule?.tipo,
-    schedule?.busType,
-    schedule?.classLabel,
-    schedule?.service,
-    schedule?.vehicleClass,
-    schedule?.modalidade,
-    schedule?.category_name,
-  ]
-  .filter(Boolean)
-  .join(' ')
-  .toLowerCase();
+  // >>> DETECÇÃO ROBUSTA DE EXECUTIVO <<<
+  function isExecutive(schedule){
+    // 1) Varre o objeto inteiro por palavras-chave (cobre variações de campos)
+    const textAll = JSON.stringify(schedule ?? {}).toLowerCase();
+    if (textAll.includes('executivo') || textAll.includes('semi') && textAll.includes('leito') || textAll.includes('leito')) return true;
+    if (textAll.includes('convenc')) return false;
 
-  // Sinais claros de executivo/leito
-  if (/exec/.test(text) || /leito/.test(text) || /semi.?leito/.test(text)) return true;
-  if (/convenc/.test(text) || /convencional/.test(text)) return false;
+    // 2) Heurística com a lista de assentos (se houver)
+    const toNum = (x) => {
+      if (x == null) return 0;
+      if (typeof x === 'object' && 'number' in x) return Number(x.number) || 0;
+      return Number(x) || 0;
+    };
+    const maxSeat =
+      Array.isArray(schedule?.seats) && schedule.seats.length
+        ? Math.max(...schedule.seats.map(toNum), 0)
+        : 0;
 
-  // Fallback por quantidade de assentos do próprio schedule
-  // (se há poltronas numeradas acima de 28, consideramos executivo)
-  const maxSeat =
-    Array.isArray(schedule?.seats) && schedule.seats.length
-      ? Math.max(...schedule.seats.map(s => Number(s.number) || 0), 0)
-      : 0;
+    if (maxSeat > 28) return true;
+    if (maxSeat > 0 && maxSeat <= 28) return false;
 
-  if (maxSeat > 28) return true;
-
-  // Se não deu para inferir, assume convencional para não abrir poltronas inexistentes
-  return false;
-}
-
+    // 3) Fallback: se não dá pra inferir, NÃO limita por 28 (assume executivo)
+    // Preferimos não bloquear indevidamente.
+    return true;
+  }
 
   // ===== API pública =====
   window.renderSeats = function renderSeats(container, schedule, wayType){
@@ -142,8 +146,8 @@ function isExecutive(schedule){
         <div><span class="dot occ"></span> Ocupado</div>
       </div>
 
-      <div class="info-line" id="tripInfo"></div>
-      <div class="counter">Poltronas selecionadas: <b id="selCount">0</b></div>
+      <div class="info-line"><span id="tripInfo"></span></div>
+      <div class="counter"><b>Poltronas selecionadas:</b> <span id="selCount">0</span></div>
 
       <!-- usa as SUAS classes do CSS -->
       <div class="passenger-container" id="paxBox" style="display:none">
@@ -158,19 +162,19 @@ function isExecutive(schedule){
 
     // refs
     const gridEl     = container.querySelector('#busGrid');
-    const tripInfo   = container.querySelector('#tripInfo');
+    const tripInfoEl = container.querySelector('#tripInfo');
     const selCountEl = container.querySelector('#selCount');
     const paxBox     = container.querySelector('#paxBox');
     const paxListEl  = container.querySelector('#paxList');
     const btnConfirm = container.querySelector('#btnConfirm');
     const btnBack    = container.querySelector('#btnBack');
 
-    // cabeçalho
+    // cabeçalho (em negrito via CSS .info-line)
     const origin = pick(schedule.originName, schedule.origin, schedule.origem, '');
     const dest   = pick(schedule.destinationName, schedule.destination, schedule.destino, '');
     const dateBR = fmtDateBR(schedule.date || '');
     const time   = pick(schedule.departureTime, schedule.horaPartida, '');
-    tripInfo.textContent = `${origin} → ${dest} — ${dateBR} às ${time} (${wayType||'ida'})`;
+    tripInfoEl.innerHTML = `<b>${origin} → ${dest} — ${dateBR} às ${time} (${wayType||'ida'})</b>`;
 
     // estado
     const state = {
@@ -186,11 +190,18 @@ function isExecutive(schedule){
 
     const isSeatBlocked = (num) => {
       if (num === 1 || num === 2) return true;            // regra fixa
-      if (!state.exec && num > 28) return true;           // convencional: >28 bloqueia
-      const sd = seatData.find(s => Number(s.number) === num);
+      // >>> BLOQUEIA >28 APENAS SE NÃO FOR EXECUTIVO <<<
+      if (!state.exec && num > 28) return true;
+
+      const sd = seatData.find(s => {
+        const n = (typeof s === 'object' && 'number' in s) ? Number(s.number) : Number(s);
+        return n === num;
+      });
       if (!sd) return false;                              // sem dado => livre
-      if (Number(sd.situacao) === 3) return true;         // inativo
-      if (sd.occupied === true) return true;              // ocupado
+      if (typeof sd === 'object') {
+        if (Number(sd.situacao) === 3) return true;       // inativo
+        if (sd.occupied === true) return true;            // ocupado
+      }
       return false;
     };
 
