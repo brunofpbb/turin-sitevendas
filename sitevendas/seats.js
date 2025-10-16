@@ -4,11 +4,11 @@
 (() => {
   // ====== Ajustes finos do encaixe (se quiser, mexa 1–3px) ======
   const TOP_OFFSET  = 28;   // px (sobe/desce a grade sobre o bus-blank)
-  const LEFT_OFFSET = 192;  // px (empurra grade p/ direita/esquerda)
-  const CELL_W = 32;        // largura da célula (assento)
-  const CELL_H = 22;        // altura da célula
-  const GAP_X  = 10;        // espaço horizontal entre assentos
-  const GAP_Y  = 6;         // espaço vertical entre assentos
+  const LEFT_OFFSET = 150;  // px (empurra grade p/ direita/esquerda)
+  const CELL_W = 40;        // largura da célula (assento)
+  const CELL_H = 30;        // altura da célula
+  const GAP_X  = 15;        // espaço horizontal entre assentos
+  const GAP_Y  = 10;         // espaço vertical entre assentos
 
   // malha que encaixa com o bus-blank.png (5 linhas x 11 colunas)
   const GRID = [
