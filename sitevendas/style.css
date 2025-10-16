@@ -543,7 +543,7 @@ footer{
 .btn-ghost { background: #eef3f7; color: #24323f; }
 .btn-ghost:hover { background: #e2e9ef; }
 
-.hint { color: #5f6b76; font-size: .9rem; }
+.hint { margin-top: 3px; color: #5f6b76; font-size: .9rem; }
 .muted { color: #6a7680; }
 
 .status-line { margin-top: 6px; min-height: 1.2rem; }
