@@ -1,4 +1,8 @@
-// main.js — sidebar fixa + card central dinâmico + integração seats.js com coletor
+// main.js — sidebar fixa + card central dinâmico + integração seats.js (eventos)
+// - Valida origem ≠ destino
+// - Usa eventos seats:confirm / seats:back do novo seats.js
+// - Mantém autocomplete discreto e datas (ida obrig., volta opcional)
+
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
 
@@ -27,69 +31,50 @@ document.addEventListener('DOMContentLoaded', () => {
   const destInput   = $('#destination');
   const dateInput   = $('#date');
   const retInput    = $('#return-date');
-  const dlOrigin = $('#origin-suggestions');
-  const dlDest   = $('#destination-suggestions');
-  const content  = $('#content-root');
+  const content     = $('#content-root');
 
   // ===== Central começa vazio
-  clearCentral();
+  content.innerHTML = '';
 
-// ===== Autocomplete discreto (substitui datalist)
-const acOrigin = document.querySelector('#ac-origin');
-const acDest   = document.querySelector('#ac-destination');
+  // ===== Autocomplete discreto (sem <datalist>)
+  const acOrigin = document.querySelector('#ac-origin');
+  const acDest   = document.querySelector('#ac-destination');
 
-function buildList(items, onPick){
-  const wrap = document.createElement('div');
-  wrap.className = 'ac-list';
-  items.forEach(it=>{
-    const li = document.createElement('div');
-    li.className = 'ac-item';
-    li.textContent = it.descricao;
-    li.addEventListener('mousedown', (e)=>{ // evita perder foco antes do clique
-      e.preventDefault();
-      onPick(it);
+  function buildList(items, onPick){
+    const wrap = document.createElement('div');
+    wrap.className = 'ac-list';
+    items.forEach(it=>{
+      const li = document.createElement('div');
+      li.className = 'ac-item';
+      li.textContent = it.descricao;
+      li.addEventListener('mousedown', (e)=>{
+        e.preventDefault();
+        onPick(it);
+      });
+      wrap.appendChild(li);
     });
-    wrap.appendChild(li);
-  });
-  return wrap;
-}
-
-function attachAutocomplete(input, panel, source){
-  function close(){
-    panel.innerHTML = '';
-    panel.hidden = true;
+    return wrap;
   }
-  function openWith(list){
-    panel.innerHTML = '';
-    panel.appendChild(buildList(list, (it)=>{
-      input.value = it.descricao;
-      close();
-    }));
-    panel.hidden = false;
+  function attachAutocomplete(input, panel, source){
+    function close(){ panel.innerHTML = ''; panel.hidden = true; }
+    function openWith(list){
+      panel.innerHTML = '';
+      panel.appendChild(buildList(list, (it)=>{ input.value = it.descricao; close(); }));
+      panel.hidden = false;
+    }
+    function filterNow(){
+      const s = input.value.trim().toLowerCase();
+      const list = s
+        ? source.filter(l => l.descricao.toLowerCase().includes(s)).slice(0,8)
+        : source.slice(0,8);
+      list.length ? openWith(list) : close();
+    }
+    input.addEventListener('input', filterNow);
+    input.addEventListener('focus', filterNow);
+    input.addEventListener('blur', ()=> setTimeout(close, 100));
   }
-
-  input.addEventListener('input', ()=>{
-    const s = input.value.trim().toLowerCase();
-    const list = s
-      ? source.filter(l => l.descricao.toLowerCase().includes(s)).slice(0,8)
-      : source.slice(0,8);
-    list.length ? openWith(list) : close();
-  });
-
-  input.addEventListener('focus', ()=>{
-    const s = input.value.trim().toLowerCase();
-    const list = s
-      ? source.filter(l => l.descricao.toLowerCase().includes(s)).slice(0,8)
-      : source.slice(0,8);
-    list.length ? openWith(list) : close();
-  });
-
-  input.addEventListener('blur', ()=> setTimeout(close, 100));
-}
-
-attachAutocomplete(originInput, acOrigin, localities);
-attachAutocomplete(destInput,   acDest,   localities);
-
+  attachAutocomplete(originInput, acOrigin, localities);
+  attachAutocomplete(destInput,   acDest,   localities);
 
   // ===== Datas mínimas
   [dateInput, retInput].forEach(inp=>{
@@ -120,6 +105,12 @@ attachAutocomplete(destInput,   acDest,   localities);
       return;
     }
 
+    // NOVO: impede origem e destino iguais
+    if (o.id === d.id) {
+      alert('Origem e destino não podem ser iguais.');
+      return;
+    }
+
     state.leg = 'IDA';
     state.selected = [];
     state.search = { originId:o.id, originName:o.descricao, destinationId:d.id, destinationName:d.descricao, date };
@@ -128,23 +119,13 @@ attachAutocomplete(destInput,   acDest,   localities);
       : null;
 
     // lista de IDA
-    renderList(state.search, 'Viagens disponíveis (ida)', (schedule)=>{
-      // guarda o horário escolhido
+    renderList(state.search, 'Viagens disponíveis (ida)', onSelectIda);
+
+    function onSelectIda(schedule){
       state.selected = state.selected.filter(s => s.leg !== 'IDA');
       state.selected.push({ leg:'IDA', schedule });
-
-      // abre poltronas da IDA
-      renderSeatsPanel(schedule, 'Escolha suas poltronas (ida)', ()=>{
-        // voltar pra lista da ida
-        renderList(state.search, 'Viagens disponíveis (ida)', onSelectIda);
-      });
-
-      function onSelectIda(s2){
-        state.selected = state.selected.filter(s => s.leg !== 'IDA');
-        state.selected.push({ leg:'IDA', schedule:s2 });
-        renderSeatsPanel(s2, 'Escolha suas poltronas (ida)', ()=> renderList(state.search, 'Viagens disponíveis (ida)', onSelectIda));
-      }
-    });
+      renderSeatsStage(schedule, 'IDA', () => renderList(state.search, 'Viagens disponíveis (ida)', onSelectIda));
+    }
   });
 
   // ===== Render lista de horários
@@ -275,92 +256,86 @@ attachAutocomplete(destInput,   acDest,   localities);
     });
   }
 
-  // ===== Painel de poltronas (usa o coletor do seats.js)
-  function renderSeatsPanel(schedule, legend, onBack){
+  // ===== Painel de poltronas (novo seats.js via eventos)
+  function renderSeatsStage(schedule, leg, onBackToList){
+    const titulo = leg === 'IDA' ? 'Escolha suas poltronas (ida)' : 'Escolha suas poltronas (volta)';
     content.innerHTML = `
-      <h2 class="step-title">${legend}</h2>
-      <div id="seats-container"></div>
-      <div class="actions">
-        <button id="btn-back" class="btn btn-ghost">Voltar</button>
-        <button id="btn-confirm" class="btn btn-primary">Confirmar seleção</button>
-      </div>
+      <h2 class="step-title">${titulo}</h2>
+      <div id="seats-stage"></div>
     `;
-    const sc = $('#seats-container');
-    const back = $('#btn-back');
-    const confirm = $('#btn-confirm');
-    back.onclick = onBack;
+    const stage = document.getElementById('seats-stage');
 
     if (typeof window.renderSeats !== 'function'){
-      sc.innerHTML = '<p class="mute">Componente de poltronas não carregado. Atualize o <code>seats.js</code> para expor <b>window.renderSeats</b>.</p>';
+      stage.innerHTML = '<p class="mute">Componente de poltronas não carregado. Atualize o <code>seats.js</code> para expor <b>window.renderSeats</b>.</p>';
       return;
     }
 
-    // desenha o mapa (o próprio seats.js mantém os dados digitados)
-    window.renderSeats(sc, schedule, ()=>{});
+    // desenha o mapa (o próprio seats.js monta UI inteira)
+    window.renderSeats(stage, schedule, (leg==='IDA'?'ida':'volta'));
 
-    // confirma usando o coletor exposto pelo seats.js
-    confirm.onclick = ()=>{
-      const collect = sc.__sv_collect && sc.__sv_collect();
-      if (!collect || !collect.ok) { alert(collect?.error || 'Selecione poltrona(s) e preencha os dados.'); return; }
+    // voltar
+    stage.addEventListener('seats:back', onBackToList);
 
-      const payload = collect.payload;
-      const legLabel = state.leg;
+    // confirmar
+    stage.addEventListener('seats:confirm', (ev)=>{
+      const { seats, passengers, schedule:sch, type } = ev.detail;
+
+      // guarda no state
+      const legLabel = leg;
       const idx = state.selected.findIndex(s => s.leg === legLabel);
-      if (idx >= 0) state.selected[idx] = { ...payload, leg: legLabel };
-      else state.selected.push({ ...payload, leg: legLabel });
+      const payload = { leg: legLabel, schedule: sch, seats, passengers };
+      if (idx >= 0) state.selected[idx] = payload;
+      else state.selected.push(payload);
 
-      // Se existe volta, passa para a volta
+      // Se tem volta e estamos na ida: ir para lista da volta
       if (legLabel === 'IDA' && state.searchReturn){
         state.leg = 'VOLTA';
-        renderList(state.searchReturn, 'Viagens disponíveis (volta)', (schedule2)=>{
-          state.selected = state.selected.filter(s => s.leg !== 'VOLTA');
-          state.selected.push({ leg:'VOLTA', schedule: schedule2 });
-          renderSeatsPanel(schedule2, 'Escolha suas poltronas (volta)', ()=>{
-            renderList(state.searchReturn, 'Viagens disponíveis (volta)', (s2)=>{
-              state.selected = state.selected.filter(s => s.leg !== 'VOLTA');
-              state.selected.push({ leg:'VOLTA', schedule: s2 });
-              renderSeatsPanel(s2, 'Escolha suas poltronas (volta)', ()=>renderList(state.searchReturn, 'Viagens disponíveis (volta)', ()=>{}));
-            });
-          });
-        });
+        renderList(state.searchReturn, 'Viagens disponíveis (volta)', onSelectVolta);
         return;
       }
 
-      // Fim do fluxo → pagamento
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
+      // fim do fluxo → pagamento
+      finalizeToPayment();
+    });
 
-      // compõe legs para salvar (ida e possivelmente volta)
-      const toSave = state.selected.map(s => ({
-        id: Date.now() + Math.floor(Math.random()*1000),
-        schedule: s.schedule,
-        seats: s.seats,
-        passengers: s.passengers,
-        price: (Number(String(s.schedule.price).replace(',', '.'))||0) * (s.seats?.length||0),
-        date: s.schedule.date,
-        paid: false
-      }));
-
-      if (!user){
-        localStorage.setItem('pendingPurchase', JSON.stringify({ legs: toSave }));
-        localStorage.setItem('postLoginRedirect', 'payment.html');
-        location.href = 'login.html';
-        return;
-      }
-
-      // limpa não pagas antigas e salva apenas as novas + pagas existentes
-      const old = JSON.parse(localStorage.getItem('bookings') || '[]');
-      const onlyPaid = old.filter(b => b.paid === true);
-      localStorage.setItem('bookings', JSON.stringify([...onlyPaid, ...toSave]));
-      localStorage.removeItem('pendingPurchase');
-      location.href = 'payment.html';
-    };
+    function onSelectVolta(schedule2){
+      state.selected = state.selected.filter(s => s.leg !== 'VOLTA');
+      state.selected.push({ leg:'VOLTA', schedule: schedule2 });
+      renderSeatsStage(schedule2, 'VOLTA', ()=> renderList(state.searchReturn, 'Viagens disponíveis (volta)', onSelectVolta));
+    }
   }
 
-  // ===== Util
-  function clearCentral(){ content.innerHTML = ''; }
+  function finalizeToPayment(){
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+
+    // compõe legs para salvar (ida e possivelmente volta)
+    const toSave = state.selected.map(s => ({
+      id: Date.now() + Math.floor(Math.random()*1000),
+      schedule: s.schedule,
+      seats: s.seats,
+      passengers: s.passengers,
+      price: (Number(String(s.schedule.price).replace(',', '.'))||0) * (s.seats?.length||0),
+      date: s.schedule.date,
+      paid: false
+    }));
+
+    if (!user){
+      localStorage.setItem('pendingPurchase', JSON.stringify({ legs: toSave }));
+      localStorage.setItem('postLoginRedirect', 'payment.html');
+      location.href = 'login.html';
+      return;
+    }
+
+    // limpa não pagas antigas e salva apenas as novas + pagas existentes
+    const old = JSON.parse(localStorage.getItem('bookings') || '[]');
+    const onlyPaid = old.filter(b => b.paid === true);
+    localStorage.setItem('bookings', JSON.stringify([...onlyPaid, ...toSave]));
+    localStorage.removeItem('pendingPurchase');
+    location.href = 'payment.html';
+  }
 });
 
-/* ===== Nav usuário (igual ao seu) ===== */
+/* ===== Nav usuário (como você já tinha) ===== */
 function updateUserNav(){
   const nav = document.getElementById('user-nav');
   if (!nav) return;
