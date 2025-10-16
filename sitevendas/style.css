@@ -556,3 +556,22 @@ body { display: flex; flex-direction: column; }
 main { flex: 1 0 auto; }
 footer { text-align: center; flex: 0 0 auto; }
 
+/* ===== Login: remover o "card" externo do <main> ===== */
+.login-page main,
+.login-page .page,
+.login-page .content,
+.login-page .container,
+.login-page .panel,
+.login-page .card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  min-height: auto !important;
+  padding: 0 !important;
+}
+
+/* centraliza apenas o card de autenticação */
+.login-page .auth-card {
+  max-width: 520px;
+  margin: 24px auto;
+}
