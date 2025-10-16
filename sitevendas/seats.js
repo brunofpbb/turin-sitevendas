@@ -71,16 +71,14 @@
 /* contador em negrito também */
 .seats-onepage .counter{ margin-bottom:10px; font-weight:700; }
 
-.seats-onepage .actions{ display:flex; gap:10px; margin-top:12px; }
-.seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
-.seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
-.seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
-
-/* container de passageiros (usa classes do projeto) */
-.seats-onepage .passenger-container{ margin-top:10px; }
+/* container de passageiros */
+.seats-onepage .passenger-container{
+  margin-top:12px;
+  margin-bottom:18px;   /* >>> respiro antes dos botões */
+}
 .seats-onepage .pax-table{ display:block; }
 
-/* visual dos "campos" somente leitura (volta) */
+/* linha dos passageiros (volta = readonly) */
 .seats-onepage .passenger-row{
   display:grid; grid-template-columns: 80px 1fr 1fr 1fr; gap:10px; margin-bottom:6px; align-items:center;
 }
@@ -88,6 +86,12 @@
 .seats-onepage .passenger-row.readonly span.value{
   padding:8px 10px; background:#f7f8f8; border:1px solid #e1e4e8; border-radius:6px;
 }
+
+/* botões */
+.seats-onepage .actions{ display:flex; gap:10px; margin-top:18px; } /* >>> mais espaço */
+.seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
+.seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
+.seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
     `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
@@ -303,12 +307,12 @@
             <span class="value">${esc(d.phone || '')}</span>
           `;
         } else {
-          // Inputs editáveis na ida
+          // Inputs editáveis na ida (agora obrigatórios)
           row.innerHTML = `
             <span class="seat-label">Pol ${num}</span>
-            <input type="text" name="name"  placeholder="Nome"     value="${esc(d.name  || '')}" data-field="name"  data-seat="${num}" />
-            <input type="text" name="cpf"   placeholder="CPF"      value="${esc(d.cpf   || '')}" data-field="cpf"   data-seat="${num}" />
-            <input type="text" name="phone" placeholder="Telefone" value="${esc(d.phone || '')}" data-field="phone" data-seat="${num}" />
+            <input type="text" name="name"  placeholder="Nome"     value="${esc(d.name  || '')}" data-field="name"  data-seat="${num}" required />
+            <input type="text" name="cpf"   placeholder="CPF"      value="${esc(d.cpf   || '')}" data-field="cpf"   data-seat="${num}" required />
+            <input type="text" name="phone" placeholder="Telefone" value="${esc(d.phone || '')}" data-field="phone" data-seat="${num}" required />
           `;
           row.querySelectorAll('input').forEach(inp=>{
             inp.addEventListener('input', (ev)=>{
@@ -333,10 +337,16 @@
         alert('Selecione ao menos uma poltrona.');
         return;
       }
-      const faltaNome = state.seats.some(n => !state.pax[n] || !state.pax[n].name);
-      if (faltaNome){
-        alert('Preencha o nome de todos os passageiros.');
-        return;
+
+      // Validação de todos os campos na ida
+      if (state.type === 'ida') {
+        for (const n of state.seats) {
+          const p = state.pax[n] || {};
+          if (!p.name || !p.cpf || !p.phone) {
+            alert(`Preencha Nome, CPF e Telefone da poltrona ${n}.`);
+            return;
+          }
+        }
       }
 
       const passengers = state.seats
