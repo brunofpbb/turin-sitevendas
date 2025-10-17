@@ -576,11 +576,3 @@ footer { text-align: center; flex: 0 0 auto; }
   margin: 24px auto;
 }
 
-/* Central – card das poltronas */
-.seats-onepage{
-  padding: 0 16px 16px 16px;
-}
-.seats-onepage .actions{
-  margin: 18px 0 0 0;
-}
-
