@@ -94,6 +94,24 @@
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
+
+
+
+
+/* Diminua o padding esquerdo do card de assentos */
+.seats-onepage-root { padding-left: 16px; } /* ou o valor que quiser */
+/* ou, alternativamente, adicione margem esquerda só no bloco de botões */
+.seats-onepage .actions { margin-left: 16px; }
+
+/* Reduza o padding inferior do card */
+.seats-onepage-root { padding-bottom: 10px; }  /* ex.: de 18px para 10px */
+/* e/ou controle uma margem própria dos botões */
+.seats-onepage .actions { margin-bottom: 6px; } /* se precisar */
+
+
+
+
+
 `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
