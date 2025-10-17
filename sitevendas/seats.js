@@ -1,8 +1,8 @@
-// seats.js — Seleção de poltronas (1 tela) autossuficiente
-// Monta a UI inteira dentro do container, independentemente do HTML.
+// seats.js — Seleção de poltronas (1 tela) AUTOSSUFICIENTE
+// Monta a UI inteira dentro do container e normaliza os dados vindos da API.
 
 (() => {
-  // ====== Ajustes finos do encaixe (ajuste 1–3px se necessário) ======
+  // ===== Ajustes finos do encaixe (ajuste 1–3px se necessário) =====
   const TOP_OFFSET  = 22;   // px (sobe/desce a grade sobre o bus-blank)
   const LEFT_OFFSET = 105;  // px (empurra grade p/ direita/esquerda)
   const CELL_W = 45;        // largura da célula (assento)
@@ -19,7 +19,7 @@
     [ 1,  5,  9, 13, 17, 21, 25, 29, 33, 37, 41],
   ];
 
-  // ===== estilos mínimos do componente (isolados) =====
+  // ===== estilos isolados do componente =====
   const STYLE_ID = 'seats-onepage-style';
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -36,7 +36,7 @@
   grid-template-columns: repeat(11, ${CELL_W}px);
   grid-auto-rows: ${CELL_H}px;
   column-gap:${GAP_X}px; row-gap:${GAP_Y}px;
-  z-index: 2;
+  z-index:2;
 }
 
 .seats-onepage .seat{
@@ -47,38 +47,29 @@
   font-size:12px; text-align:center; user-select:none; cursor:pointer;
 }
 .seats-onepage .seat.selected{
-  background:var(--brand) !important; color:#fff !important; border-color:var(--brand-700) !important;
+  background:var(--brand)!important; color:#fff!important; border-color:var(--brand-700)!important;
 }
 .seats-onepage .seat.disabled{
-  background:#cfd6cf !important; color:#666 !important; border-color:#cfd6cf !important; cursor:not-allowed;
+  background:#cfd6cf!important; color:#666!important; border-color:#cfd6cf!important; cursor:not-allowed;
 }
 .seats-onepage .walkway{ width:${CELL_W}px; height:${CELL_H}px; opacity:0; }
 
-/* === LEGENDA (maior e centralizada) === */
+/* Legenda maior e centralizada */
 .seats-onepage .legend{
   display:flex; justify-content:center; align-items:center;
   gap:24px; margin:14px 0 12px; color:#2a3b2a; font-size:1rem;
 }
-.seats-onepage .legend .dot{
-  display:inline-block; width:20px; height:16px; border-radius:4px;
-  border:1px solid #d8ead8; background:#eaf5ea; margin-right:8px;
-}
+.seats-onepage .legend .dot{ display:inline-block; width:20px; height:16px; border-radius:4px; border:1px solid #d8ead8; background:#eaf5ea; margin-right:8px; }
 .seats-onepage .legend .sel{ background:#0b5a2b; border-color:#094a24 }
 .seats-onepage .legend .occ{ background:#cfd6cf; border-color:#cfd6cf }
 
-/* info da viagem em negrito */
+/* Info/contador em negrito */
 .seats-onepage .info-line{ margin:6px 0 4px; color:#2a3b2a; font-weight:700; }
-/* contador em negrito também */
 .seats-onepage .counter{ margin-bottom:10px; font-weight:700; }
 
-/* container de passageiros */
-.seats-onepage .passenger-container{
-  margin-top:12px;
-  margin-bottom:18px;   /* >>> respiro antes dos botões */
-}
+/* Passageiros */
+.seats-onepage .passenger-container{ margin-top:12px; margin-bottom:18px; }
 .seats-onepage .pax-table{ display:block; }
-
-/* linha dos passageiros (volta = readonly) */
 .seats-onepage .passenger-row{
   display:grid; grid-template-columns: 80px 1fr 1fr 1fr; gap:10px; margin-bottom:6px; align-items:center;
 }
@@ -87,8 +78,8 @@
   padding:8px 10px; background:#f7f8f8; border:1px solid #e1e4e8; border-radius:6px;
 }
 
-/* botões */
-.seats-onepage .actions{ display:flex; gap:10px; margin-top:18px; } /* >>> mais espaço */
+/* Botões */
+.seats-onepage .actions{ display:flex; gap:10px; margin-top:18px; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
@@ -99,15 +90,15 @@
     document.head.appendChild(st);
   }
 
+  // ===== helpers =====
   const pick = (...v) => v.find(x => x !== undefined && x !== null && x !== '') ?? '';
   const fmtDateBR = (iso) => {
     if (!iso || !iso.includes('-')) return iso || '';
     const [Y,M,D] = iso.split('-'); return `${D}/${M}/${Y}`;
   };
-  const esc = (s) =>
-    String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
-  // ida/volta (snapshot de passageiros)
+  // Snapshot p/ volta
   function saveOutboundSnapshot(passengers) {
     localStorage.setItem('outboundPassengers', JSON.stringify(passengers));
     localStorage.setItem('outboundSeatCount', String(passengers.length));
@@ -118,10 +109,10 @@
     return { pax, cnt };
   }
 
-  // >>> DETECÇÃO ROBUSTA DE EXECUTIVO <<<
+  // Detecta Executivo de forma robusta (texto + alcance de poltronas)
   function isExecutive(schedule){
     const textAll = JSON.stringify(schedule ?? {}).toLowerCase();
-    if (textAll.includes('executivo') || (textAll.includes('semi') && textAll.includes('leito')) || textAll.includes('leito')) return true;
+    if (textAll.includes('executivo') || textAll.includes('leito')) return true;
     if (textAll.includes('convenc')) return false;
 
     const toNum = (x) => {
@@ -136,9 +127,41 @@
 
     if (maxSeat > 28) return true;
     if (maxSeat > 0 && maxSeat <= 28) return false;
+    return true; // fallback
+  }
 
-    // fallback: não limitar por 28 se não dá pra inferir
-    return true;
+  // === NOVO: normalizador de dados de poltronas (vários formatos) ===
+  function normalizeSeatData(rawList){
+    if (!Array.isArray(rawList)) return [];
+    const out = [];
+    for (const it of rawList){
+      // Suporta objeto, número puro, etc.
+      let number =
+        (typeof it === 'object')
+          ? (Number(it.number) || Number(it.Numero) || Number(it.NumeroPoltrona) ||
+             Number(it.Poltrona) || Number(it.Caption) || Number(it.caption))
+          : Number(it);
+      if (!Number.isFinite(number) || number < 1 || number > 42) continue;
+
+      // occupied/situacao vindos em diferentes campos:
+      const situacao = (typeof it === 'object')
+        ? (Number(it.situacao ?? it.Situacao) || 0)
+        : 0;
+
+      let occupied;
+      if (typeof it === 'object' && 'occupied' in it) {
+        occupied = !!it.occupied;
+      } else if (situacao !== 0) {
+        occupied = true; // maioria das APIs: 0 livre; !=0 ocupado/inativo
+      } else if (typeof it === 'object' && typeof it.Status === 'string') {
+        occupied = it.Status.toLowerCase().includes('ocup');
+      } else {
+        occupied = false;
+      }
+
+      out.push({ number, situacao, occupied });
+    }
+    return out;
   }
 
   // ===== API pública =====
@@ -197,21 +220,20 @@
       pax: {}           // { poltrona: {name, cpf, phone} }
     };
 
-    // dados opcionais de assento vindos da API
-    const seatData = Array.isArray(schedule?.seats) ? schedule.seats : [];
+    // Normaliza qualquer formato de poltronas que vier da API
+    const seatDataRaw = Array.isArray(schedule?.seats) ? schedule.seats : [];
+    const seatData = normalizeSeatData(seatDataRaw); // <<< NOVO
 
+    // regras de indisponibilidade
     const isSeatBlocked = (num) => {
       if (num === 1 || num === 2) return true;          // regra fixa
       if (!state.exec && num > 28) return true;         // convencional limita a 28
-      const sd = seatData.find(s => {
-        const n = (typeof s === 'object' && 'number' in s) ? Number(s.number) : Number(s);
-        return n === num;
-      });
-      if (!sd) return false;
-      if (typeof sd === 'object') {
-        if (Number(sd.situacao) === 3) return true;     // inativo
-        if (sd.occupied === true) return true;          // ocupado
-      }
+
+      // busca no normalizado
+      const sd = seatData.find(s => Number(s.number) === num);
+      if (!sd) return false;                            // sem info -> assume livre
+      if (Number(sd.situacao) === 3) return true;       // inativo
+      if (sd.occupied === true) return true;            // ocupado
       return false;
     };
 
@@ -290,7 +312,7 @@
       paxListEl.innerHTML = '';
       if (!show) return;
 
-      const readonly = (state.type === 'volta'); // <<< aqui: volta = somente leitura
+      const readonly = (state.type === 'volta'); // volta = somente leitura
       const ordered = state.seats.slice().sort((a,b)=>a-b);
 
       ordered.forEach(num=>{
@@ -307,7 +329,7 @@
             <span class="value">${esc(d.phone || '')}</span>
           `;
         } else {
-          // Inputs editáveis na ida (agora obrigatórios)
+          // Inputs editáveis na ida (obrigatórios)
           row.innerHTML = `
             <span class="seat-label">Pol ${num}</span>
             <input type="text" name="name"  placeholder="Nome"     value="${esc(d.name  || '')}" data-field="name"  data-seat="${num}" required />
