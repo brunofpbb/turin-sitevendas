@@ -256,7 +256,7 @@
 
     function isSeatBlocked(num){
       if (num === 1 || num === 2) return true;             // bloqueadas fixas
-      if (!state.exec && num > 28) return true;            // convencional com 28
+     // if (!state.exec && num > 28) return true;            // convencional com 28
       const sd = seatMap.get(num);
       if (!sd) return true;                                // não veio no mapa => não existe/indisp.
       if (Number(sd.situacao) === 3) return true;          // inativa
