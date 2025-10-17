@@ -9,6 +9,7 @@
   const GAP_Y  = 10;        // espaço vertical entre assentos
 
   // Malha (bus-blank.png) — 5 linhas x 11 colunas
+  // *** IMPORTANTE: Estes números são justamente os "NumeroPoltrona" (índice de posição) ***
   const GRID = [
     [ 3,  7, 11, 15, 19, 23, 27, 31, 35, 39, null],
     [ 4,  8, 12, 16, 20, 24, 28, 32, 36, 40, null],
@@ -46,6 +47,7 @@
   background:#cfd6cf!important; color:#666!important; border-color:#cfd6cf!important; cursor:not-allowed;
 }
 .seats-onepage .walkway{ width:${CELL_W}px; height:${CELL_H}px; opacity:0; }
+.seats-onepage .ghost{ opacity:0; pointer-events:none; } /* não existe (Situacao=3) */
 
 .seats-onepage .legend{
   display:flex; justify-content:center; gap:28px; margin:18px 0 6px;
@@ -89,11 +91,9 @@
     if (t.includes('convenc')) return false;
     const label = (schedule?.classLabel || schedule?.service || '')+'';
     if (label.toLowerCase().includes('exec')) return true;
-    // fallback: se nada indica "executivo", tratamos como convencional
-    return false;
+    return false; // fallback: se nada indica "executivo", tratamos como convencional
   }
 
-  // salva/recupera snapshot da ida (para travar quantidade e copiar pax para a volta)
   function saveOutboundSnapshot(passengers) {
     localStorage.setItem('outboundPassengers', JSON.stringify(passengers));
     localStorage.setItem('outboundSeatCount', String(passengers.length));
@@ -110,7 +110,7 @@
     if (!container) throw new Error('renderSeats: container inválido');
 
     container.classList.add('seats-onepage-root');
-    container.innerHTML = ''; // limpa para evitar UI antiga
+    container.innerHTML = '';
     const root = document.createElement('div');
     root.className = 'seats-onepage';
     root.innerHTML = `
@@ -171,61 +171,52 @@
       pax: {}
     };
 
-    // --- Mapa de assentos vindos da API (por número) ---
-    const rawSeats = Array.isArray(schedule?.seats) ? schedule.seats : [];
+    // ===== Lê as poltronas segundo a documentação =====
+    // Preferência pelo formato da API oficial: LaypoltronaXml.PoltronaXmlRetorno
+    let apiSeats = [];
+    if (Array.isArray(schedule?.LaypoltronaXml?.PoltronaXmlRetorno)) {
+      apiSeats = schedule.LaypoltronaXml.PoltronaXmlRetorno;
+    } else if (Array.isArray(schedule?.seats)) {
+      // fallback se já tiver sido normalizado antes
+      apiSeats = schedule.seats;
+    }
+
+    // Mapa: NumeroPoltrona -> registro (também guardamos Caption)
     const seatMap = new Map();
-    rawSeats.forEach(s => {
-      const n = Number(
-        s?.number ?? s?.poltrona ?? s?.nr_poltrona ?? s?.num ?? s?.seat ?? s?.Seat ?? s?.Poltrona
+    apiSeats.forEach(s => {
+      const pos = Number(
+        s?.NumeroPoltrona ?? s?.numero ?? s?.number
       );
-      if (!Number.isFinite(n)) return;
-      seatMap.set(n, s);
+      if (!Number.isFinite(pos)) return;
+      seatMap.set(pos, s);
     });
 
-    // === NOVO: verificação robusta de indisponibilidade (ocupado/bloqueado) ===
-    function isSeatUnavailable(n) {
-      const sd = seatMap.get(n);
-      if (!sd) return false; // sem dado = livre
-
-      // Se a API explicitamente disser "disponível = true", mantemos livre.
-      if (sd.available === true || sd.disponivel === true || sd.Disponivel === true) return false;
-
-      // Flags explícitas de ocupado/indisponível.
-      const explicitBusy =
-        sd.occupied === true || sd.Occupado === true || sd.ocupado === true ||
-        sd.ocupada === true || sd.indisponivel === true || sd.indisponível === true;
-
-      // Flags explícitas de "não disponível".
-      const explicitNotAvailable =
-        sd.available === false || sd.disponivel === false || sd.Disponivel === false;
-
-      if (explicitBusy || explicitNotAvailable) return true;
-
-      // Normalização de "Situacao"/"status" (pode vir "", texto, número etc.)
-      const rawStatus =
-        sd.Situacao ?? sd.situacao ?? sd.Situação ??
-        sd.status   ?? sd.Status   ?? sd.state ?? sd.State;
-
-      if (rawStatus !== undefined && rawStatus !== null && String(rawStatus).trim() !== '') {
-        // tenta extrair número
-        const num = Number(String(rawStatus).replace(/[^\d-]/g, ''));
-        if (Number.isFinite(num)) {
-          // 0 = livre; 1/2/3 = ocupada/bloqueada/inativa
-          return (num === 1 || num === 2 || num === 3);
-        }
-        // senão, interpreta por string
-        const sv = String(rawStatus).toLowerCase().trim();
-        const looksBusy = ['ocup', 'bloq', 'inativ', 'indisp'].some(t => sv.includes(t));
-        const looksFree = ['livre', 'available', 'free', 'true'].some(t => sv.includes(t));
-        if (looksBusy) return true;
-        if (looksFree) return false;
-        // se veio algo desconhecido, por segurança não bloqueia
-        return false;
-      }
-
-      // nenhum indicativo => livre
-      return false;
+    // Helpers baseados na doc:
+    //  - Situacao === 0 => disponível
+    //  - Situacao === 3 => poltrona inexistente (não exibe)
+    //  - qualquer outro => ocupado/bloqueado
+    function getSituacao(pos) {
+      const sd = seatMap.get(pos);
+      if (!sd) return null; // sem dado
+      const sit = Number(sd.Situacao ?? sd.situacao ?? sd.status ?? 0);
+      return Number.isFinite(sit) ? sit : 0;
     }
+    const isNotExists = (pos) => getSituacao(pos) === 3;
+    const isAvailable = (pos) => getSituacao(pos) === 0;
+    const isUnavailable = (pos) => {
+      const sit = getSituacao(pos);
+      if (sit === null) return false;     // sem dado -> tratamos como livre
+      if (sit === 3)   return false;      // inexistente é tratado separado
+      return sit !== 0;                   // qualquer valor diferente de 0 => ocupado/bloqueado
+    };
+    const getCaption = (pos, fallback) => {
+      const sd = seatMap.get(pos);
+      const cap = sd?.Caption ?? sd?.caption;
+      if (cap !== undefined && cap !== null && String(cap).trim() !== '') {
+        return String(cap).padStart(2,'0');
+      }
+      return String(fallback);
+    };
 
     // Volta: trava qtde e preenche pax (somente leitura)
     let maxSelectable = Infinity;
@@ -235,16 +226,15 @@
       const snap = loadOutboundSnapshot();
       maxSelectable = snap.cnt || 0;
       obPax = snap.pax || [];
-      // inputs readonly no modo volta
       paxBox.classList.add('readonly');
       [nameI, cpfI, phoneI].forEach(i => { i.readOnly = true; i.required = false; });
     }
 
     // Regras fixas e de classe
     function isSeatBlocked(num){
-      if (num === 1 || num === 2) return true;             // bloqueadas no layout
-      if (!state.exec && num > 28) return true;            // convencional tem 28 válidas
-      if (isSeatUnavailable(num)) return true;             // ocupado/bloqueado pela API
+      if (num === 1 || num === 2) return true;          // bloqueadas no layout
+      if (!state.exec && num > 28) return true;         // convencional tem 28 válidas
+      if (isUnavailable(num)) return true;              // ocupado/bloqueado pela API
       return false;
     }
 
@@ -260,9 +250,20 @@
           gridEl.appendChild(w);
           return;
         }
+
+        // Se a API disser que a poltrona não existe (Situacao = 3), não exibimos
+        if (isNotExists(cell)) {
+          const ghost = document.createElement('div');
+          ghost.className = 'seat ghost';
+          ghost.style.gridRowStart = rr;
+          ghost.style.gridColumnStart = cc;
+          gridEl.appendChild(ghost);
+          return;
+        }
+
         const seat = document.createElement('div');
         seat.className = 'seat';
-        seat.textContent = String(cell);
+        seat.textContent = getCaption(cell, cell); // mostra Caption se vier; senão o índice
         seat.style.gridRowStart = rr;
         seat.style.gridColumnStart = cc;
 
@@ -336,7 +337,6 @@
         alert(`Selecione exatamente ${maxSelectable} poltronas para a volta.`);
         return;
       }
-      // validação somente na ida (na volta é readonly)
       if (!isReturn){
         for (const n of state.seats){
           const p = state.pax[n] || {};
