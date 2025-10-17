@@ -5,8 +5,8 @@
   // ====== Ajustes finos do encaixe (ajuste 1–3px se necessário) ======
   const TOP_OFFSET  = 33;   // px (sobe/desce a grade sobre o bus-blank)
   const LEFT_OFFSET = 130;  // px (empurra grade p/ direita/esquerda)
-  const CELL_W = 50;        // largura da célula (assento)
-  const CELL_H = 40;        // altura da célula
+  const CELL_W = 45;        // largura da célula (assento)
+  const CELL_H = 35;        // altura da célula
   const GAP_X  = 15;        // espaço horizontal entre assentos
   const GAP_Y  = 10;        // espaço vertical entre assentos
 
