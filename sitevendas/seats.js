@@ -256,6 +256,7 @@
 
     function isSeatBlocked(num){
       if (num === 1 || num === 2) return true;             // bloqueadas fixas
+      // if (!state.exec && num > 28) return true;          // (removido) deixa a API dizer o que existe
       const sd = seatMap.get(num);
       if (!sd) return true;                                // não veio no mapa => não existe/indisp.
       if (Number(sd.situacao) === 3) return true;          // inativa
@@ -322,7 +323,8 @@
     function updatePax(){
       const last = state.seats[state.seats.length-1];
       if (!last){ paxBox.style.display='none'; return; }
-      paxBox.style.display = '';
+      // <- FIX: precisa forçar block para sobrepor .pax { display:none }
+      paxBox.style.display = 'block';
       curSeat.textContent = last;
       const d = state.pax[last] || {name:'', cpf:'', phone:''};
       nameI.value  = d.name  || '';
