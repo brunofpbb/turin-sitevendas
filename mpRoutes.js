@@ -57,7 +57,7 @@ router.post('/pay', async (req, res) => {
       transaction_amount: transactionAmount,
       description,
       payer: {
-        email: payerIn.email || '',
+        email: "teste@teste.com"/*payerIn.email*/ || '',
         identification: payerIn?.identification?.number
           ? { type: payerIn.identification.type || 'CPF', number: payerIn.identification.number }
           : undefined
