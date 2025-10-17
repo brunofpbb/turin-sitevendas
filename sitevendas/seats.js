@@ -2,13 +2,14 @@
 (() => {
   // ====== Dimensões-base do layout (usadas para escalar) ======
   const BASE_IMG_WIDTH = 980;
-  const BASE_TOP       = 22;
-  const BASE_LEFT      = 105;
-  const BASE_CELL_W    = 40;
-  const BASE_CELL_H    = 30;
-  const BASE_GAP_X     = 16;
-  const BASE_GAP_Y     = 12;
+  const BASE_TOP       = 22;      // px (sobe/desce a grade sobre o bus-blank)
+  const BASE_LEFT      = 105;     // px (empurra grade p/ direita/esquerda)
+  const BASE_CELL_W    = 40;      // largura da célula (assento)
+  const BASE_CELL_H    = 30;      // altura da célula
+  const BASE_GAP_X     = 16;      // espaço horizontal entre assentos
+  const BASE_GAP_Y     = 12;      // espaço vertical entre assentos
 
+  
   // ====== Malha do ônibus (5x11) ======
   const GRID = [
     [ 3,  7, 11, 15, 19, 23, 27, 31, 35, 39, null],
@@ -24,7 +25,10 @@
     if (document.getElementById(STYLE_ID)) return;
     const css = `
 :root{ --brand:#0b5a2b; --brand-700:#094a24; --muted:#2a3b2a; }
-.seats-onepage-root{ padding:0 16px 18px 16px; }
+
+/* aprox. das bordas do card (como o botão Pesquisar) */
+.seats-onepage-root{ padding:0 8px 8px 8px; }
+
 .seats-onepage .bus-wrap{ position:relative; overflow:hidden; }
 .seats-onepage .bus-img{ max-width:100%; height:auto; display:block; }
 
@@ -67,13 +71,26 @@
 .seats-onepage .info-line{ margin:8px 0 2px; color:var(--muted); font-weight:700; }
 .seats-onepage .counter{ margin-bottom:12px; }
 
+/* lista de passageiros (estilo igual aos campos da coluna esquerda) */
 .seats-onepage .pax { display:none; margin-top:10px; }
 .seats-onepage .pax.readonly input{ background:#f7f7f7; color:#666; }
 .seats-onepage .pax-list{ display:flex; flex-direction:column; gap:10px; }
-.seats-onepage .pax-row{ display:grid; grid-template-columns: 90px 1.2fr 1fr 1fr; gap:10px; align-items:center; }
+.seats-onepage .pax-row{ display:grid; grid-template-columns: 90px 1.3fr 1fr 1fr; gap:12px; align-items:center; }
 .seats-onepage .pax-row .label{ color:#2a3b2a; font-weight:600; text-align:right; padding-right:6px; }
 
-.seats-onepage .actions{ display:flex; gap:10px; margin-top:22px; } /* respiro abaixo dos campos */
+/* fallback de .form-control se não existir (aproxima bootstrap-like) */
+.seats-onepage .pax-row .form-control{
+  height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #ced4da;
+  border-radius: .375rem;
+  font-size: .95rem;
+  line-height: 1.4;
+  outline: none;
+}
+
+/* respiro antes dos botões */
+.seats-onepage .actions{ display:flex; gap:10px; margin-top:16px; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
@@ -115,7 +132,6 @@
     const seats = schedule?.seats;
     const looksReady = Array.isArray(seats) && seats.length > 0 &&
                        (('situacao' in (seats[0]||{})) || ('Situacao' in (seats[0]||{})) || ('occupied' in (seats[0]||{})));
-
     if (looksReady) return;
 
     const payload = {
@@ -277,9 +293,9 @@
 
         row.innerHTML = `
           <div class="label">Pol ${seatNum}:</div>
-          <input type="text" class="pax-name"  placeholder="Nome"     ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.name||''}">
-          <input type="text" class="pax-cpf"   placeholder="CPF"       ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.cpf||''}">
-          <input type="text" class="pax-phone" placeholder="Telefone"  ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.phone||''}">
+          <input type="text" class="form-control pax-name"  placeholder="Nome"     ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.name||''}">
+          <input type="text" class="form-control pax-cpf"   placeholder="CPF"       ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.cpf||''}">
+          <input type="text" class="form-control pax-phone" placeholder="Telefone"  ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.phone||''}">
         `;
 
         // Bind
