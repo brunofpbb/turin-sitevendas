@@ -182,30 +182,45 @@
       seatMap.set(n, s);
     });
 
-    // Função robusta de verificação de indisponibilidade
+    // === NOVO: verificação robusta de indisponibilidade (ocupado/bloqueado) ===
     function isSeatUnavailable(n) {
       const sd = seatMap.get(n);
       if (!sd) return false; // sem dado = livre
 
-      // booleanos que podem vir
-      const boolBusy =
+      // Se a API explicitamente disser "disponível = true", mantemos livre.
+      if (sd.available === true || sd.disponivel === true || sd.Disponivel === true) return false;
+
+      // Flags explícitas de ocupado/indisponível.
+      const explicitBusy =
         sd.occupied === true || sd.Occupado === true || sd.ocupado === true ||
-        sd.ocupada === true || sd.indisponivel === true || sd.indisponível === true ||
+        sd.ocupada === true || sd.indisponivel === true || sd.indisponível === true;
+
+      // Flags explícitas de "não disponível".
+      const explicitNotAvailable =
         sd.available === false || sd.disponivel === false || sd.Disponivel === false;
 
-      if (boolBusy) return true;
+      if (explicitBusy || explicitNotAvailable) return true;
 
-      // status/situacao variáveis
-      const v = (
-        sd.status ?? sd.Status ?? sd.situacao ?? sd.Situacao ?? sd.Situação ?? sd.state ?? sd.State
-      );
-      if (v !== undefined && v !== null) {
-        const sv = String(v).toLowerCase().trim();
-        // valores que significam livre
-        const isFree =
-          sv === '1' || sv === 'livre' || sv === 'available' || sv === 'free' || sv === 'true';
-        // se veio algo e NÃO é explicitamente livre, tratamos como ocupado
-        return !isFree;
+      // Normalização de "Situacao"/"status" (pode vir "", texto, número etc.)
+      const rawStatus =
+        sd.Situacao ?? sd.situacao ?? sd.Situação ??
+        sd.status   ?? sd.Status   ?? sd.state ?? sd.State;
+
+      if (rawStatus !== undefined && rawStatus !== null && String(rawStatus).trim() !== '') {
+        // tenta extrair número
+        const num = Number(String(rawStatus).replace(/[^\d-]/g, ''));
+        if (Number.isFinite(num)) {
+          // 0 = livre; 1/2/3 = ocupada/bloqueada/inativa
+          return (num === 1 || num === 2 || num === 3);
+        }
+        // senão, interpreta por string
+        const sv = String(rawStatus).toLowerCase().trim();
+        const looksBusy = ['ocup', 'bloq', 'inativ', 'indisp'].some(t => sv.includes(t));
+        const looksFree = ['livre', 'available', 'free', 'true'].some(t => sv.includes(t));
+        if (looksBusy) return true;
+        if (looksFree) return false;
+        // se veio algo desconhecido, por segurança não bloqueia
+        return false;
       }
 
       // nenhum indicativo => livre
