@@ -218,11 +218,6 @@
     container.classList.add('seats-onepage-root');
     container.innerHTML = '';
 
-    // força alinhamento com o card da esquerda (sem depender do tema)
-container.style.paddingLeft = '16px';
-container.style.paddingRight = '16px';
-container.style.paddingBottom = '16px';
-
     
     const root = document.createElement('div');
     root.className = 'seats-onepage';
