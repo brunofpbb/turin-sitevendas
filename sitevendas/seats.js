@@ -94,6 +94,42 @@
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
+
+
+
+/* --- OVERRIDES DE ESPAÇAMENTO (com !important) --- */
+
+.seats-onepage-root{
+  /* mesmo “respiro” do card da esquerda (ex.: botão Pesquisar) */
+  padding-left:16px !important;
+  padding-right:16px !important;
+  padding-bottom:16px !important;
+}
+
+.seats-onepage{ margin:0 !important; }
+
+/* dá ar entre as seções para evitar “textos colados” */
+.seats-onepage .legend{ margin:18px 0 12px !important; }
+.seats-onepage .info-line{ margin:10px 0 6px !important; }
+.seats-onepage .counter{ margin:0 0 14px !important; }
+.seats-onepage .pax{ margin-top:12px !important; }
+
+/* respiro antes dos botões */
+.seats-onepage .actions{ margin-top:18px !important; gap:10px !important; }
+
+/* só por garantia: nenhum padding extra no wrapper interno */
+.seats-onepage .bus-wrap{ padding:0 !important; }
+
+
+
+
+
+
+
+
+
+
+
 `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
@@ -181,6 +217,13 @@
 
     container.classList.add('seats-onepage-root');
     container.innerHTML = '';
+
+    // força alinhamento com o card da esquerda (sem depender do tema)
+container.style.paddingLeft = '16px';
+container.style.paddingRight = '16px';
+container.style.paddingBottom = '16px';
+
+    
     const root = document.createElement('div');
     root.className = 'seats-onepage';
     root.innerHTML = `
