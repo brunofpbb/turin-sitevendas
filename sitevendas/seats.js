@@ -9,7 +9,6 @@
   const BASE_GAP_X     = 16;      // espaço horizontal entre assentos
   const BASE_GAP_Y     = 12;      // espaço vertical entre assentos
 
-  
   // ====== Malha do ônibus (5x11) ======
   const GRID = [
     [ 3,  7, 11, 15, 19, 23, 27, 31, 35, 39, null],
@@ -26,8 +25,8 @@
     const css = `
 :root{ --brand:#0b5a2b; --brand-700:#094a24; --muted:#2a3b2a; }
 
-/* aprox. das bordas do card (como o botão Pesquisar) */
-.seats-onepage-root{ padding:0 8px 8px 8px; }
+/* Mesmo respiro do card da esquerda (botão Pesquisar) */
+.seats-onepage-root{ padding:0 16px 16px 16px; }
 
 .seats-onepage .bus-wrap{ position:relative; overflow:hidden; }
 .seats-onepage .bus-img{ max-width:100%; height:auto; display:block; }
@@ -59,8 +58,9 @@
 }
 .seats-onepage .walkway{ width:var(--cell-w, ${BASE_CELL_W}px); height:var(--cell-h, ${BASE_CELL_H}px); opacity:0; }
 
+/* Mais respiro entre os blocos */
 .seats-onepage .legend{
-  display:flex; justify-content:center; gap:28px; margin:18px 0 6px;
+  display:flex; justify-content:center; gap:28px; margin:16px 0 10px;
 }
 .seats-onepage .legend .i{ display:flex; align-items:center; gap:10px; font-size:1rem; color:var(--muted); }
 .seats-onepage .legend .sw{ width:18px; height:18px; border-radius:4px; border:1px solid #d8ead8; }
@@ -68,17 +68,17 @@
 .seats-onepage .sw.sel{  background:var(--brand); border-color:var(--brand-700); }
 .seats-onepage .sw.occ{  background:#cfd6cf; border-color:#cfd6cf; }
 
-.seats-onepage .info-line{ margin:8px 0 2px; color:var(--muted); font-weight:700; }
-.seats-onepage .counter{ margin-bottom:12px; }
+.seats-onepage .info-line{ margin:10px 0 4px; color:var(--muted); font-weight:700; }
+.seats-onepage .counter{ margin-bottom:14px; }
 
-/* lista de passageiros (estilo igual aos campos da coluna esquerda) */
-.seats-onepage .pax { display:none; margin-top:10px; }
+/* Lista de passageiros (inputs com estilo de form-control) */
+.seats-onepage .pax { display:none; margin-top:12px; }
 .seats-onepage .pax.readonly input{ background:#f7f7f7; color:#666; }
 .seats-onepage .pax-list{ display:flex; flex-direction:column; gap:10px; }
 .seats-onepage .pax-row{ display:grid; grid-template-columns: 90px 1.3fr 1fr 1fr; gap:12px; align-items:center; }
 .seats-onepage .pax-row .label{ color:#2a3b2a; font-weight:600; text-align:right; padding-right:6px; }
 
-/* fallback de .form-control se não existir (aproxima bootstrap-like) */
+/* fallback de .form-control (parecido com os campos da esquerda) */
 .seats-onepage .pax-row .form-control{
   height: 36px;
   padding: 6px 10px;
@@ -89,29 +89,11 @@
   outline: none;
 }
 
-/* respiro antes dos botões */
-.seats-onepage .actions{ display:flex; gap:10px; margin-top:16px; }
+/* Ações alinhadas e com respiro inferior como no card da esquerda */
+.seats-onepage .actions{ display:flex; gap:10px; margin-top:18px; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
-
-
-
-
-/* Diminua o padding esquerdo do card de assentos */
-.seats-onepage-root { padding-left: -1px; } /* ou o valor que quiser */
-/* ou, alternativamente, adicione margem esquerda só no bloco de botões */
-.seats-onepage .actions { margin-left: -1px; }
-
-/* Reduza o padding inferior do card */
-.seats-onepage-root { padding-bottom: 10px; }  /* ex.: de 18px para 10px */
-/* e/ou controle uma margem própria dos botões */
-.seats-onepage .actions { margin-bottom: 6px; } /* se precisar */
-
-
-
-
-
 `.trim();
     const st = document.createElement('style');
     st.id = STYLE_ID;
