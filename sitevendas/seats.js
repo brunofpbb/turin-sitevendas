@@ -88,7 +88,7 @@
 }
 
 /* botões */
-.seats-onepage .actions{ display:flex; gap:4px; margin-top:10px; } /* >>> mais espaço */
+.seats-onepage .actions{ display:flex; gap:10px; margin-top:18px; } /* >>> mais espaço */
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
