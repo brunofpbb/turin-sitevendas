@@ -576,3 +576,88 @@ footer { text-align: center; flex: 0 0 auto; }
   margin: 24px auto;
 }
 
+
+
+
+
+
+/* === SEATS ONE PAGE – estilos isolados e responsivos === */
+:root{
+  --seats-brand: #0b5a2b;
+  --seats-brand-700: #094a24;
+}
+
+/* mesmo respiro interno do card da esquerda */
+.seats-onepage-root{ padding: 0 16px 16px 16px; }
+
+/* estrutura */
+.seats-onepage .bus-wrap{ position:relative; overflow:hidden; }
+.seats-onepage .bus-img{ max-width:100%; height:auto; display:block; }
+
+/* grade sobre a imagem (controlada por variáveis que o JS atualiza) */
+.seats-onepage .bus-grid{
+  position:absolute;
+  top:var(--grid-top,22px);
+  left:var(--grid-left,105px);
+  display:grid;
+  grid-template-columns: repeat(11, var(--cell-w,40px));
+  grid-auto-rows: var(--cell-h,30px);
+  column-gap: var(--gap-x,16px);
+  row-gap: var(--gap-y,12px);
+}
+.seats-onepage .walkway{ width:var(--cell-w,40px); height:var(--cell-h,30px); opacity:0; }
+
+/* assentos */
+.seats-onepage .seat{
+  background:#eaf5ea; color:#1a301a;
+  border:1px solid #d8ead8; border-radius:6px;
+  min-width:var(--cell-w,40px);
+  height:var(--cell-h,30px);
+  line-height: calc(var(--cell-h,30px) - 2px);
+  font-size:12px; text-align:center; user-select:none; cursor:pointer;
+}
+.seats-onepage .seat.selected{
+  background:var(--seats-brand)!important; color:#fff!important; border-color:var(--seats-brand-700)!important;
+}
+.seats-onepage .seat.disabled{
+  background:#cfd6cf!important; color:#666!important; border-color:#cfd6cf!important; cursor:not-allowed;
+}
+
+/* legenda e infos — dá “ar” pra parar de ficar colado */
+.seats-onepage .legend{
+  display:flex; justify-content:center; gap:28px; margin:18px 0 12px;
+  color:#2a3b2a; font-size:1rem;
+}
+.seats-onepage .legend .sw{ width:18px; height:18px; border-radius:4px; border:1px solid #d8ead8; }
+.seats-onepage .sw.free{ background:#eaf5ea; }
+.seats-onepage .sw.sel { background:var(--seats-brand); border-color:var(--seats-brand-700); }
+.seats-onepage .sw.occ { background:#cfd6cf; border-color:#cfd6cf; }
+
+.seats-onepage .info-line{ margin:10px 0 6px; color:#2a3b2a; font-weight:700; }
+.seats-onepage .counter{ margin:0 0 14px; }
+
+/* lista de passageiros com o mesmo “look” dos inputs do card esquerdo */
+.seats-onepage .pax { display:none; margin-top:12px; }
+.seats-onepage .pax.readonly input{ background:#f7f7f7; color:#666; }
+.seats-onepage .pax-list{ display:flex; flex-direction:column; gap:10px; }
+.seats-onepage .pax-row{
+  display:grid; grid-template-columns: 90px 1.3fr 1fr 1fr; gap:12px; align-items:center;
+}
+.seats-onepage .pax-row .label{ color:#2a3b2a; font-weight:600; text-align:right; padding-right:6px; }
+
+/* “form-control” compatível com seus campos de Origem/Destino */
+.seats-onepage .pax-row .form-control{
+  height:36px; padding:6px 10px;
+  border:1px solid #dfe5df; border-radius:6px;
+  font-size:1rem; line-height:1.4; outline:none;
+}
+
+/* ações: coladas ao canto esquerdo e com respiro inferior do card */
+.seats-onepage .actions{ display:flex; gap:10px; margin:18px 0 0; }
+.seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
+.seats-onepage .btn-primary{ background:var(--seats-brand); color:#fff; }
+.seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
+
+/* neutraliza estilos antigos globais que batiam com .bus-grid / .seat */
+.bus-grid:not(.seats-onepage .bus-grid){ all:unset; }
+.seat:not(.seats-onepage .seat){ all:unset; }
