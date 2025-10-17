@@ -1,13 +1,13 @@
-// seats.js — Seleção de poltronas (1-tela) com chamada da API, ocupação correta e grade responsiva
+// seats.js — Seleção de poltronas (1-tela) com API Praxio, lista de passageiros e regras de ida/volta
 (() => {
-  // ====== Dimensões-base do layout (ref. para escala) ======
-  const BASE_IMG_WIDTH = 980;       // largura de referência do bus-blank.png
-  const BASE_TOP       = 22;        // px
-  const BASE_LEFT      = 105;       // px
-  const BASE_CELL_W    = 40;        // px
-  const BASE_CELL_H    = 30;        // px
-  const BASE_GAP_X     = 16;        // px
-  const BASE_GAP_Y     = 12;        // px
+  // ====== Dimensões-base do layout (usadas para escalar) ======
+  const BASE_IMG_WIDTH = 980;
+  const BASE_TOP       = 22;
+  const BASE_LEFT      = 105;
+  const BASE_CELL_W    = 40;
+  const BASE_CELL_H    = 30;
+  const BASE_GAP_X     = 16;
+  const BASE_GAP_Y     = 12;
 
   // ====== Malha do ônibus (5x11) ======
   const GRID = [
@@ -18,7 +18,7 @@
     [ 1,  5,  9, 13, 17, 21, 25, 29, 33, 37, 41],
   ];
 
-  // ===== estilos (usamos variáveis para escalar tudo) =====
+  // ====== estilos ======
   const STYLE_ID = 'seats-onepage-style';
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -68,10 +68,12 @@
 .seats-onepage .counter{ margin-bottom:12px; }
 
 .seats-onepage .pax { display:none; margin-top:10px; }
-.seats-onepage .pax-grid{ display:grid; grid-template-columns: 1.6fr 1fr 1fr; gap:10px; }
 .seats-onepage .pax.readonly input{ background:#f7f7f7; color:#666; }
+.seats-onepage .pax-list{ display:flex; flex-direction:column; gap:10px; }
+.seats-onepage .pax-row{ display:grid; grid-template-columns: 90px 1.2fr 1fr 1fr; gap:10px; align-items:center; }
+.seats-onepage .pax-row .label{ color:#2a3b2a; font-weight:600; text-align:right; padding-right:6px; }
 
-.seats-onepage .actions{ display:flex; gap:10px; margin-top:22px; } /* + respiro abaixo dos campos */
+.seats-onepage .actions{ display:flex; gap:10px; margin-top:22px; } /* respiro abaixo dos campos */
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
@@ -94,7 +96,7 @@
     if (t.includes('convenc')) return false;
     const label = (schedule?.classLabel || schedule?.service || '')+'';
     if (label.toLowerCase().includes('exec')) return true;
-    return false; // default: convencional
+    return false;
   }
 
   // ===== snapshot ida (para volta) =====
@@ -108,15 +110,14 @@
     return { pax, cnt };
   }
 
-  // ====== Busca mapa de poltronas quando necessário ======
+  // ====== Busca mapa de poltronas (Praxio) quando não vier pronto ======
   async function ensureSeatMap(schedule){
     const seats = schedule?.seats;
     const looksReady = Array.isArray(seats) && seats.length > 0 &&
                        (('situacao' in (seats[0]||{})) || ('Situacao' in (seats[0]||{})) || ('occupied' in (seats[0]||{})));
 
-    if (looksReady) return; // já temos mapa usable
+    if (looksReady) return;
 
-    // monta payload conforme doc
     const payload = {
       idViagem:       pick(schedule?.idViagem, schedule?.idviagem, schedule?.viagemId),
       idTipoVeiculo:  pick(schedule?.idTipoVeiculo, schedule?.tipoVeiculoId),
@@ -134,22 +135,17 @@
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const raw = await resp.json();
-
-      // normaliza a raiz
       const data = Array.isArray(raw) ? (raw[0] || {}) : raw;
 
-      // coleta PoltronaXmlRetorno
       let poltronas = [];
       if (data?.LaypoltronaXml?.PoltronaXmlRetorno) {
         poltronas = data.LaypoltronaXml.PoltronaXmlRetorno;
-      } else if (data?.PoltronaXmlRetorno) { // fallback
+      } else if (data?.PoltronaXmlRetorno) {
         const p = data.PoltronaXmlRetorno;
         poltronas = Array.isArray(p) ? p : [p];
       }
 
-      // mapeia para { number, situacao, occupied }
       const mapped = (poltronas || []).map(p => {
-        // pela documentação: "Caption" é o número que o cliente vê; "NumeroPoltrona" é posição
         const caption  = p.Caption ?? p.caption;
         const number   = parseInt(caption || p.Numero || p.NumeroPoltrona, 10);
         const situacao = parseInt(p.Situacao ?? p.situacao ?? 0, 10);
@@ -159,7 +155,6 @@
       if (mapped.length) schedule.seats = mapped;
     } catch (e) {
       console.error('Erro ao carregar mapa de poltronas:', e);
-      // se falhar, segue sem seats (aparecerá tudo como livre exceto 1/2 e >28 convencional)
     }
   }
 
@@ -188,12 +183,7 @@
       <div class="counter">Poltronas selecionadas: <b id="selCount">0</b></div>
 
       <div class="pax" id="paxBox">
-        <div style="margin-bottom:6px"><b>Pol <span id="curSeat">—</span>:</b></div>
-        <div class="pax-grid">
-          <input id="paxName"  type="text" placeholder="Nome"     required />
-          <input id="paxCpf"   type="text" placeholder="CPF"       required />
-          <input id="paxPhone" type="text" placeholder="Telefone"  required />
-        </div>
+        <div class="pax-list" id="paxList"></div>
       </div>
 
       <div class="actions">
@@ -209,10 +199,7 @@
     const tripInfo = root.querySelector('#tripInfo');
     const selCount = root.querySelector('#selCount');
     const paxBox   = root.querySelector('#paxBox');
-    const curSeat  = root.querySelector('#curSeat');
-    const nameI    = root.querySelector('#paxName');
-    const cpfI     = root.querySelector('#paxCpf');
-    const phoneI   = root.querySelector('#paxPhone');
+    const paxList  = root.querySelector('#paxList');
     const btnConfirm = root.querySelector('#btnConfirm');
     const btnBack    = root.querySelector('#btnBack');
 
@@ -228,14 +215,13 @@
       type: (wayType || 'ida'),
       schedule: schedule || {},
       exec: isExecutive(schedule),
-      seats: [],   // números selecionados
-      pax: {}      // { num: { name, cpf, phone } }
+      seats: [],      // ordem de seleção
+      pax: {}         // { num: { name, cpf, phone } }
     };
 
-    // Garante que temos o mapa de poltronas (busca do backend se necessário)
     await ensureSeatMap(schedule);
 
-    // cria um Map por número para acesso rápido
+    // cria Map por número
     const seatMap = new Map();
     if (Array.isArray(schedule?.seats)) {
       schedule.seats.forEach(s => {
@@ -251,17 +237,61 @@
       maxSelectable = snap.cnt || 0;
       obPax = snap.pax || [];
       paxBox.classList.add('readonly');
-      [nameI, cpfI, phoneI].forEach(i => { i.readOnly = true; i.required = false; });
     }
 
     function isSeatBlocked(num){
       if (num === 1 || num === 2) return true;             // bloqueadas fixas
-      // if (!state.exec && num > 28) return true;          // (removido) deixa a API dizer o que existe
       const sd = seatMap.get(num);
-      if (!sd) return true;                                // não veio no mapa => não existe/indisp.
-      if (Number(sd.situacao) === 3) return true;          // inativa
+      if (!sd) return true;                                 // não existe/indisp.
+      if (Number(sd.situacao) === 3) return true;           // inativa
       if (sd.occupied === true || Number(sd.situacao) !== 0) return true; // ocupada
       return false;
+    }
+
+    // Renderiza inputs de passageiros (uma linha por poltrona selecionada)
+    function renderPaxList(){
+      if (state.seats.length === 0){
+        paxBox.style.display = 'none';
+        paxList.innerHTML = '';
+        return;
+      }
+      paxBox.style.display = 'block';
+      paxList.innerHTML = '';
+
+      state.seats.forEach((seatNum, idx) => {
+        const row = document.createElement('div');
+        row.className = 'pax-row';
+
+        // Pré-preencher na volta (readonly)
+        if (isReturn && obPax[idx]) {
+          state.pax[seatNum] = {
+            name:  obPax[idx].name  || '',
+            cpf:   obPax[idx].cpf   || '',
+            phone: obPax[idx].phone || '',
+          };
+        } else {
+          state.pax[seatNum] ||= { name:'', cpf:'', phone:'' };
+        }
+
+        const v = state.pax[seatNum];
+
+        row.innerHTML = `
+          <div class="label">Pol ${seatNum}:</div>
+          <input type="text" class="pax-name"  placeholder="Nome"     ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.name||''}">
+          <input type="text" class="pax-cpf"   placeholder="CPF"       ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.cpf||''}">
+          <input type="text" class="pax-phone" placeholder="Telefone"  ${isReturn?'readonly':''} ${!isReturn?'required':''} value="${v.phone||''}">
+        `;
+
+        // Bind
+        if (!isReturn){
+          const [nameI, cpfI, phoneI] = row.querySelectorAll('input');
+          nameI.addEventListener('input', () => { state.pax[seatNum].name  = nameI.value; });
+          cpfI .addEventListener('input', () => { state.pax[seatNum].cpf   = cpfI.value;  });
+          phoneI.addEventListener('input', () => { state.pax[seatNum].phone = phoneI.value; });
+        }
+
+        paxList.appendChild(row);
+      });
     }
 
     // Desenha a malha
@@ -295,7 +325,6 @@
             state.seats.splice(i,1);
             seat.classList.remove('selected');
             delete state.pax[cell];
-            updatePax();
           }else{
             if (isReturn && state.seats.length >= maxSelectable){
               alert(`Para a volta selecione exatamente ${maxSelectable} poltronas.`);
@@ -303,51 +332,16 @@
             }
             state.seats.push(cell);
             seat.classList.add('selected');
-
-            if (isReturn && obPax.length){
-              const idx = state.seats.length - 1;
-              const src = obPax[idx];
-              if (src) state.pax[cell] = { name:src.name||'', cpf:src.cpf||'', phone:src.phone||'' };
-            } else {
-              state.pax[cell] ||= { name:'', cpf:'', phone:'' };
-            }
-            updatePax();
           }
           selCount.textContent = String(state.seats.length);
+          renderPaxList();
         });
 
         gridEl.appendChild(seat);
       });
     });
 
-    function updatePax(){
-      const last = state.seats[state.seats.length-1];
-      if (!last){ paxBox.style.display='none'; return; }
-      // <- FIX: precisa forçar block para sobrepor .pax { display:none }
-      paxBox.style.display = 'block';
-      curSeat.textContent = last;
-      const d = state.pax[last] || {name:'', cpf:'', phone:''};
-      nameI.value  = d.name  || '';
-      cpfI.value   = d.cpf   || '';
-      phoneI.value = d.phone || '';
-    }
-
-    nameI.addEventListener('input', () => {
-      if (isReturn) return;
-      const last = state.seats[state.seats.length-1]; if (!last) return;
-      (state.pax[last] ||= {}).name = nameI.value;
-    });
-    cpfI.addEventListener('input', () => {
-      if (isReturn) return;
-      const last = state.seats[state.seats.length-1]; if (!last) return;
-      (state.pax[last] ||= {}).cpf = cpfI.value;
-    });
-    phoneI.addEventListener('input', () => {
-      if (isReturn) return;
-      const last = state.seats[state.seats.length-1]; if (!last) return;
-      (state.pax[last] ||= {}).phone = phoneI.value;
-    });
-
+    // Botões
     btnConfirm.addEventListener('click', () => {
       if (isReturn && isFinite(maxSelectable) && state.seats.length !== maxSelectable){
         alert(`Selecione exatamente ${maxSelectable} poltronas para a volta.`);
@@ -374,10 +368,10 @@
       container.dispatchEvent(new CustomEvent('seats:back'));
     });
 
-    // ===== Responsividade: escala pela largura da imagem =====
+    // ===== Responsividade =====
     function applyScale() {
       const w = img?.getBoundingClientRect().width || BASE_IMG_WIDTH;
-      const scale = Math.max(0.6, Math.min(1.5, w / BASE_IMG_WIDTH)); // limites suaves
+      const scale = Math.max(0.6, Math.min(1.5, w / BASE_IMG_WIDTH));
       root.style.setProperty('--grid-top',  (BASE_TOP   * scale) + 'px');
       root.style.setProperty('--grid-left', (BASE_LEFT  * scale) + 'px');
       root.style.setProperty('--cell-w',    (BASE_CELL_W* scale) + 'px');
