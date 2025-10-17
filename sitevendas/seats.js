@@ -99,9 +99,9 @@
 
 
 /* Diminua o padding esquerdo do card de assentos */
-.seats-onepage-root { padding-left: 16px; } /* ou o valor que quiser */
+.seats-onepage-root { padding-left: 3px; } /* ou o valor que quiser */
 /* ou, alternativamente, adicione margem esquerda só no bloco de botões */
-.seats-onepage .actions { margin-left: 16px; }
+.seats-onepage .actions { margin-left: 3px; }
 
 /* Reduza o padding inferior do card */
 .seats-onepage-root { padding-bottom: 10px; }  /* ex.: de 18px para 10px */
