@@ -1,12 +1,12 @@
 // seats.js — Seleção de poltronas (1 tela) AUTOSSUFICIENTE
 (() => {
-  // ===== Ajustes finos =====
-  const TOP_OFFSET  = 22;
-  const LEFT_OFFSET = 105;
-  const CELL_W = 45;
-  const CELL_H = 35;
-  const GAP_X  = 15;
-  const GAP_Y  = 10;
+  // ===== Ajustes finos do encaixe (ajuste 1–3px se necessário) =====
+  const TOP_OFFSET  = 22;   // px (sobe/desce a grade sobre o bus-blank)
+  const LEFT_OFFSET = 105;  // px (empurra grade p/ direita/esquerda)
+  const CELL_W = 45;        // largura da célula (assento)
+  const CELL_H = 35;        // altura da célula
+  const GAP_X  = 15;        // espaço horizontal entre assentos
+  const GAP_Y  = 10;        // espaço vertical entre assentos
 
   const GRID = [
     [ 3,  7, 11, 15, 19, 23, 27, 31, 35, 39, null],
