@@ -763,33 +763,30 @@ footer { text-align: center; flex: 0 0 auto; }
 /* Legenda (quadradinhos) */
 .seats-onepage .legend .sw{ width:18px; height:18px; border-radius:4px; border:1px solid #d8ead8; }
 
-/* Alinhamento e respiro dos botões (esquerda + inferior) */
+/* Fine-tuning só da tela de poltronas */
+:root{
+  /* mexa aqui se quiser mais/menos: -6px, -8px, -10px… */
+  --seats-left-adjust: -8px;
+  --seats-bottom-adjust: 0px; /* use -4px se quiser “subir” um pouco os botões */
+}
+
+/* Alinha os botões com a borda esquerda do card */
 .seats-onepage .actions,
 .seats-onepage .seat-actions{
-  display:flex !important;
-  gap: 10px !important;
+  margin-left: var(--seats-left-adjust) !important;
   margin-top: 16px !important;
-  margin-left: 0 !important;      /* cola na borda esquerda do card */
-  padding-left: 0 !important;
+  margin-bottom: var(--seats-bottom-adjust) !important;
+  display: flex !important;
+  gap: 10px !important;
 }
 
-/* Botões com o mesmo raio/altura dos da esquerda */
-.seats-onepage .btn{
-  padding: 8px 14px !important;
-  border-radius: 6px !important;
-  border: 1px solid transparent !important;
-  cursor: pointer;
-}
-.seats-onepage .btn-primary{
-  background: #0b5a2b !important;
-  color: #fff !important;
-}
-.seats-onepage .btn-ghost{
-  background: #e9ecef !important;
-  color: #222 !important;
+/* Opcional: deixa o bloco inteiro com o mesmo “respiro” do card da esquerda */
+.seats-onepage-root{
+  padding: 0 16px 14px 16px !important;  /* left=16, bottom=14 */
 }
 
-/* Evita o grid das poltronas estourar quando a janela encolhe (ajuda no mobile/console aberto) */
-.bus-layout .bus-image{ max-width:100%; height:auto; display:block; }
-.seats-onepage .bus-grid{ max-width:100%; }
+/* Se quiser que as infos fiquem menos coladas entre si */
+.seats-onepage #tripInfo{ margin-top: 8px !important; }
+.seats-onepage .counter{ margin: 8px 0 10px !important; }
+.seats-onepage #paxBox{ margin-top: 12px !important; }
 
