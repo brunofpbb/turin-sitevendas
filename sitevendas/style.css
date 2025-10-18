@@ -768,7 +768,7 @@ footer { text-align: center; flex: 0 0 auto; }
 .seats-onepage .seat-actions{
   display:flex !important;
   gap: 10px !important;
-  margin-top: 0px !important;
+  margin-top: 16px !important;
   margin-left: 0 !important;      /* cola na borda esquerda do card */
   padding-left: 0 !important;
 }
