@@ -657,3 +657,59 @@ footer { text-align: center; flex: 0 0 auto; }
 /* neutraliza estilos antigos globais que batiam com .bus-grid / .seat */
 .bus-grid:not(.seats-onepage .bus-grid){ all:unset; }
 .seat:not(.seats-onepage .seat){ all:unset; }
+
+
+
+/* ====== Seats page – espaçamentos visuais ====== */
+
+/* título/infos menos coladas */
+#trip-info{
+  margin: 8px 0 6px;
+  font-weight: 700;
+  color: #2a3b2a;
+}
+
+/* legenda com bom respiro e centralizada */
+#legend-host{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin: 10px 0 12px;
+  font-size: .95rem;
+  color: #2a3b2a;
+}
+
+/* grid de passageiros com o mesmo look dos inputs do card da esquerda */
+#passengers-row{
+  margin-top: 12px;
+}
+#passengers-row .grid-row{
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  gap: 10px;
+}
+#passengers-row input{
+  height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #dfe5df;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+/* ações coladas à borda esquerda e com pouco respiro inferior (como "Pesquisar") */
+.seat-actions{
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 0;     /* topo = 12px; zero nas laterais e embaixo */
+}
+.seat-actions .btn{
+  border-radius: 6px;
+  padding: 8px 14px;
+}
+
+/* dá um pequeno respiro abaixo do ônibus pra não colar na legenda */
+#bus-layout{ margin-bottom: 10px; }
+
+/* garante que o card da direita tenha o mesmo padding do esquerdo */
+.content-card{ padding: 16px 18px; }
