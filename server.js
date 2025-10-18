@@ -222,6 +222,27 @@ async function praxioLogin() {
   return j.IdSessaoOp;
 }
 
+
+function nowWithTZOffsetISO(offsetMinutes = -(3 * 60)) {
+  // offsetMinutes negativo para -03:00
+  const now = new Date();
+  // converte para “local desejado” aplicando o delta do offset atual
+  const tzNow = new Date(now.getTime() + (offsetMinutes + now.getTimezoneOffset()) * 60000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = tzNow.getFullYear();
+  const m = pad(tzNow.getMonth() + 1);
+  const d = pad(tzNow.getDate());
+  const hh = pad(tzNow.getHours());
+  const mm = pad(tzNow.getMinutes());
+  const ss = pad(tzNow.getSeconds());
+  const sign = offsetMinutes <= 0 ? '-' : '+';
+  const abs = Math.abs(offsetMinutes);
+  const oh = pad(Math.floor(abs / 60));
+  const om = pad(abs % 60);
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}${sign}${oh}:${om}`;
+}
+
+
 // bodyVenda: campos mínimos para VendaPassagem (construídos a partir do metadata do pagamento)
 async function praxioVendaPassagem(bodyVenda) {
   const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/VendaPassagem/VendaPassagem', {
@@ -403,32 +424,36 @@ app.post('/api/mp/webhook', async (req, res) => {
     const idEstabTicket = String(md.idEstabelecimentoTicket || idEstabVenda);
     const serieBloco = String(md.serieBloco || '93');
 
-    const bodyVenda = {
-      listVendasXmlEnvio: [{
-        IdSessaoOp,
-        IdEstabelecimentoVenda: idEstabVenda,
-        IdViagem: String(md.idViagem),
-        HoraPartida: String(md.horaPartida),     // "1145"
-        IdOrigem: String(md.idOrigem),
-        IdDestino: String(md.idDestino),
-        Embarque: "S", Seguro: "N", Excesso: "N",
-        BPe: 1,
-        passagemXml: [{
-          IdEstabelecimento: idEstabTicket,
-          SerieBloco: serieBloco,
-          Poltrona: String(md.poltrona),
-          NomeCli: String(md.nomeCli || ''),
-          IdentidadeCli: String(md.docCli || ''),
-        }],
-        pagamentoXml: [{
-          DataPagamento: new Date().toISOString(), // ISO; Praxio aceita "YYYY-MM-DDTHH:mm:ss"
-          TipoPagamento: "0",   // 0=dinheiro | 2=cartão?  -> mantemos 0 para compat bilhete; se quiser, mapeie por md.tipo
-          TipoCartao: "0",
-          QtdParcelas: Number(payment.installments || 1),
-          ValorPagamento: Number(md.valorTotal || payment.transaction_amount || 0)
-        }]
-      }]
-    };
+const bodyVenda = {
+  listVendasXmlEnvio: [{
+    IdSessaoOp,                                 // << da função praxioLogin()
+    IdEstabelecimentoVenda: String(idEstabelecimentoVenda),  // "1"
+    IdViagem: String(schedule.idViagem),        // "37014"
+    HoraPartida: String(schedule.horaPartida),  // "1145"
+    IdOrigem: String(schedule.idOrigem),        // "6"
+    IdDestino: String(schedule.idDestino),      // "2"
+    Embarque: "S",
+    Seguro: "N",
+    Excesso: "N",
+    BPe: 1,
+    passagemXml: (passengers || []).map(p => ({
+      IdEstabelecimento: String(idEstabelecimentoTicket),    // "93"
+      SerieBloco: String(serieBloco),                        // "93"
+      Poltrona: String(p.seatNumber),                        // "27"
+      NomeCli: String(p.name || ''),
+      IdentidadeCli: String((p.document || '').replace(/\D/g,''))
+    })),
+    pagamentoXml: [{
+      DataPagamento: nowWithTZOffsetISO(-180),               // "2025-10-17T22:12:24-03:00"
+      TipoPagamento: "0",
+      TipoCartao: "0",
+      QtdParcelas: Number(payment.installments || 1),
+      ValorPagamento: Number(totalAmount || mpAmount)
+    }]
+  }]
+};
+
+console.log('[Praxio][Venda] body:', JSON.stringify(bodyVenda).slice(0, 4000));
 
     // 3) faz a venda
     const vendaResult = await praxioVendaPassagem(bodyVenda);
@@ -455,6 +480,59 @@ app.post('/api/mp/webhook', async (req, res) => {
     console.error('[webhook MP] erro:', err?.message || err);
   }
 });
+
+
+console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
+
+
+
+
+// montar payload do webhook
+const firstPass = (vendaResult.ListaPassagem || [])[0] || {};
+const payloadWebhook = {
+  fonte: 'sitevendas',
+  mp: {
+    id: payment.id,
+    status: payment.status,
+    status_detail: payment.status_detail,
+    external_reference: payment.external_reference || null,
+    amount: payment.transaction_amount
+  },
+  viagem: {
+    idViagem: schedule.idViagem,
+    horaPartida: schedule.horaPartida,
+    idOrigem: schedule.idOrigem,
+    idDestino: schedule.idDestino
+  },
+  bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
+    numPassagem: p.NumPassagem,
+    chaveBPe: p.ChaveBPe,
+    origem: p.Origem,
+    destino: p.Destino,
+    poltrona: p.Poltrona,
+    nomeCliente: p.NomeCliente,
+    docCliente: p.DocCliente,
+    valor: p.ValorPgto,
+  })),
+  arquivos // [{ numPassagem, pdf }]
+};
+
+try {
+  const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payloadWebhook),
+  });
+  console.log('[Webhook salvarBpe] status:', hook.status);
+} catch (e) {
+  console.error('[Webhook salvarBpe] erro:', e?.message || e);
+}
+
+
+
+
+
+
 
 
 
