@@ -21,7 +21,7 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
   position: sticky; top: 22px;       /* fixa no scroll */
   background:#fff; padding:16px 18px;
   border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.06);
-  min-height: 600px;                 /* mais alto */
+  min-height: 400px;                 /* mais alto */
 }
 .content-card{
   background:#fff; padding:16px 18px; min-height:420px;
