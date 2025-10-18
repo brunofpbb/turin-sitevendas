@@ -1,4 +1,4 @@
-// payment.js — Resumo + Bricks + render do PIX (QR + copia-e-cola)
+// payment.js — Resumo + Bricks + PIX (QR + copia-e-cola + polling)
 document.addEventListener('DOMContentLoaded', async () => {
   // ——— login obrigatório
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -30,6 +30,67 @@ document.addEventListener('DOMContentLoaded', async () => {
     const [y, m, d] = iso.split('-');
     return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
   };
+
+  // ====== PIX polling
+  const POLL_MS = 5000;                 // 5s entre consultas
+  const POLL_TIMEOUT_MS = 15 * 60 * 1000; // 15 min máximo
+  let pixPollTimer = null;
+
+  async function fetchPaymentStatus(paymentId) {
+    // tenta /payment-status?id=... e /payment/:id (use o que seu backend expõe)
+    let r = await fetch(`/api/mp/payment-status?id=${paymentId}`).catch(()=>null);
+    if (!r || !r.ok) r = await fetch(`/api/mp/payment/${paymentId}`).catch(()=>null);
+    if (!r || !r.ok) throw new Error('Falha ao consultar status do pagamento');
+    return r.json();
+  }
+  function setPixStatus(msg) {
+    if (pixStatus) pixStatus.textContent = msg;
+  }
+  async function startPixPolling(paymentId) {
+    clearInterval(pixPollTimer);
+    const t0 = Date.now();
+    setPixStatus('Aguardando pagamento…');
+
+    pixPollTimer = setInterval(async () => {
+      try {
+        const data = await fetchPaymentStatus(paymentId);
+        const st = String(data?.status || '').toLowerCase();
+        const detail = String(data?.status_detail || '').toLowerCase();
+
+        if (st === 'approved') {
+          clearInterval(pixPollTimer);
+          setPixStatus('Pagamento aprovado! Emitindo bilhete…');
+          try {
+            const venda = await venderPraxioApósAprovado(paymentId);
+            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+              const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+                .map(b => ({ ...b, paid: true }));
+              localStorage.setItem('bookings', JSON.stringify(bookings));
+              localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+              location.href = 'profile.html';
+              return;
+            }
+          } catch (e) {
+            console.error('Erro ao emitir bilhete após aprovação:', e);
+            alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+          }
+        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
+        } else {
+          setPixStatus('Aguardando pagamento…');
+        }
+
+        if (Date.now() - t0 > POLL_TIMEOUT_MS) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Tempo esgotado. Gere um novo Pix se necessário.');
+        }
+      } catch (e) {
+        console.warn('Falha no polling Pix:', e);
+        // continua tentando até timeout
+      }
+    }, POLL_MS);
+  }
 
   // ——— carrinho
   function readCart() {
@@ -200,7 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     pixBox.style.display = 'block';
     pixQR.innerHTML = qr_b64 ? `<img src="data:image/png;base64,${qr_b64}" alt="QR Pix">` : '<p class="mute">QR não disponível.</p>';
     pixCode.value = qr_text || '';
-    pixStatus.textContent = 'Aguardando pagamento…';
+    setPixStatus('Aguardando pagamento…');
 
     if (pixCopy && qr_text) {
       pixCopy.onclick = () => {
@@ -209,7 +270,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert('Código Pix copiado!');
       };
     }
-    // rola até o PIX para o usuário ver
     pixBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
@@ -288,6 +348,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (pix?.qr_code || pix?.qr_code_base64) {
               showPixBox({ qr_b64: pix.qr_code_base64, qr_text: pix.qr_code });
               alert('Pix gerado! Conclua o pagamento no seu banco.');
+              const paymentId = data.id || data?.payment?.id;
+              if (paymentId) startPixPolling(paymentId); // <<<<<< POLLING AQUI
               return;
             }
 
