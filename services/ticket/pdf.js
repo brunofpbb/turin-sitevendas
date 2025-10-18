@@ -1,3 +1,4 @@
+// services/ticket/pdf.js
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
@@ -20,15 +21,6 @@ function formatEmissaoBR(iso, tzOffsetMin = -180) {
   return `${d}/${m}/${y} ${hh}:${mm} ${sgn}${oh}:${om}`;
 }
 
-/**
- * DA BPe:
- *  - 3 colunas com tabulação ajustada (sem sobreposição)
- *  - Linha de separação abaixo de "Data/Prefixo"
- *  - Passageiro + Documento em uma linha
- *  - Remove Pedágio
- *  - Valor Pago em destaque
- *  - QR menor e centralizado; abaixo: data/hora de emissão (-03:00), URL, chave, e protocolo (em preto)
- */
 exports.generateTicketPdf = async (t, outDir) => {
   await fs.promises.mkdir(outDir, { recursive: true });
 
@@ -42,7 +34,7 @@ exports.generateTicketPdf = async (t, outDir) => {
 
   const outPath = path.join(outDir, baseName);
 
-  const qrDataURL = await QRCode.toDataURL(t.qrUrl, { margin: 1, scale: 5 }); // menor
+  const qrDataURL = await QRCode.toDataURL(t.qrUrl, { margin: 1, scale: 5 });
 
   const doc = new PDFDocument({
     size: 'A5',
@@ -53,134 +45,153 @@ exports.generateTicketPdf = async (t, outDir) => {
 
   const fullW = () => (doc.page.width - doc.page.margins.left - doc.page.margins.right);
   const centerX = () => (doc.page.margins.left + fullW()/2);
-  const hr = () => {
-    const y = doc.y + 2;
+  const HR = (y) => {
     doc.moveTo(doc.page.margins.left, y)
        .lineTo(doc.page.width - doc.page.margins.right, y)
        .strokeColor('#d0d0d0').lineWidth(0.6).stroke();
-    doc.moveDown(0.4);
   };
-  const L = (s) => doc.font('Helvetica').fontSize(8).fillColor('#555').text(s, { continued:false });
-  const V = (s,b=true) => doc.font(b ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#111').text(s, { continued:false });
 
-  // ===== Cabeçalho com imagem (opcional) =====
+  // ===== Cabeçalho opcional com imagem
   try {
     const headerPath = path.join(__dirname, '..', '..', 'sitevendas', 'img', 'bpe-header.png');
     if (fs.existsSync(headerPath)) {
       doc.image(headerPath, doc.page.margins.left, doc.y, { fit: [fullW(), 44] });
-      doc.moveDown(0.2);
+      doc.moveDown(0.3);
     }
   } catch(_) {}
 
   // Título
   doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
-     .text('DABP-e - Documento Auxiliar do Bilhete de Passagem Eletrônico', { align: 'center' });
-  doc.moveDown(0.4);
-  hr();
+     .text('DABP-e - Documento Auxiliar do Bilhete de Passagem Eletrônico', { align: 'center', width: fullW() });
+
+  let y = doc.y + 6;
+  HR(y);
+  doc.y = y + 6;
 
   // ===== Empresa (centralizado)
-  doc.font('Helvetica-Bold').fontSize(11).text(t.empresa || 'TURIN TRANSPORTES LTDA', { align:'center' });
-  doc.font('Helvetica').fontSize(9);
-  const line2 = [];
-  if (t.cnpjEmpresa) line2.push(`CNPJ: ${t.cnpjEmpresa}`);
-  if (t.ie) line2.push(`IE.: ${t.ie}`);
-  doc.text(line2.join('    '), { align:'center' });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
+     .text(t.empresa || 'TURIN TRANSPORTES LTDA', { align:'center', width: fullW() });
+  doc.font('Helvetica').fontSize(9).fillColor('#000');
+  const parts2 = [];
+  if (t.cnpjEmpresa) parts2.push(`CNPJ: ${t.cnpjEmpresa}`);
+  if (t.ie) parts2.push(`IE.: ${t.ie}`);
+  doc.text(parts2.join('    '), { align:'center', width: fullW() });
 
-  const line3 = [];
-  if (t.enderecoEmpresa) line3.push(`${t.enderecoEmpresa}`);
-  if (t.bairroEmpresa) line3.push(`- ${t.bairroEmpresa}`);
-  doc.text(line3.join(' '), { align:'center' });
+  const parts3 = [];
+  if (t.enderecoEmpresa) parts3.push(`${t.enderecoEmpresa}`);
+  if (t.bairroEmpresa)   parts3.push(`- ${t.bairroEmpresa}`);
+  doc.text(parts3.join(' '), { align:'center', width: fullW() });
 
-  const line4 = [];
-  if (t.cidadeEmpresa) line4.push(t.cidadeEmpresa);
-  if (t.telefoneEmpresa) line4.push(`Telefone: ${t.telefoneEmpresa}`);
-  doc.text(line4.join('  -  '), { align:'center' });
+  const parts4 = [];
+  if (t.cidadeEmpresa)   parts4.push(t.cidadeEmpresa);
+  if (t.telefoneEmpresa) parts4.push(`Telefone: ${t.telefoneEmpresa}`);
+  doc.text(parts4.join('  -  '), { align:'center', width: fullW() });
 
-  doc.moveDown(0.4);
-  hr();
+  y = doc.y + 6;
+  HR(y);
+  doc.y = y + 6;
 
-  // ===== GRID PRINCIPAL (3 colunas com tabulação à direita)
+  // ===== GRID: 3 colunas alinhadas por coordenada (evita sobreposição)
   const w = fullW();
-  // colunas mais à direita pra evitar sobreposição
-  const colW = w / 3;
+  const colW = Math.floor(w / 3) - 4;   // largura segura por coluna
   const x0 = doc.page.margins.left;
-  const x1 = x0 + colW + 8;    // deslocadas
-  const x2 = x1 + colW + 8;
+  const x1 = x0 + colW + 14;            // empurra um pouco à direita
+  const x2 = x1 + colW + 14;
 
   const yStart = doc.y;
-  // Coluna 1
-  doc.text('', x0, yStart);
-  L('Empresa:'); V(t.empresa || '—');
-  L('Origem:');  V(t.origem || '—');
-  L('Destino:'); V(t.destino || '—');
-  L('Data:');    V(t.dataViagem || '—');
-
-  // Coluna 2
-  doc.text('', x1, yStart);
-  L('Horário:');  V(t.horaPartida || '—');
-  L('Poltrona:'); V(t.poltrona || '—');
-  L('Linha:');    V(t.nomeLinha || '—');        // descrição
-  L('Prefixo:');  V(t.codigoLinha || '—');      // código
-
-  // Coluna 3
-  doc.text('', x2, yStart);
-  L('Classe:');   V(t.classe || '—');
-  L('Bilhete:');  V(t.numPassagem || '—');
-  L('Série:');    V(t.serie || '—');
-
-  // linha de separação logo após Data/Prefixo
-  doc.moveDown(0.2);
-  hr();
-
-  // ===== Passageiro + Documento em 1 linha
-  doc.font('Helvetica').fontSize(8).fillColor('#555').text('Passageiro:', { continued: true });
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111').text(` ${t.nomeCliente || '—'}   `, { continued: true });
-  doc.font('Helvetica').fontSize(8).fillColor('#555').text('Documento:', { continued: true });
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111').text(` ${t.documento || '—'}`);
-  doc.moveDown(0.2);
-  hr();
-
-  // ===== Valores (sem Pedágio) — valor pago em destaque
-  const yVals = doc.y;
-  const half = (w/2) - 10;
-
-  const drawKV = (k, v, x, y, big=false) => {
-    doc.font('Helvetica').fontSize(8).fillColor('#555').text(k, x, y);
-    doc.font('Helvetica-Bold').fontSize(big ? 12 : 10).fillColor('#000').text(v, x, doc.y);
+  const lh = 14;
+  const label = (txt, x, y) => {
+    doc.font('Helvetica').fontSize(8).fillColor('#555').text(txt, x, y, { width: colW, height: lh, lineBreak: false });
   };
+  const value = (txt, x, y, big=false) => {
+    doc.font('Helvetica-Bold').fontSize(big ? 10.5 : 10).fillColor('#111').text(String(txt || '—'), x, y, { width: colW, height: lh, lineBreak: false });
+  };
+  const row = (i, setters) => setters.forEach(fn => fn(yStart + i*lh));
 
-  drawKV('Tarifa:', t.tarifa || 'R$ 0,00', x0, yVals);
-  // remove pedágio
-  drawKV('Taxa De Embarque:', t.taxaEmbarque || 'R$ 0,00', x0, doc.y);
-  drawKV('Outros:', t.outros || 'R$ 0,00', x0, doc.y);
+  // linha 0
+  row(0, [
+    y => { label('Empresa:', x0, y); value(t.empresa, x0, y); },
+    y => { label('Horário:', x1, y); value(t.horaPartida, x1, y); },
+    y => { label('Classe:', x2, y);  value(t.classe, x2, y); }
+  ]);
+  // linha 1
+  row(1, [
+    y => { label('Origem:', x0, y);  value(t.origem, x0, y); },
+    y => { label('Poltrona:', x1, y); value(t.poltrona, x1, y); },
+    y => { label('Bilhete:', x2, y); value(t.numPassagem, x2, y); }
+  ]);
+  // linha 2
+  row(2, [
+    y => { label('Destino:', x0, y); value(t.destino, x0, y); },
+    y => { label('Linha:', x1, y);    value(t.nomeLinha, x1, y); },
+    y => { label('Série:', x2, y);    value(t.serie, x2, y); }
+  ]);
+  // linha 3
+  row(3, [
+    y => { label('Data:', x0, y);    value(t.dataViagem, x0, y); },
+    y => { label('Prefixo:', x1, y); value(t.codigoLinha, x1, y); }
+  ]);
 
-  const xR = x0 + half + 20;
-  drawKV('Forma De Pagamento:', t.formaPgto || '—', xR, yVals);
-  drawKV('Valor Pago:', t.valorTotalFmt || '—', xR, doc.y, true); // destaque
+  // separador exatamente após o grid
+  const yAfterGrid = yStart + 4*lh + 6;
+  HR(yAfterGrid);
+  doc.y = yAfterGrid + 6;
 
-  doc.moveDown(0.4);
-  hr();
+  // ===== Passageiro (1 linha): nome à esquerda, documento à direita
+  const yPD = doc.y;
+  doc.font('Helvetica').fontSize(8).fillColor('#555').text('Passageiro:', x0, yPD);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111').text(String(t.nomeCliente || '—'), x0 + 60, yPD, { width: (w/2) - 70, lineBreak: false });
 
-  // ===== QR centralizado + informações
-  const qrSize = 110; // menor
+  doc.font('Helvetica').fontSize(8).fillColor('#555').text('Documento:', x2 - 40, yPD);
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111').text(String(t.documento || '—'), x2 + 30, yPD, { width: colW, lineBreak: false });
+
+  y = Math.max(yPD + lh, doc.y) + 4;
+  HR(y);
+  doc.y = y + 6;
+
+  // ===== Valores (sem Pedágio); Valor Pago com destaque; linha após o MAIOR y
+  const leftX = x0, rightX = x1 + 10;
+  const vLabel = (txt, x, y) => doc.font('Helvetica').fontSize(8).fillColor('#555').text(txt, x, y);
+  const vValue = (txt, x, y, big=false) => doc.font('Helvetica-Bold').fontSize(big ? 12 : 10).fillColor('#000').text(String(txt || '—'), x, y);
+
+  const yL0 = doc.y;
+  vLabel('Tarifa:', leftX, yL0);            vValue(t.tarifa, leftX, doc.y);
+  const yL1 = doc.y; vLabel('Taxa De Embarque:', leftX, yL1); vValue(t.taxaEmbarque, leftX, doc.y);
+  const yL2 = doc.y; vLabel('Outros:', leftX, yL2);           vValue(t.outros, leftX, doc.y);
+
+  const yR0 = yL0; vLabel('Forma De Pagamento:', rightX, yR0); vValue(t.formaPgto, rightX, doc.y);
+  const yR1 = doc.y; vLabel('Valor Pago:', rightX, yR1);       vValue(t.valorTotalFmt, rightX, doc.y, true);
+
+  const yAfterVals = Math.max(doc.y, yL2 + lh, yR1 + lh) + 6;
+  HR(yAfterVals);
+  doc.y = yAfterVals + 6;
+
+  // ===== QR centralizado e textos ABAIXO do QR
+  const qrSize = 110;
   const qrX = centerX() - (qrSize/2);
-  const qrY = doc.y + 4;
+  const qrY = doc.y;
   doc.image(qrDataURL, qrX, qrY, { fit: [qrSize, qrSize] });
 
-  const yAfter = qrY + qrSize + 8;
+  // força o cursor PARA BAIXO do QR
+  const yAfterQR = qrY + qrSize + 8;
+  doc.y = yAfterQR;
 
-  // Data/hora de emissão (-03:00)
+  // Emissão (UTC−3), URL, chave e protocolo (centralizados)
   const emissaoBR = formatEmissaoBR(t.emissaoISO, -180);
-  doc.font('Helvetica').fontSize(9).fillColor('#000').text(`Emissão: ${emissaoBR}`, { align:'center' });
+  doc.font('Helvetica').fontSize(9).fillColor('#000')
+     .text(`Emissão: ${emissaoBR}`, { align:'center', width: fullW() });
 
-  // URL (mesma do QR) e chave
-  doc.font('Helvetica').fontSize(9).fillColor('#000').text(t.qrUrl, { align: 'center' });
-  if (t.chaveBPe) doc.font('Helvetica').fontSize(9).fillColor('#000').text(t.chaveBPe, { align:'center' });
+  doc.font('Helvetica').fontSize(9).fillColor('#000')
+     .text(t.qrUrl, { align:'center', width: fullW() });
 
-  doc.moveDown(0.4);
-  // Protocolo (preto, sem destaque extra)
+  if (t.chaveBPe) {
+    doc.font('Helvetica').fontSize(9).fillColor('#000')
+       .text(t.chaveBPe, { align:'center', width: fullW() });
+  }
+
+  doc.moveDown(0.3);
   doc.font('Helvetica').fontSize(10).fillColor('#000')
-     .text('Protocolo de autorização: EMITIDO EM CONTINGÊNCIA', { align:'center' });
+     .text('Protocolo de autorização: EMITIDO EM CONTINGÊNCIA', { align:'center', width: fullW() });
 
   doc.end();
   await new Promise((r) => stream.on('finish', r));
