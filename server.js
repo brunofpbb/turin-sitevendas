@@ -6,8 +6,13 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 
+// === novos serviços de bilhete PDF ===
+const { mapVendaToTicket } = require('./services/ticket/mapper');
+const { generateTicketPdf } = require('./services/ticket/pdf');
+
 const app = express();
 const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
+const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
 /* =================== CSP pró-Bricks (válido p/ todo o site) =================== */
@@ -16,16 +21,11 @@ app.use((req, res, next) => {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      // SDK/Bricks usam inline e eval
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      // chamadas XHR/fetch
       "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com https://api-static.mercadopago.com https://api.mercadolibre.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      // imagens (inclusive base64 do QR)
       "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      // iframes usados pelo Brick
       "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
       "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      // estilos e fontes
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:"
     ].join('; ')
@@ -34,8 +34,12 @@ app.use((req, res, next) => {
 });
 
 /* =================== Middlewares =================== */
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(express.static(PUBLIC_DIR));
+
+// estático dos bilhetes PDF
+if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR);
+app.use('/tickets', express.static(TICKETS_DIR, { maxAge: '7d', index: false }));
 
 /* =================== Rotas Mercado Pago =================== */
 const mpRoutes = require('./mpRoutes');
@@ -198,29 +202,51 @@ app.post('/api/auth/verify-code', (req, res) => {
   res.json({ ok: true, user });
 });
 
-/* =================== Praxio =================== */
+/* =================== Praxio: helpers =================== */
+async function praxioLogin() {
+  const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      Nome: process.env.PRAXIO_USER,
+      Senha: process.env.PRAXIO_PASS,
+      Sistema: 'WINVR.EXE',
+      TipoBD: 0,
+      Empresa: process.env.PRAXIO_EMP,
+      Cliente: process.env.PRAXIO_CLIENT,
+      TipoAplicacao: 0,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Praxio login ${resp.status}`);
+  const j = await resp.json();
+  if (!j?.IdSessaoOp) throw new Error('Praxio sem IdSessaoOp');
+  return j.IdSessaoOp;
+}
+
+// bodyVenda: campos mínimos para VendaPassagem (construídos a partir do metadata do pagamento)
+async function praxioVendaPassagem(bodyVenda) {
+  const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/VendaPassagem/VendaPassagem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyVenda),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data?.Sucesso === false) {
+    const msg = data?.Mensagem || data?.MensagemDetalhada || `HTTP ${resp.status}`;
+    throw new Error(`Falha VendaPassagem: ${msg}`);
+  }
+  return data;
+}
+
+/* =================== Busca Partidas/Poltronas (como já existia) =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
-
-    const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        Nome: process.env.PRAXIO_USER,
-        Senha: process.env.PRAXIO_PASS,
-        Sistema: 'WINVR.EXE',
-        TipoBD: 0,
-        Empresa: process.env.PRAXIO_EMP,
-        Cliente: process.env.PRAXIO_CLIENT,
-        TipoAplicacao: 0,
-      }),
-    });
-    const loginData = await loginResp.json();
+    const IdSessaoOp = await praxioLogin();
 
     const partResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        IdSessaoOp: loginData.IdSessaoOp,
+        IdSessaoOp,
         LocalidadeOrigem: origemId,
         LocalidadeDestino: destinoId,
         DataPartida: data,
@@ -243,25 +269,12 @@ app.post('/api/partidas', async (req, res) => {
 app.post('/api/poltronas', async (req, res) => {
   try {
     const { idViagem, idTipoVeiculo, idLocOrigem, idLocDestino } = req.body;
-
-    const loginResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        Nome: process.env.PRAXIO_USER,
-        Senha: process.env.PRAXIO_PASS,
-        Sistema: 'WINVR.EXE',
-        TipoBD: 0,
-        Empresa: process.env.PRAXIO_EMP,
-        Cliente: process.env.PRAXIO_CLIENT,
-        TipoAplicacao: 0,
-      }),
-    });
-    const loginData = await loginResp.json();
+    const IdSessaoOp = await praxioLogin();
 
     const seatResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Poltrona/RetornaPoltronas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        IdSessaoOp: loginData.IdSessaoOp,
+        IdSessaoOp,
         IdViagem: idViagem,
         IdTipoVeiculo: idTipoVeiculo,
         IdLocOrigem: idLocOrigem,
@@ -274,6 +287,121 @@ app.post('/api/poltronas', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao consultar poltronas' });
+  }
+});
+
+/* =================== Ticket render (útil p/ testes manuais) =================== */
+app.post('/api/ticket/render', async (req, res) => {
+  try {
+    const vendaRoot = req.body;
+    const ticket = mapVendaToTicket(vendaRoot);
+    const subDir = new Date().toISOString().slice(0,10);
+    const outDir = path.join(TICKETS_DIR, subDir);
+    const pdf = await generateTicketPdf(ticket, outDir);
+    const pdfUrl = `/tickets/${subDir}/${pdf.filename}`;
+    res.json({ ok: true, files: { pdf: pdfUrl }, ticket: {
+      nome: ticket.nomeCliente, numPassagem: ticket.numPassagem, poltrona: ticket.poltrona,
+      data: ticket.dataViagem, hora: ticket.horaPartida, origem: ticket.origem, destino: ticket.destino
+    }});
+  } catch (e) {
+    console.error('ticket/render error:', e);
+    res.status(400).json({ ok:false, error: e.message || 'Falha ao gerar bilhete' });
+  }
+});
+
+/* =================== Webhook Mercado Pago -> Venda + PDF =================== */
+/**
+ * Configure a URL de webhook no Mercado Pago para este endpoint:
+ *   POST https://SEU_DOMINIO/api/mp/webhook
+ * Ele espera eventos "payment".
+ * Recomendado: inclua no pagamento (preferência/brick) um "metadata" com:
+ *  {
+ *    idViagem, horaPartida, idOrigem, idDestino,
+ *    idEstabelecimentoVenda, serieBloco, poltrona,
+ *    nomeCli, docCli, valorTotal, agencia, idEstabelecimentoTicket
+ *  }
+ */
+app.post('/api/mp/webhook', async (req, res) => {
+  // sempre responde rápido ao MP
+  res.status(200).json({ received: true });
+  try {
+    const { type, data } = req.body || {};
+    if (type !== 'payment' || !data?.id) return;
+
+    const accessToken = process.env.MP_ACCESS_TOKEN;
+    if (!accessToken) throw new Error('MP_ACCESS_TOKEN ausente');
+
+    // 1) consulta o pagamento
+    const pResp = await fetch(`https://api.mercadopago.com/v1/payments/${data.id}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const payment = await pResp.json();
+
+    const status = payment?.status;
+    if (!status || !['approved', 'accredited'].includes(status)) {
+      console.log('[MP] pagamento não aprovado:', status, payment?.id);
+      return;
+    }
+
+    // 2) extrai metadata para montar a venda Praxio
+    const md = payment?.metadata || {};
+    const IdSessaoOp = await praxioLogin();
+
+    // campos de fallback
+    const idEstabVenda = String(md.idEstabelecimentoVenda || '1');
+    const idEstabTicket = String(md.idEstabelecimentoTicket || idEstabVenda);
+    const serieBloco = String(md.serieBloco || '93');
+
+    const bodyVenda = {
+      listVendasXmlEnvio: [{
+        IdSessaoOp,
+        IdEstabelecimentoVenda: idEstabVenda,
+        IdViagem: String(md.idViagem),
+        HoraPartida: String(md.horaPartida),     // "1145"
+        IdOrigem: String(md.idOrigem),
+        IdDestino: String(md.idDestino),
+        Embarque: "S", Seguro: "N", Excesso: "N",
+        BPe: 1,
+        passagemXml: [{
+          IdEstabelecimento: idEstabTicket,
+          SerieBloco: serieBloco,
+          Poltrona: String(md.poltrona),
+          NomeCli: String(md.nomeCli || ''),
+          IdentidadeCli: String(md.docCli || ''),
+        }],
+        pagamentoXml: [{
+          DataPagamento: new Date().toISOString(), // ISO; Praxio aceita "YYYY-MM-DDTHH:mm:ss"
+          TipoPagamento: "0",   // 0=dinheiro | 2=cartão?  -> mantemos 0 para compat bilhete; se quiser, mapeie por md.tipo
+          TipoCartao: "0",
+          QtdParcelas: Number(payment.installments || 1),
+          ValorPagamento: Number(md.valorTotal || payment.transaction_amount || 0)
+        }]
+      }]
+    };
+
+    // 3) faz a venda
+    const vendaResult = await praxioVendaPassagem(bodyVenda);
+
+    // 4) gera o PDF
+    const ticket = mapVendaToTicket(vendaResult);
+    const subDir = new Date().toISOString().slice(0,10);
+    const outDir = path.join(TICKETS_DIR, subDir);
+    const pdf = await generateTicketPdf(ticket, outDir);
+    const pdfUrl = `/tickets/${subDir}/${pdf.filename}`;
+
+    console.log('[MP->Praxio] venda OK', {
+      payment_id: payment.id,
+      numPassagem: ticket.numPassagem,
+      arquivo: pdfUrl
+    });
+
+    // TODO: aqui você pode:
+    // - enviar link por e-mail/SMS/WhatsApp
+    // - atualizar seu DB de pedidos
+    // - chamar alguma rota interna do front via WebSocket/SSE
+
+  } catch (err) {
+    console.error('[webhook MP] erro:', err?.message || err);
   }
 });
 
