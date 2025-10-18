@@ -203,6 +203,27 @@ app.post('/api/auth/verify-code', (req, res) => {
 });
 
 /* =================== Praxio helpers =================== */
+
+
+// Coloque junto dos outros helpers, acima das rotas
+function normalizeHoraPartida(h) {
+  if (!h) return '';
+  // remove tudo que não for dígito (ex.: "17:00" -> "1700")
+  let s = String(h).replace(/\D/g, '');
+  // se vier "900" vira "0900"
+  if (s.length === 3) s = '0' + s;
+  // garante 4 dígitos
+  if (s.length >= 4) s = s.slice(0, 4);
+  return s;
+}
+
+
+
+
+
+
+
+
 async function praxioLogin() {
   const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -380,26 +401,35 @@ app.post('/api/praxio/vender', async (req, res) => {
       return res.status(400).json({ ok:false, error:'Dados mínimos ausentes para venda.' });
     }
 
-    const bodyVenda = {
-      listVendasXmlEnvio: [{
-        IdSessaoOp,
-        IdEstabelecimentoVenda: String(idEstabelecimentoVenda),
-        IdViagem: String(schedule.idViagem),
-        HoraPartida: String(schedule.horaPartida), // "1145"
-        IdOrigem: String(schedule.idOrigem),
-        IdDestino: String(schedule.idDestino),
-        Embarque: "S", Seguro: "N", Excesso: "N",
-        BPe: 1,
-        passagemXml,
-        pagamentoXml: [{
-          DataPagamento: nowWithTZOffsetISO(-180), // 2025-10-17T22:12:24-03:00
-          TipoPagamento: "0",
-          TipoCartao: "0",
-          QtdParcelas: Number(payment.installments || 1),
-          ValorPagamento: Number(totalAmount || mpAmount)
-        }]
-      }]
-    };
+    // Dentro do POST /api/praxio/vender, antes de montar bodyVenda:
+const horaPad = normalizeHoraPartida(schedule.horaPartida);
+
+// Na validação mínima:
+if (!schedule?.idViagem || !horaPad || !schedule?.idOrigem || !schedule?.idDestino || !passagemXml.length) {
+  return res.status(400).json({ ok:false, error:'Dados mínimos ausentes para venda.' });
+}
+
+// No body enviado à Praxio:
+const bodyVenda = {
+  listVendasXmlEnvio: [{
+    IdSessaoOp,
+    IdEstabelecimentoVenda: String(idEstabelecimentoVenda),
+    IdViagem: String(schedule.idViagem),
+    HoraPartida: horaPad,                    // <<<< AQUI normalizado "1700"
+    IdOrigem: String(schedule.idOrigem),
+    IdDestino: String(schedule.idDestino),
+    Embarque: "S", Seguro: "N", Excesso: "N",
+    BPe: 1,
+    passagemXml,
+    pagamentoXml: [{
+      DataPagamento: nowWithTZOffsetISO(-180),
+      TipoPagamento: "0",
+      TipoCartao: "0",
+      QtdParcelas: Number(payment.installments || 1),
+      ValorPagamento: Number(totalAmount || mpAmount)
+    }]
+  }]
+};
 
     console.log('[Praxio][Venda] body:', JSON.stringify(bodyVenda).slice(0, 4000));
 
