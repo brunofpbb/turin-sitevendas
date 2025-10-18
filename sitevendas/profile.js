@@ -1,4 +1,5 @@
 // profile.js — Minhas viagens (render com "Ver Bilhete" e nº do bilhete)
+// Agora ordena os bilhetes do mais recente para o mais antigo (último vendido primeiro)
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -15,13 +16,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // fila de bilhetes recém-gerados (salvos pelo payment.js)
   const lastTickets = JSON.parse(localStorage.getItem('lastTickets') || '[]');
-  // garantimos um array
   const ticketsQueue = Array.isArray(lastTickets) ? lastTickets.slice() : [];
 
-  // Estado local: qual card está em "preview" (memória de cálculo)
   let previewId = null;
 
-  // regra: pode cancelar se faltarem >= 12h para a partida (hora São Paulo, UTC-3)
   const CAN_HOURS = 12;
   const ms12h = CAN_HOURS * 60 * 60 * 1000;
 
@@ -50,9 +48,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ---------- NOVO: ordenação por "último vendido" ----------
+  const parseTs = (v) => {
+    if (!v) return NaN;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const t = Date.parse(v);
+      if (!Number.isNaN(t)) return t;
+    }
+    return NaN;
+  };
+  function sortPaidDesc(paid, originalAll) {
+    // mapeia com índice original p/ desempate estável
+    const withIdx = paid.map((b, idxPaid) => {
+      const idxInAll = originalAll.findIndex(x => x === b);
+      // hierarquia de datas:
+      const ts =
+        parseTs(b.paidAt) ??
+        parseTs(b.dataVenda) ??
+        parseTs(b.vendaAt) ??
+        parseTs(b.createdAt) ??
+        parseTs(b.created_at);
+
+      // se todas falharem, usamos -1 para cair no desempate por índice
+      const safeTs = Number.isNaN(ts) ? -1 : ts;
+      return { b, ts: safeTs, idxInAll: idxInAll, idxPaid };
+    });
+
+    // ordena: ts desc, depois índice original desc (itens mais ao fim do array primeiro)
+    withIdx.sort((a, c) => {
+      if (a.ts !== c.ts) return c.ts - a.ts;
+      // se nenhum tem ts válido, usamos a posição original (quem foi adicionado por último fica primeiro)
+      return c.idxInAll - a.idxInAll;
+    });
+
+    return withIdx.map(x => x.b);
+  }
+  // -----------------------------------------------------------
+
   function render(){
     const all  = loadAll();
-    const paid = all.filter(b => b.paid === true);
+    // apenas pagos
+    let paid = all.filter(b => b.paid === true);
+    // ordena pelos mais recentes
+    paid = sortPaidDesc(paid, all);
 
     if (!paid.length){
       listEl.innerHTML = '<p class="mute">Nenhuma compra finalizada encontrada.</p>';
@@ -66,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const cancelable = !b.cancelledAt && mayCancel(s);
       const statusText = b.cancelledAt ? 'Cancelada' : 'Pago';
 
-      // ——— quando for o card em preview, não renderiza o botão Cancelar (ele some)
       const showPreview = previewId === String(b.id);
 
       const paidAmount = Number(b.price || 0);
@@ -87,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <div><b>Poltronas:</b> ${seats || '—'}</div>
               ${pax.length ? `<div><b>Passageiros:</b> ${pax.join(', ')}</div>` : ''}
               <div><b>Status:</b> ${statusText}</div>
-              <div class="bilhete-num" style="margin-top:6px;"></div> <!-- nº do bilhete aqui -->
+              <div class="bilhete-num" style="margin-top:6px;"></div>
             </div>
 
             ${showPreview ? `
@@ -127,18 +166,18 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }).join('');
 
-    // Handlers — são recriados a cada render (evita “botões sem ação”)
+    // Handlers
     listEl.querySelectorAll('.btn-cancel').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const id = btn.getAttribute('data-id');
-        previewId = id;       // entra em modo preview
-        render();             // refaz a lista (botão some, preview aparece)
+        previewId = id;
+        render();
       });
     });
 
     listEl.querySelectorAll('[data-act="close-preview"]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        previewId = null;     // sai do preview
+        previewId = null;
         render();
       });
     });
@@ -154,34 +193,29 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // === Inserir botões "Ver Bilhete" + nº do bilhete (consome a fila) ===
+    // === Inserir "Ver Bilhete" + Bilhete nº (consome a fila) ===
     const cards = listEl.querySelectorAll('.schedule-card');
     cards.forEach(card => {
       if (!ticketsQueue.length) return;
-      const body = card.querySelector('.schedule-body');
       const actions = card.querySelector('.reserva-actions');
       const numEl = card.querySelector('.bilhete-num');
-
-      // só para cards "Pago" e não em preview
       const inPreview = card.querySelector('.calc-box') !== null;
       if (inPreview) return;
 
-      // adiciona apenas se houver ação de cancelamento (para evitar cards já cancelados)
       const ticket = ticketsQueue.shift();
       if (!ticket) return;
 
-      // botão
       const a = document.createElement('a');
-      a.className = 'btn btn-success'; // verde
+      a.className = 'btn btn-success';
       a.textContent = 'Ver Bilhete';
       a.href = ticket.pdf;
       a.target = '_blank';
       a.rel = 'noopener';
       a.title = `Bilhete nº ${ticket.numPassagem}`;
-      actions.prepend(a); // à esquerda do "Cancelar"
+      actions.prepend(a);
 
-      // nº do bilhete
-      if (numEl) numEl.textContent = `Bilhete nº ${ticket.numPassagem}`;
+      // rótulo igual aos demais (negrito + mesmo tamanho)
+      if (numEl) numEl.innerHTML = `<b>Bilhete nº:</b> ${ticket.numPassagem}`;
     });
   }
 
