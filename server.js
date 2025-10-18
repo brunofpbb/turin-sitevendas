@@ -443,11 +443,22 @@ const bodyVenda = {
     await fs.promises.mkdir(outDir, { recursive: true });
 
     const arquivos = [];
-    for (const p of (vendaResult.ListaPassagem || [])) {
-      const ticket = mapVendaToTicket({ ListaPassagem:[p] });
-      const pdf = await generateTicketPdf(ticket, outDir);
-      arquivos.push({ numPassagem: ticket.numPassagem, pdf: `/tickets/${subDir}/${pdf.filename}` });
-    }
+for (const p of (vendaResult.ListaPassagem || [])) {
+  const ticket = mapVendaToTicket({
+    ListaPassagem: [p],
+    mp: {
+      payment_type_id: payment.payment_type_id,
+      payment_method_id: (payment.payment_method?.id || payment.payment_method_id || ''),
+      status: payment.status,
+      installments: payment.installments
+    },
+    emissaoISO: new Date().toISOString()
+  });
+
+  const pdf = await generateTicketPdf(ticket, outDir);
+  arquivos.push({ numPassagem: ticket.numPassagem, pdf: `/tickets/${subDir}/${pdf.filename}` });
+}
+
 
     // 6) Disparar webhook salvarBpe (não bloqueante)
     try {
