@@ -2,9 +2,7 @@
   "name": "turin-sitevendas",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "start": "node server.js"
-  },
+  "scripts": { "start": "node server.js" },
   "engines": { "node": ">=18" },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -12,7 +10,9 @@
     "nodemailer": "^6.9.14",
     "node-fetch": "^2.7.0",
     "mercadopago": "^2.1.9",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.4",
+    "dayjs": "^1.11.13"
   }
 }
-
