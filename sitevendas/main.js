@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ===== Localidades (lista usada no autocomplete)
   const localities = [
     { id: 2,  descricao: 'Ouro Branco' },
+    { id: 93,  descricao: 'Itatiaia' },
     { id: 6,  descricao: 'Ouro Preto E/S' },
     { id: 24, descricao: 'Mariana' },
     { id: 23, descricao: 'Antonio Pereira – Ouro Preto E/S' },
