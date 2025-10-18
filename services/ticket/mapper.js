@@ -1,4 +1,3 @@
-// services/ticket/mapper.js
 const { asBRDate, asBRTimeHHMM, moneyBR } = require('./utils');
 
 exports.mapVendaToTicket = (root) => {
