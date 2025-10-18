@@ -292,14 +292,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         onReady: () => console.log('[MP] Brick pronto'),
         onError: (e) => { console.error('[MP] Brick error:', e); alert('Erro ao iniciar o pagamento.'); },
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
+
+
+
+           function genIdem() {
+ if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+ // fallback simples
+ const a = Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  return `${a.slice(0,8)}-${a.slice(8,12)}-${a.slice(12,16)}-${a.slice(16,20)}-${a.slice(20)}`;
+}
+
+
+
+
+
+
+
+          
           try {
             const method = String(selectedPaymentMethod || '').toLowerCase();
             const isPix = method === 'bank_transfer' ||
                           String(formData?.payment_method_id || '').toLowerCase() === 'pix';
 
+  const idem = genIdem();
+
             const body = {
               transaction_amount: currentTotal,
               description: 'Compra Turin Transportes',
+              external_reference: idem,
               payer: {
                 email: user.email || '',
                 identification: formData?.payer?.identification ? {
@@ -323,7 +343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
 
             const resp = await fetch('/api/mp/pay', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': idem },
               body: JSON.stringify(body)
             });
             const data = await resp.json();
