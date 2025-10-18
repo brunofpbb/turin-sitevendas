@@ -1,4 +1,4 @@
-// payment.js — Resumo com remoção de itens + total dinâmico + Bricks (Payments API, sem preferência)
+// payment.js — Resumo + Bricks + render do PIX (QR + copia-e-cola)
 document.addEventListener('DOMContentLoaded', async () => {
   // ——— login obrigatório
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -9,15 +9,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (typeof updateUserNav === 'function') updateUserNav();
 
-  // ——— atachos de DOM (funciona com layout novo e antigo)
-  const summaryBodyEl = document.getElementById('summary-body');      // lista (layout novo)
-  const summaryTotalEl = document.getElementById('summary-total');    // total (layout novo)
-  const legacySummaryEl = document.getElementById('order-summary');   // layout antigo (um container só)
-  const payBtn = document.getElementById('pay-button');
+  // ——— DOM
+  const summaryBodyEl  = document.getElementById('summary-body');
+  const summaryTotalEl = document.getElementById('summary-total');
+  const legacySummaryEl = document.getElementById('order-summary');
   const cancelBtn = document.getElementById('btn-cancel') || document.getElementById('cancel-order');
 
-  // garante visual do botão pagar = botão pesquisar
-  if (payBtn) payBtn.className = 'btn btn-primary';
+  // PIX UI
+  const pixBox   = document.getElementById('pix-box');
+  const pixQR    = document.getElementById('pix-qr');
+  const pixCode  = document.getElementById('pix-code');
+  const pixCopy  = document.getElementById('pix-copy');
+  const pixStatus= document.getElementById('pix-status');
 
   // ——— utils
   const fmtBRL = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -28,7 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
   };
 
-  // ——— lê carrinho (somente itens NÃO pagos)
+  // ——— carrinho
   function readCart() {
     const b = JSON.parse(localStorage.getItem('bookings') || '[]');
     const open = b.filter(x => x.paid !== true);
@@ -38,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   let order = readCart();
 
-  // ===== helpers de valores
+  // ===== valores
   const itemSubtotal = (it) => {
     const s = it.schedule || {};
     const unit = Number(String(s.price || 0).replace(',', '.')) || 0;
@@ -46,20 +49,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
   const cartTotal = () => order.reduce((acc, it) => acc + itemSubtotal(it), 0);
 
-  // ===== >>> NOVOS HELPERS PARA VENDA PRAXIO <<<
-  // Monta schedule a partir de um item do carrinho
+  // ===== helpers Praxio
   function getScheduleFromItem(it) {
     const s = it.schedule || {};
     return {
       idViagem: s.idViagem || s.IdViagem || s.id || s.Id || s.viagemId,
-      horaPartida: s.horaPartida || s.departureTime,           // ex.: "1145"
+      horaPartida: s.horaPartida || s.departureTime,
       idOrigem: s.idOrigem || s.IdOrigem || s.originId || s.CodigoOrigem,
       idDestino: s.idDestino || s.IdDestino || s.destinationId || s.CodigoDestino,
       agencia: s.agencia || s.IdEstabelecimento || s.IdEstabelecimentoVenda || '93'
     };
   }
-
-  // Extrai passageiros (nome/cpf/poltrona) do item
   function getPassengersFromItem(it) {
     const pax = [];
     const seats = Array.isArray(it.seats) ? it.seats : [];
@@ -79,10 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     return pax;
   }
-
-  // Chama o backend para validar pagamento, vender na Praxio e gerar PDFs
   async function venderPraxioApósAprovado(paymentId) {
-    // consolida schedule do primeiro item e junta todos os passageiros da compra
     const first = order[0];
     const schedule = getScheduleFromItem(first);
     let passengers = [];
@@ -108,22 +105,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       alert('Pagamento aprovado, mas falhou ao emitir bilhete. Nosso suporte foi notificado.');
       return null;
     }
-    return j; // { ok:true, venda, arquivos:[{numPassagem, pdf}, ...] }
+    return j;
   }
-  // ===== <<< FIM DOS HELPERS NOVOS
 
-  // ===== atualiza storage removendo UM item da lista de não pagas (por índice)
+  // ===== storage remove
   function removeFromStorageByOpenIndex(openIdx) {
     const all = JSON.parse(localStorage.getItem('bookings') || '[]');
     const paid = all.filter(b => b.paid === true);
     const open = all.filter(b => b.paid !== true);
-    if (openIdx >= 0 && openIdx < open.length) {
-      open.splice(openIdx, 1);
-    }
+    if (openIdx >= 0 && openIdx < open.length) open.splice(openIdx, 1);
     localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
   }
 
-  // ===== render do resumo (dois modos)
+  // ===== resumo
   function renderSummary() {
     const lines = [];
     let total = 0;
@@ -154,41 +148,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       `);
     });
 
+    const html = lines.join('') + `<div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>`;
     if (summaryBodyEl) {
-      summaryBodyEl.innerHTML = lines.join('') + `
-        <div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>
-      `;
+      summaryBodyEl.innerHTML = html;
       if (summaryTotalEl) summaryTotalEl.textContent = fmtBRL(total);
     } else if (legacySummaryEl) {
-      legacySummaryEl.innerHTML = lines.join('') + `
-        <div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>
-      `;
+      legacySummaryEl.innerHTML = html;
     }
 
     const container = summaryBodyEl || legacySummaryEl;
     if (container) {
       container.querySelectorAll('.order-item .item-remove').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const wrap = btn.closest('.order-item');
           const openIdx = Number(wrap.getAttribute('data-open-index'));
           order.splice(openIdx, 1);
           removeFromStorageByOpenIndex(openIdx);
           const newTotal = cartTotal();
           renderSummary();
-          awaitMountBricks(newTotal);
+          await awaitMountBricks(newTotal);
         });
       });
     }
-
-    if (payBtn) {
-      if (order.length) payBtn.removeAttribute('disabled');
-      else payBtn.setAttribute('disabled', 'disabled');
-    }
-
     return total;
   }
 
-  // ======= Bricks (controlador para desmontar/montar com novo total)
+  // ======= Bricks
   let publicKey = '';
   try {
     const r = await fetch('/api/mp/pubkey');
@@ -204,30 +189,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('payment-bricks') ? 'payment-bricks' :
     (document.getElementById('payment-brick-container') ? 'payment-brick-container' : null);
 
-  if (!brickContainerId) {
-    console.error('Container do Bricks não encontrado.');
-    return;
-  }
+  if (!brickContainerId) { console.error('Container do Bricks não encontrado.'); return; }
 
   let brickController = null;
   let currentTotal = 0;
+
+  // ——— exibição do PIX
+  function showPixBox({ qr_b64, qr_text }) {
+    if (!pixBox) return;
+    pixBox.style.display = 'block';
+    pixQR.innerHTML = qr_b64 ? `<img src="data:image/png;base64,${qr_b64}" alt="QR Pix">` : '<p class="mute">QR não disponível.</p>';
+    pixCode.value = qr_text || '';
+    pixStatus.textContent = 'Aguardando pagamento…';
+
+    if (pixCopy && qr_text) {
+      pixCopy.onclick = () => {
+        pixCode.select();
+        document.execCommand('copy');
+        alert('Código Pix copiado!');
+      };
+    }
+    // rola até o PIX para o usuário ver
+    pixBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
   async function mountBricks(amount) {
     try { await brickController?.unmount?.(); } catch(_) {}
     currentTotal = Number((amount || 0).toFixed(2));
 
     brickController = await bricks.create('payment', brickContainerId, {
-      initialization: {
-        amount: currentTotal,
-        payer: { email: user.email || '' }
-      },
+      initialization: { amount: currentTotal, payer: { email: user.email || '' } },
       customization: {
         paymentMethods: {
           creditCard: 'all',
           debitCard: 'all',
           bankTransfer: ['pix'],
-          minInstallments: 1,
-          maxInstallments: 1
+          minInstallments: 1, maxInstallments: 1
         },
         visual: { showInstallmentsSelector: false }
       },
@@ -270,19 +267,16 @@ document.addEventListener('DOMContentLoaded', async () => {
               body: JSON.stringify(body)
             });
             const data = await resp.json();
-
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
             // === CARTÃO APROVADO ===
             if (data.status === 'approved') {
               alert('Pagamento aprovado!');
               const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-
               if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
                 const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
                   .map(b => ({ ...b, paid: true }));
                 localStorage.setItem('bookings', JSON.stringify(bookings));
-
                 localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
                 location.href = 'profile.html';
               }
@@ -291,7 +285,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // === PIX (gera QR, aprovação é posterior) ===
             const pix = data?.point_of_interaction?.transaction_data;
-            if (pix?.qr_code || pix?.qr_code_base64 || pix?.qr_text) {
+            if (pix?.qr_code || pix?.qr_code_base64) {
+              showPixBox({ qr_b64: pix.qr_code_base64, qr_text: pix.qr_code });
               alert('Pix gerado! Conclua o pagamento no seu banco.');
               return;
             }
@@ -321,11 +316,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     await mountBricks(total);
   }
 
-  // ===== Inicializa resumo + bricks
+  // ===== inicialização
   const firstTotal = renderSummary();
   await awaitMountBricks(firstTotal);
 
-  // ===== Botões gerais
+  // ===== Botões
   cancelBtn?.addEventListener('click', () => {
     const ok = confirm('Cancelar este pedido? Os itens do carrinho serão removidos.');
     if (!ok) return;
@@ -335,11 +330,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     order = [];
     renderSummary();
     awaitMountBricks(0);
-  });
-
-  payBtn?.addEventListener('click', () => {
-    if (!order.length) {
-      alert('Seu carrinho está vazio.');
-    }
   });
 });
