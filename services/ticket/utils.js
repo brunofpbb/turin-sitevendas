@@ -1,6 +1,5 @@
-// services/ticket/utils.js
 const dayjs = require('dayjs');
-require('dayjs/locale/pt-br');     // registra o locale
+require('dayjs/locale/pt-br');
 dayjs.locale('pt-br');
 
 exports.asBRDate = (isoLike) => {
