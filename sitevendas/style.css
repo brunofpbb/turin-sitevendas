@@ -831,3 +831,22 @@ footer { text-align: center; flex: 0 0 auto; }
     text-align: center;
   }
 }
+
+
+/* Centralizar o QR e evitar “esticar” */
+#pix-qr{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  margin: 8px 0 12px;
+  text-align:center;
+}
+#pix-qr img{
+  max-width:280px;   /* ajuste fino do tamanho */
+  width:100%;
+  height:auto;
+}
+
+/* De quebra: evita quebra feia do copia-e-cola em telas menores */
+#pix-box .pix-row{ flex-wrap: wrap; }
+#pix-code{ min-width: 260px; }
