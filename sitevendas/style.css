@@ -792,3 +792,42 @@ footer { text-align: center; flex: 0 0 auto; }
 /* Evita o grid das poltronas estourar quando a janela encolhe (ajuda no mobile/console aberto) */
 .bus-layout .bus-image{ max-width:100%; height:auto; display:block; }
 .seats-onepage .bus-grid{ max-width:100%; }
+
+
+
+
+
+
+
+
+/* ===== Ajustes responsivos para mobile ===== */
+@media (max-width: 768px) {
+  main {
+    padding: 1rem;
+    margin: 0.5rem;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  #schedule-list > * {
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .schedule-header,
+  .schedule-body {
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+  }
+
+  .schedule-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .select-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
