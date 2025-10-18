@@ -237,6 +237,57 @@ async function praxioVendaPassagem(bodyVenda) {
   return data;
 }
 
+
+
+
+
+
+async function praxioLogin() {
+  const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      Nome: process.env.PRAXIO_USER,
+      Senha: process.env.PRAXIO_PASS,
+      Sistema: 'WINVR.EXE',
+      TipoBD: 0,
+      Empresa: process.env.PRAXIO_EMP,
+      Cliente: process.env.PRAXIO_CLIENT,
+      TipoAplicacao: 0,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Praxio login ${resp.status}`);
+  const j = await resp.json();
+  if (!j?.IdSessaoOp) throw new Error('Praxio sem IdSessaoOp');
+  return j.IdSessaoOp;
+}
+
+async function praxioVendaPassagem(bodyVenda) {
+  const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/VendaPassagem/VendaPassagem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bodyVenda),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data?.Sucesso === false) {
+    const msg = data?.Mensagem || data?.MensagemDetalhada || `HTTP ${resp.status}`;
+    throw new Error(`Falha VendaPassagem: ${msg}`);
+  }
+  return data;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* =================== Busca Partidas/Poltronas (como já existia) =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
@@ -404,6 +455,105 @@ app.post('/api/mp/webhook', async (req, res) => {
     console.error('[webhook MP] erro:', err?.message || err);
   }
 });
+
+
+
+
+
+app.post('/api/praxio/vender', async (req, res) => {
+  try {
+    const {
+      mpPaymentId,                 // id do pagamento aprovado no MP
+      schedule,                    // { idViagem, horaPartida, idOrigem, idDestino, agencia? }
+      passengers,                  // [{ seatNumber, name, document }]
+      totalAmount,                 // valor total cobrado
+      idEstabelecimentoVenda = '1',
+      idEstabelecimentoTicket = '93',
+      serieBloco = '93'
+    } = req.body || {};
+
+    // 1) revalida o pagamento no MP
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+      headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+    });
+    const payment = await r.json();
+    if (!r.ok || !['approved','accredited'].includes(payment?.status)) {
+      return res.status(400).json({ ok:false, error:'Pagamento não está aprovado.' });
+    }
+    const mpAmount = Number(payment.transaction_amount || 0);
+    if (totalAmount && Math.abs(mpAmount - Number(totalAmount)) > 0.01) {
+      return res.status(400).json({ ok:false, error:'Valor divergente do pagamento.' });
+    }
+
+    // 2) login Praxio
+    const IdSessaoOp = await praxioLogin();
+
+    // 3) passagemXml (n passagens)
+    const passagemXml = (passengers || []).map(p => ({
+      IdEstabelecimento: String(idEstabelecimentoTicket),
+      SerieBloco: String(serieBloco),
+      Poltrona: String(p.seatNumber),
+      NomeCli: String(p.name || ''),
+      IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
+    }));
+
+    if (!schedule?.idViagem || !schedule?.horaPartida || !schedule?.idOrigem || !schedule?.idDestino || !passagemXml.length) {
+      return res.status(400).json({ ok:false, error:'Dados mínimos ausentes para venda.' });
+    }
+
+    const bodyVenda = {
+      listVendasXmlEnvio: [{
+        IdSessaoOp,
+        IdEstabelecimentoVenda: String(idEstabelecimentoVenda),
+        IdViagem: String(schedule.idViagem),
+        HoraPartida: String(schedule.horaPartida), // "1145"
+        IdOrigem: String(schedule.idOrigem),
+        IdDestino: String(schedule.idDestino),
+        Embarque: "S", Seguro: "N", Excesso: "N",
+        BPe: 1,
+        passagemXml,
+        pagamentoXml: [{
+          DataPagamento: new Date().toISOString(),
+          TipoPagamento: "0",
+          TipoCartao: "0",
+          QtdParcelas: Number(payment.installments || 1),
+          ValorPagamento: Number(totalAmount || mpAmount)
+        }]
+      }]
+    };
+
+    // 4) venda Praxio
+    const vendaResult = await praxioVendaPassagem(bodyVenda);
+
+    // 5) gera 1 PDF por passagem
+    const subDir = new Date().toISOString().slice(0,10);
+    const outDir = path.join(TICKETS_DIR, subDir);
+    await fs.promises.mkdir(outDir, { recursive: true });
+
+    const arquivos = [];
+    for (const p of vendaResult.ListaPassagem || []) {
+      const ticket = mapVendaToTicket({ ListaPassagem:[p] });
+      const pdf = await generateTicketPdf(ticket, outDir);
+      arquivos.push({ numPassagem: ticket.numPassagem, pdf: `/tickets/${subDir}/${pdf.filename}` });
+    }
+
+    return res.json({ ok:true, venda: vendaResult, arquivos });
+
+  } catch (e) {
+    console.error('praxio/vender error:', e);
+    res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
+  }
+});
+
+
+
+
+
+
+
+
+
+
 
 /* =================== Fallback p/ .html direto da pasta =================== */
 app.get('*', (req, res, next) => {
