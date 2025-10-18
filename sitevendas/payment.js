@@ -46,12 +46,77 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
   const cartTotal = () => order.reduce((acc, it) => acc + itemSubtotal(it), 0);
 
+  // ===== >>> NOVOS HELPERS PARA VENDA PRAXIO <<<
+  // Monta schedule a partir de um item do carrinho
+  function getScheduleFromItem(it) {
+    const s = it.schedule || {};
+    return {
+      idViagem: s.idViagem || s.IdViagem || s.id || s.Id || s.viagemId,
+      horaPartida: s.horaPartida || s.departureTime,           // ex.: "1145"
+      idOrigem: s.idOrigem || s.IdOrigem || s.originId || s.CodigoOrigem,
+      idDestino: s.idDestino || s.IdDestino || s.destinationId || s.CodigoDestino,
+      agencia: s.agencia || s.IdEstabelecimento || s.IdEstabelecimentoVenda || '93'
+    };
+  }
+
+  // Extrai passageiros (nome/cpf/poltrona) do item
+  function getPassengersFromItem(it) {
+    const pax = [];
+    const seats = Array.isArray(it.seats) ? it.seats : [];
+    const passengers = Array.isArray(it.passengers) ? it.passengers : [];
+    if (passengers.length) {
+      for (const p of passengers) {
+        pax.push({
+          seatNumber: p.seatNumber || p.poltrona || seats[0],
+          name: p.name || p.nome || '',
+          document: (p.document || p.cpf || '').toString()
+        });
+      }
+    } else {
+      for (const seat of seats) {
+        pax.push({ seatNumber: seat, name: (user.name || user.email || ''), document: '' });
+      }
+    }
+    return pax;
+  }
+
+  // Chama o backend para validar pagamento, vender na Praxio e gerar PDFs
+  async function venderPraxioApósAprovado(paymentId) {
+    // consolida schedule do primeiro item e junta todos os passageiros da compra
+    const first = order[0];
+    const schedule = getScheduleFromItem(first);
+    let passengers = [];
+    order.forEach(it => { passengers = passengers.concat(getPassengersFromItem(it)); });
+    const totalAmount = cartTotal();
+
+    const r = await fetch('/api/praxio/vender', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        mpPaymentId: paymentId,
+        schedule,
+        passengers,
+        totalAmount,
+        idEstabelecimentoVenda: '1',
+        idEstabelecimentoTicket: schedule.agencia || '93',
+        serieBloco: '93'
+      })
+    });
+    const j = await r.json();
+    if (!j.ok) {
+      console.error('Venda Praxio falhou:', j);
+      alert('Pagamento aprovado, mas falhou ao emitir bilhete. Nosso suporte foi notificado.');
+      return null;
+    }
+    return j; // { ok:true, venda, arquivos:[{numPassagem, pdf}, ...] }
+  }
+  // ===== <<< FIM DOS HELPERS NOVOS
+
   // ===== atualiza storage removendo UM item da lista de não pagas (por índice)
   function removeFromStorageByOpenIndex(openIdx) {
     const all = JSON.parse(localStorage.getItem('bookings') || '[]');
     const paid = all.filter(b => b.paid === true);
     const open = all.filter(b => b.paid !== true);
-    // remove exatamente o índice solicitado (se existir)
     if (openIdx >= 0 && openIdx < open.length) {
       open.splice(openIdx, 1);
     }
@@ -74,7 +139,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const sub = itemSubtotal(it);
       total += sub;
 
-      // classes esperadas pelo CSS: .order-item, .item-remove, .title, .meta, .price
       lines.push(`
         <div class="order-item" data-open-index="${idx}">
           <button class="item-remove" title="Remover" aria-label="Remover">×</button>
@@ -91,29 +155,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     if (summaryBodyEl) {
-      // layout novo
       summaryBodyEl.innerHTML = lines.join('') + `
         <div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>
       `;
       if (summaryTotalEl) summaryTotalEl.textContent = fmtBRL(total);
     } else if (legacySummaryEl) {
-      // layout antigo (um container único)
       legacySummaryEl.innerHTML = lines.join('') + `
         <div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>
       `;
     }
 
-    // Bind de remoção (X)
     const container = summaryBodyEl || legacySummaryEl;
     if (container) {
       container.querySelectorAll('.order-item .item-remove').forEach(btn => {
         btn.addEventListener('click', () => {
           const wrap = btn.closest('.order-item');
           const openIdx = Number(wrap.getAttribute('data-open-index'));
-          // remove do estado e do storage
           order.splice(openIdx, 1);
           removeFromStorageByOpenIndex(openIdx);
-          // re-render + atualizar bricks
           const newTotal = cartTotal();
           renderSummary();
           awaitMountBricks(newTotal);
@@ -121,7 +180,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    // habilita/desabilita botão pagar
     if (payBtn) {
       if (order.length) payBtn.removeAttribute('disabled');
       else payBtn.setAttribute('disabled', 'disabled');
@@ -131,7 +189,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ======= Bricks (controlador para desmontar/montar com novo total)
-  // carrega public key
   let publicKey = '';
   try {
     const r = await fetch('/api/mp/pubkey');
@@ -140,7 +197,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) { console.error('Erro /api/mp/pubkey', e); }
   if (!publicKey) { alert('Chave pública do Mercado Pago não configurada.'); return; }
 
-  // cria SDK
   const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
   const bricks = mp.bricks();
 
@@ -153,13 +209,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  let brickController = null;       // referência do brick para unmount
-  let currentTotal = 0;             // total atual usado no submit
+  let brickController = null;
+  let currentTotal = 0;
 
   async function mountBricks(amount) {
-    // desmonta anterior
     try { await brickController?.unmount?.(); } catch(_) {}
-
     currentTotal = Number((amount || 0).toFixed(2));
 
     brickController = await bricks.create('payment', brickContainerId, {
@@ -182,7 +236,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         onError: (e) => { console.error('[MP] Brick error:', e); alert('Erro ao iniciar o pagamento.'); },
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
           try {
-            // usa SEMPRE o currentTotal
             const method = String(selectedPaymentMethod || '').toLowerCase();
             const isPix = method === 'bank_transfer' ||
                           String(formData?.payment_method_id || '').toLowerCase() === 'pix';
@@ -204,7 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
               if (!formData?.token) { alert('Não foi possível tokenizar o cartão.'); return; }
               body.token = formData.token;
-              body.payment_method_id = formData.payment_method_id; // ex.: 'visa'
+              body.payment_method_id = formData.payment_method_id;
               body.installments = 1;
               if (formData.issuer_id) body.issuer_id = formData.issuer_id;
             }
@@ -220,16 +273,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
+            // === CARTÃO APROVADO ===
             if (data.status === 'approved') {
-              // marca TODAS as não pagas como pagas e vai para profile
-              const bookings = JSON.parse(localStorage.getItem('bookings') || '[]')
-                .map(b => ({ ...b, paid: true }));
-              localStorage.setItem('bookings', JSON.stringify(bookings));
               alert('Pagamento aprovado!');
-              location.href = 'profile.html';
+              const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+
+              if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+                const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+                  .map(b => ({ ...b, paid: true }));
+                localStorage.setItem('bookings', JSON.stringify(bookings));
+
+                localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+                location.href = 'profile.html';
+              }
               return;
             }
 
+            // === PIX (gera QR, aprovação é posterior) ===
             const pix = data?.point_of_interaction?.transaction_data;
             if (pix?.qr_code || pix?.qr_code_base64 || pix?.qr_text) {
               alert('Pix gerado! Conclua o pagamento no seu banco.');
@@ -251,10 +311,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // função wrapper que lida com carrinho vazio
   async function awaitMountBricks(total) {
     if (!order.length) {
-      // carrinho vazio: desmonta e mostra aviso
       try { await brickController?.unmount?.(); } catch(_) {}
       const container = document.getElementById(brickContainerId);
       if (container) container.innerHTML = '<p class="mute">Seu carrinho está vazio.</p>';
@@ -271,19 +329,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   cancelBtn?.addEventListener('click', () => {
     const ok = confirm('Cancelar este pedido? Os itens do carrinho serão removidos.');
     if (!ok) return;
-    // limpa não pagas do storage e do estado
     const all = JSON.parse(localStorage.getItem('bookings') || '[]');
     const paid = all.filter(b => b.paid === true);
     localStorage.setItem('bookings', JSON.stringify(paid));
     order = [];
     renderSummary();
     awaitMountBricks(0);
-    // opcional: voltar para home
-    // location.href = 'index.html';
   });
 
-  // (opcional) botão pagar via click direto — o bricks já cuida via onSubmit,
-  // mas mantemos um guard aqui para UX:
   payBtn?.addEventListener('click', () => {
     if (!order.length) {
       alert('Seu carrinho está vazio.');
