@@ -1,4 +1,4 @@
-// profile.js — cancelamento com modo "preview" e render estável
+// profile.js — Minhas viagens (render com "Ver Bilhete" e nº do bilhete)
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -12,6 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const listEl = document.getElementById('trips-list');
   const fmtBRL = (n)=> (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const pick   = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '—';
+
+  // fila de bilhetes recém-gerados (salvos pelo payment.js)
+  const lastTickets = JSON.parse(localStorage.getItem('lastTickets') || '[]');
+  // garantimos um array
+  const ticketsQueue = Array.isArray(lastTickets) ? lastTickets.slice() : [];
 
   // Estado local: qual card está em "preview" (memória de cálculo)
   let previewId = null;
@@ -77,10 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
               <div><b>Saída:</b> ${pick(s.departureTime, s.horaPartida)}</div>
               <div><b>Total:</b> ${fmtBRL(b.price || 0)}</div>
             </div>
+
             <div class="schedule-body" ${showPreview ? 'style="display:none"' : ''}>
               <div><b>Poltronas:</b> ${seats || '—'}</div>
               ${pax.length ? `<div><b>Passageiros:</b> ${pax.join(', ')}</div>` : ''}
               <div><b>Status:</b> ${statusText}</div>
+              <div class="bilhete-num" style="margin-top:6px;"></div> <!-- nº do bilhete aqui -->
             </div>
 
             ${showPreview ? `
@@ -107,11 +114,14 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
 
           <div class="card-right">
-            ${(!showPreview && !b.cancelledAt)
-              ? `<button class="${cancelable ? 'btn btn-primary' : 'btn btn-disabled'} btn-cancel"
-                         ${cancelable ? '' : 'disabled'}
-                         data-id="${b.id}">Cancelar</button>`
-              : ''}
+            <div class="reserva-actions">
+              <!-- "Ver Bilhete" entra aqui via JS se houver -->
+              ${(!showPreview && !b.cancelledAt)
+                ? `<button class="${cancelable ? 'btn btn-danger' : 'btn btn-danger'} btn-cancel"
+                           ${cancelable ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}
+                           data-id="${b.id}">Cancelar</button>`
+                : ''}
+            </div>
           </div>
         </div>
       `;
@@ -142,6 +152,36 @@ document.addEventListener('DOMContentLoaded', () => {
         render();
         alert('Cancelamento realizado com sucesso. O reembolso será processado conforme as regras.');
       });
+    });
+
+    // === Inserir botões "Ver Bilhete" + nº do bilhete (consome a fila) ===
+    const cards = listEl.querySelectorAll('.schedule-card');
+    cards.forEach(card => {
+      if (!ticketsQueue.length) return;
+      const body = card.querySelector('.schedule-body');
+      const actions = card.querySelector('.reserva-actions');
+      const numEl = card.querySelector('.bilhete-num');
+
+      // só para cards "Pago" e não em preview
+      const inPreview = card.querySelector('.calc-box') !== null;
+      if (inPreview) return;
+
+      // adiciona apenas se houver ação de cancelamento (para evitar cards já cancelados)
+      const ticket = ticketsQueue.shift();
+      if (!ticket) return;
+
+      // botão
+      const a = document.createElement('a');
+      a.className = 'btn btn-success'; // verde
+      a.textContent = 'Ver Bilhete';
+      a.href = ticket.pdf;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.title = `Bilhete nº ${ticket.numPassagem}`;
+      actions.prepend(a); // à esquerda do "Cancelar"
+
+      // nº do bilhete
+      if (numEl) numEl.textContent = `Bilhete nº ${ticket.numPassagem}`;
     });
   }
 
