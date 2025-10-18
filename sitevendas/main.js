@@ -6,25 +6,25 @@
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
 
-  // ===== Localidades (lista usada no autocomplete)
-  const localities = [
-    { id: 2,  descricao: 'Ouro Branco' },
-    { id: 93,  descricao: 'Itatiaia' },
-    { id: 6,  descricao: 'Ouro Preto E/S' },
-    { id: 24, descricao: 'Mariana' },
-    { id: 23, descricao: 'Antonio Pereira – Ouro Preto E/S' },
-    { id: 21, descricao: 'Mina Alegria' },
-    { id: 20, descricao: 'Catas Altas E/S - Rua Felicio Alve' },
-    { id: 19, descricao: 'Santa Bárbara E/S' },
-    { id: 22, descricao: 'Cocais-Barão de Cocais' },
-    { id: 26, descricao: 'Barão de Cocais E/S' },
-    { id: 17, descricao: 'BR381/BR129–São Goncalo do R' },
-    { id: 16, descricao: 'Joao Monlevade - Graal 5 Estrela' },
-    { id: 28, descricao: 'BR381/AC.Nova Era–Nova Era' },
-    { id: 15, descricao: 'Timoteo' },
-    { id: 14, descricao: 'Coronel Fabriciano' },
-    { id: 12, descricao: 'Ipatinga' }
-  ];
+const localities = [
+  { id: 23, descricao: 'Antonio Pereira' },
+  { id: 26, descricao: 'Barão de Cocais' },
+  { id: 20, descricao: 'Catas Altas' },
+  { id: 22, descricao: 'Cocais' },
+  { id: 14, descricao: 'Coronel Fabriciano' },
+  { id: 12, descricao: 'Ipatinga' },
+  { id: 93, descricao: 'Itatiaia' },
+  { id: 16, descricao: 'Joao Monlevade' },
+  { id: 24, descricao: 'Mariana' },
+  { id: 21, descricao: 'Mina Alegria' },
+  { id: 28, descricao: 'Nova Era' },
+  { id: 2,  descricao: 'Ouro Branco' },
+  { id: 6,  descricao: 'Ouro Preto' },
+  { id: 19, descricao: 'Santa Bárbara' },
+  { id: 17, descricao: 'São Goncalo do Rio Abaixo' }
+];
+
+
 
   // ===== Elementos
   const $ = (q) => document.querySelector(q);
