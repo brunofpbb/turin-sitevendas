@@ -2,37 +2,69 @@ const { asBRDate, asBRTimeHHMM, moneyBR } = require('./utils');
 
 exports.mapVendaToTicket = (root) => {
   const venda = root?.ListaPassagem?.[0] || {};
-  const est = venda?.DadosEstabelecimento || venda?.DadosEstabEmissor || {};
-  const pg = Array.isArray(venda?.DadosPagamento) ? venda.DadosPagamento[0] : null;
+  const est   = venda?.DadosEstabelecimento || venda?.DadosEstabEmissor || {};
+  const pg    = Array.isArray(venda?.DadosPagamento) ? venda.DadosPagamento[0] : null;
+
+  const valorNumerico = Number(
+    venda?.ValorPgto ?? venda?.ValorRecebido ?? venda?.ValorBruto ?? 0
+  );
 
   const ticket = {
-    empresa: est?.NomeFantasia || est?.RazaoSocial || 'Turin Transportes Ltda',
+    // Emitentes / empresa
+    empresa: est?.NomeFantasia || est?.RazaoSocial || 'TURIN TRANSPORTES LTDA',
     cnpjEmpresa: est?.Cnpj || '',
+    enderecoEmpresa: [
+      est?.Endereco, est?.Numero, est?.Bairro
+    ].filter(Boolean).join(', '),
+    cidadeEmpresa: [est?.NomeCidade, est?.Uf].filter(Boolean).join(' - '),
+    im: est?.IMunicipal || '',
+    ie: est?.IEstadual || '',
+
+    // Viagem
+    nomeLinha: venda?.NomeLinha || '',
     origem: venda?.Origem || '',
     destino: venda?.Destino || '',
-    nomeLinha: venda?.NomeLinha || '',
+    ufOrigem: venda?.UfOrigem || '',
+    ufDestino: venda?.UfDestino || '',
     dataViagem: asBRDate(venda?.DataPartida),
     horaPartida: asBRTimeHHMM(venda?.HoraPartida),
     poltrona: String(venda?.Poltrona || ''),
+    classe: venda?.DescServico || venda?.TipoCarro || '',
+    tipo: venda?.TipoCarro || '',
+
+    // Identificadores
+    idViagem: String(venda?.IdViagem || ''),
+    codigoLinha: venda?.CodigoLinha || '',
+    numPassagem: String(venda?.NumPassagem || ''),
+    serie: String(venda?.SerieBloco || ''),
+    localizador: venda?.Localizador || '',
+
+    // Passageiro
     nomeCliente: venda?.NomeCliente || '',
     documento: venda?.DocCliente || venda?.CpfCliente || '',
-    idViagem: String(venda?.IdViagem || ''),
-    serie: String(venda?.SerieBloco || ''),
-    numPassagem: String(venda?.NumPassagem || ''),
-    chaveBPe: venda?.ChaveBPe || '',
-    urlQrBPe: venda?.UrlQrCodeBPe || '',
-    valor: moneyBR(venda?.ValorPgto ?? venda?.ValorRecebido ?? venda?.ValorBruto ?? 0),
-    valorNumerico: Number(venda?.ValorPgto ?? venda?.ValorRecebido ?? venda?.ValorBruto ?? 0),
+
+    // Valores
     tarifa: moneyBR(venda?.ValorTarifa || 0),
-    taxa: moneyBR(venda?.TaxaEmbarque || 0),
-    mensagem: venda?.Mensagem || '',
-    agencia: venda?.NomeAgencia || '',
-    codigoLinha: venda?.CodigoLinha || '',
-    bpeNumero: venda?.ChaveBPe ? venda.ChaveBPe.slice(-9) : '',
-    dataVenda: venda?.DataVenda ? asBRDate(venda.DataVenda) : '',
+    pedagio: moneyBR(venda?.Pedagio || 0),
+    taxaEmbarque: moneyBR(venda?.TaxaEmbarque || 0),
+    outros: moneyBR(venda?.Outros || 0),
+    valorTotalFmt: moneyBR(valorNumerico),
+    valorNumerico,
+
     formaPgto: venda?.FormaPgto || (pg ? (pg.Tipo === 0 ? 'Dinheiro' : 'Cartão/Pix') : ''),
+
+    // BPe / QR
+    chaveBPe: venda?.ChaveBPe || '',
+    urlQrBPe: venda?.UrlQrCodeBPe || 'https://bpe.fazenda.mg.gov.br/portalbpe/sistema/qrcode.xhtml',
+    bpeNumeroCurto: venda?.ChaveBPe ? venda.ChaveBPe.slice(-9) : '',
+
+    // Mensagens
+    mensagem: venda?.Mensagem || '',
   };
 
-  ticket.qrPayload = ticket.chaveBPe || `${ticket.empresa} • Passagem ${ticket.numPassagem}`;
+  ticket.qrUrl = ticket.chaveBPe
+    ? `${ticket.urlQrBPe}?chBPe=${ticket.chaveBPe}&tpAmb=1`
+    : `${ticket.urlQrBPe}`;
+
   return ticket;
 };
