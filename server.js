@@ -487,6 +487,20 @@ console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000)
 
 
 
+app.post('/api/praxio/vender', async (req, res) => {
+  try {
+    const {
+      mpPaymentId,                 // id do pagamento aprovado no MP
+      schedule,                    // { idViagem, horaPartida, idOrigem, idDestino, agencia? }
+      passengers,                  // [{ seatNumber, name, document }]
+      totalAmount,                 // valor total cobrado
+      idEstabelecimentoVenda = '1',
+      idEstabelecimentoTicket = '93',
+      serieBloco = '93'
+    } = req.body || {};
+
+
+
 // montar payload do webhook
 const firstPass = (vendaResult.ListaPassagem || [])[0] || {};
 const payloadWebhook = {
@@ -532,23 +546,7 @@ try {
 
 
 
-
-
-
-
-
-
-app.post('/api/praxio/vender', async (req, res) => {
-  try {
-    const {
-      mpPaymentId,                 // id do pagamento aprovado no MP
-      schedule,                    // { idViagem, horaPartida, idOrigem, idDestino, agencia? }
-      passengers,                  // [{ seatNumber, name, document }]
-      totalAmount,                 // valor total cobrado
-      idEstabelecimentoVenda = '1',
-      idEstabelecimentoTicket = '93',
-      serieBloco = '93'
-    } = req.body || {};
+    
 
     // 1) revalida o pagamento no MP
     const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
