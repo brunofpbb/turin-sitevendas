@@ -10,31 +10,30 @@ exports.mapVendaToTicket = (root) => {
   );
 
   const ticket = {
-    // Emitentes / empresa
+    // Empresa
     empresa: est?.NomeFantasia || est?.RazaoSocial || 'TURIN TRANSPORTES LTDA',
     cnpjEmpresa: est?.Cnpj || '',
     enderecoEmpresa: [
-      est?.Endereco, est?.Numero, est?.Bairro
+      est?.Endereco, est?.Numero
     ].filter(Boolean).join(', '),
+    bairroEmpresa: est?.Bairro || '',
     cidadeEmpresa: [est?.NomeCidade, est?.Uf].filter(Boolean).join(' - '),
+    telefoneEmpresa: est?.Telefone || '',
     im: est?.IMunicipal || '',
     ie: est?.IEstadual || '',
 
     // Viagem
-    nomeLinha: venda?.NomeLinha || '',
+    nomeLinha: venda?.NomeLinha || '',          // descrição da linha (vai no campo "Linha")
+    codigoLinha: venda?.CodigoLinha || '',      // código (vai no campo "Prefixo")
     origem: venda?.Origem || '',
     destino: venda?.Destino || '',
-    ufOrigem: venda?.UfOrigem || '',
-    ufDestino: venda?.UfDestino || '',
     dataViagem: asBRDate(venda?.DataPartida),
     horaPartida: asBRTimeHHMM(venda?.HoraPartida),
     poltrona: String(venda?.Poltrona || ''),
     classe: venda?.DescServico || venda?.TipoCarro || '',
-    tipo: venda?.TipoCarro || '',
 
     // Identificadores
     idViagem: String(venda?.IdViagem || ''),
-    codigoLinha: venda?.CodigoLinha || '',
     numPassagem: String(venda?.NumPassagem || ''),
     serie: String(venda?.SerieBloco || ''),
     localizador: venda?.Localizador || '',
@@ -56,15 +55,12 @@ exports.mapVendaToTicket = (root) => {
     // BPe / QR
     chaveBPe: venda?.ChaveBPe || '',
     urlQrBPe: venda?.UrlQrCodeBPe || 'https://bpe.fazenda.mg.gov.br/portalbpe/sistema/qrcode.xhtml',
-    bpeNumeroCurto: venda?.ChaveBPe ? venda.ChaveBPe.slice(-9) : '',
-
-    // Mensagens
-    mensagem: venda?.Mensagem || '',
   };
 
+  // URL usada no QR e impressa no texto (idêntica)
   ticket.qrUrl = ticket.chaveBPe
     ? `${ticket.urlQrBPe}?chBPe=${ticket.chaveBPe}&tpAmb=1`
-    : `${ticket.urlQrBPe}`;
+    : ticket.urlQrBPe;
 
   return ticket;
 };
