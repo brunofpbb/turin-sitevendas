@@ -1,57 +1,61 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <title>Selecionar poltrona</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TURIN • Seleção de Poltronas</title>
+
+  <!-- CSS global do projeto -->
   <link rel="stylesheet" href="style.css" />
-  <script defer src="main.js"></script>
-  <script defer src="seats.js"></script>
+
+  <!--
+    Observação:
+    - Este HTML NÃO usa estilos inline.
+    - O respiro/visual da tela é controlado pelo style.css.
+    - Os seletores adicionados no style.css (como #legend-host, #passengers-row, .seat-actions)
+      assumem o espaçamento e deixam os botões alinhados à borda esquerda/inferior.
+  -->
 </head>
 <body>
-  <header>
-    <h1>Turin Transportes – Seleção de poltrona</h1>
-    <nav id="user-nav"></nav>
-  </header>
 
-  <main class="container">
-    <!-- O JS atualiza esse título para (ida)/(volta) -->
-    <h2 class="step-title">Escolha suas poltronas</h2>
-    <p id="trip-info"></p>
+  <main id="seats-container" class="content-card">
+    <h2 class="page-title">Escolha suas poltronas (ida)</h2>
 
-    <!-- Layout do ônibus: imagem da frente + grid de assentos sobreposta -->
-    <div id="bus-layout" class="bus-layout" style="position:relative; overflow:hidden;">
-      <img src="bus-blank.png" alt="Layout do ônibus" class="bus-image" style="max-width:100%; height:auto;" />
-      <!-- IMPORTANTE: o JS procura .bus-grid / #seats-grid -->
-      <div id="seats-grid" class="bus-grid" style="position:absolute; top:0; left:0;"></div>
+    <!-- Layout do ônibus (imagem de fundo + grid de poltronas) -->
+    <div id="bus-layout" class="bus-layout">
+      <img src="bus-blank.png" alt="Layout do ônibus" class="bus-image" />
+      <div id="seats-grid" class="bus-grid"></div>
     </div>
 
-    <!-- Legenda (o JS insere aqui os “quadradinhos”) -->
+    <!-- Legenda (preenchida por JS) -->
     <div id="legend-host"></div>
 
-    <!-- Contador -->
-    <p style="margin-top:10px">
-      Poltronas selecionadas: <b id="seats-count">0</b>
-    </p>
+    <!-- Informações do trecho e contador -->
+    <div id="trip-info"></div>
+    <div class="counter">Poltronas selecionadas: <b id="sel-count">0</b></div>
 
-    <!-- Linha de inputs do passageiro atual (o JS mostra/esconde) -->
-    <div id="passengers-row" style="display:none; margin-top:8px">
-      <div style="margin-bottom:6px"><b>Pol <span id="current-seat">—</span>:</b></div>
-      <div class="grid-row" style="display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap:10px">
-        <input id="pax-name"  type="text" placeholder="Nome" />
-        <input id="pax-cpf"   type="text" placeholder="CPF" />
+    <!-- Dados dos passageiros (mostra/esconde via JS) -->
+    <div id="passengers-row" class="pax-block" style="display:none;">
+      <div><b>Pol <span id="current-seat">—</span>:</b></div>
+      <div class="grid-row">
+        <input id="pax-name"  type="text" placeholder="Nome"     />
+        <input id="pax-cpf"   type="text" placeholder="CPF"      />
         <input id="pax-phone" type="text" placeholder="Telefone" />
       </div>
     </div>
 
     <!-- Ações -->
-    <div class="seat-actions" style="margin-top:12px;">
+    <div class="seat-actions">
       <button id="btn-confirm" class="btn btn-primary">Confirmar seleção</button>
       <button id="btn-back"    class="btn btn-ghost">Voltar</button>
     </div>
   </main>
 
-  <footer>
-    <p>&copy; 2025 Turin Transportes</p>
-  </footer>
+  <!-- JS da página (deve chamar renderSeats com os dados da viagem) -->
+  <script src="seats.js"></script>
+  <!--
+    Caso o boot da tela seja feito em outro arquivo (ex.: main.js),
+    mantenha a ordem dos scripts como você já usa no projeto.
+  -->
 </body>
 </html>
