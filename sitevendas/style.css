@@ -485,10 +485,7 @@ footer{
   margin: 0 18px 0 140px; /* empurra para dentro da carcaça esquerda */
 }
 
-/* ======== Botões na ordem pedida ======== */
-.seat-actions{
-  display:flex; gap: 1px; margin-top: 1px;
-}
+
 
 
 
@@ -652,7 +649,7 @@ footer { text-align: center; flex: 0 0 auto; }
 }
 
 /* ações: coladas ao canto esquerdo e com respiro inferior do card */
-.seats-onepage .actions{ display:flex; gap:10px; margin:18px 0 0; }
+.seats-onepage .actions{ display:flex; gap:1px; margin:1px 0 0; }
 .seats-onepage .btn{ padding:8px 14px; border-radius:6px; border:1px solid transparent; cursor:pointer; }
 .seats-onepage .btn-primary{ background:var(--seats-brand); color:#fff; }
 .seats-onepage .btn-ghost{ background:#e9ecef; color:#222; }
