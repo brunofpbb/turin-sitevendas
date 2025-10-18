@@ -7,7 +7,6 @@
 
   <!-- Esconde visualmente o seletor de parcelas do Payment Brick -->
   <style>
-    /* diferentes versões do Payment Brick usam ids/classes ligeiramente diferentes */
     [data-testid="installments"],
     .mp-CardPayment-installments,
     .mp-payment-installments,
@@ -19,6 +18,18 @@
       padding: 0 !important;
       overflow: hidden !important;
     }
+
+    /* Caixa do PIX */
+    #pix-box{
+      margin-top:16px; padding:14px; border:1px solid #e2e2e2; border-radius:10px;
+      background:#fff;
+    }
+    #pix-box h4{ margin:0 0 8px 0 }
+    #pix-box .pix-row{ display:flex; gap:8px; align-items:center; margin-top:8px }
+    #pix-code{ flex:1; padding:.6rem; border:1px solid #ccc; border-radius:6px }
+    #pix-copy{ padding:.6rem .9rem; border:0; border-radius:8px; cursor:pointer }
+    #pix-status{ margin-top:8px; color:#555 }
+    #pix-qr img{ max-width:220px; height:auto; }
   </style>
 
   <!-- SDK do Mercado Pago deve vir antes do seu payment.js -->
@@ -32,32 +43,37 @@
     <nav id="user-nav"></nav>
   </header>
 
-<main class="two-cols-pay">
-  <!-- Card lateral fixo: Resumo -->
-  <aside class="summary-card" id="summary-card">
-    <h2 class="step-title">Resumo do Pedido</h2>
-    <div id="summary-body">
-      <!-- preenchido pelo payment.js -->
-    </div>
-    <div class="summary-total">
-      <span>Total</span>
-      <strong id="summary-total">R$ 0,00</strong>
-    </div>
-    <div class="actions">
-      <button id="btn-cancel" class="btn btn-ghost">Cancelar</button>
-    </div>
-  </aside>
+  <main class="two-cols-pay">
+    <!-- Card lateral fixo: Resumo -->
+    <aside class="summary-card" id="summary-card">
+      <h2 class="step-title">Resumo do Pedido</h2>
+      <div id="summary-body"><!-- preenchido pelo payment.js --></div>
+      <div class="summary-total"><span>Total</span><strong id="summary-total">R$ 0,00</strong></div>
+      <div class="actions">
+        <button id="btn-cancel" class="btn btn-ghost">Cancelar</button>
+      </div>
+    </aside>
 
-  <!-- Card central: Bricks -->
-  <section class="content-card" id="bricks-card">
-    <h2 class="step-title">Informações de Pagamento</h2>
-    <p class="mute">Pagamento seguro via Checkout API do Mercado Pago (Bricks).</p>
-    <div id="payment-bricks" style="margin-top:12px;">
-      <!-- o Bricks entra aqui -->
-    </div>
-  </section>
-</main>
+    <!-- Card central: Bricks -->
+    <section class="content-card" id="bricks-card">
+      <h2 class="step-title">Informações de Pagamento</h2>
+      <p class="mute">Pagamento seguro via Checkout API do Mercado Pago (Bricks).</p>
 
+      <!-- Container do Brick -->
+      <div id="payment-bricks" style="margin-top:12px;"></div>
+
+      <!-- Resultado PIX (criado/atualizado pelo JS) -->
+      <div id="pix-box" style="display:none">
+        <h4>Pagamento via Pix</h4>
+        <div id="pix-qr"></div>
+        <div class="pix-row">
+          <input id="pix-code" type="text" readonly>
+          <button id="pix-copy" type="button" class="btn">Copiar código</button>
+        </div>
+        <p id="pix-status">Aguardando pagamento…</p>
+      </div>
+    </section>
+  </main>
 
   <footer>
     <p>&copy; 2025 Turin Transportes</p>
