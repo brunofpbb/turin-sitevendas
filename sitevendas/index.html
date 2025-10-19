@@ -4,6 +4,29 @@
   <meta charset="UTF-8" />
   <title>Turin Transportes – Venda de Passagens</title>
   <link rel="stylesheet" href="style.css" />
+
+
+
+<style>
+@media (max-width:768px){
+  .two-cols{display:flex;flex-direction:column;gap:1rem}
+  .content-card:empty{min-height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important}
+  #content-root:empty{min-height:0!important}
+  #schedule-list,#bus-list,.bus-list{min-height:0!important;gap:10px!important;margin-top:8px!important}
+  main{margin:8px!important;padding:12px!important;box-shadow:none;border-radius:8px}
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
   <!-- Sem type="module" para evitar problemas de import -->
   <script src="seats.js" defer></script>
   <script src="main.js" defer></script>
