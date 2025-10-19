@@ -107,7 +107,8 @@ function mapVendaToTicket(root = {}) {
     emissaoISO: root.emissaoISO || new Date().toISOString(),
 
     // Preferência visual opcional (se quiser centralizar tudo no cabeçalho)
-    headerCentered: !!root.headerCentered
+    // headerCentered: !!root.headerCentered
+    headerCentered: true
   };
 
   return ticket;
