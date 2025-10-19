@@ -1,4 +1,11 @@
-// services/ticket/pdf.js
+// services/ticket/pdf.js (rev2)
+// Gera o DABP-e com layout estável (sem sobreposição) e melhor aproveitamento da folha.
+// Ajustes principais nesta revisão:
+// 1) Página A4 com margens confortáveis.
+// 2) Grid com coordenadas fixas e largura segura, sem quebra de linha (lineBreak:false).
+// 3) Títulos abaixo do QR centralizados corretamente.
+// 4) Pequenos utilitários para cortar texto que excede a largura (evita escrever por cima).
+
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
@@ -21,6 +28,18 @@ function formatEmissaoBR(iso, tzOffsetMin = -180) {
   return `${d}/${m}/${y} ${hh}:${mm} ${sgn}${oh}:${om}`;
 }
 
+// corta string para caber em largura 'w' no fontSize corrente, adicionando "…"
+function fit(doc, text, w) {
+  const ell = '…';
+  let s = String(text ?? '');
+  if (!s) return '';
+  if (doc.widthOfString(s) <= w) return s;
+  while (s.length && doc.widthOfString(s + ell) > w) {
+    s = s.slice(0, -1);
+  }
+  return s + ell;
+}
+
 exports.generateTicketPdf = async (t, outDir) => {
   await fs.promises.mkdir(outDir, { recursive: true });
 
@@ -34,11 +53,11 @@ exports.generateTicketPdf = async (t, outDir) => {
 
   const outPath = path.join(outDir, baseName);
 
-  const qrDataURL = await QRCode.toDataURL(t.qrUrl, { margin: 1, scale: 5 });
+  const qrDataURL = await QRCode.toDataURL(t.qrUrl, { margin: 1, scale: 6 });
 
   const doc = new PDFDocument({
-    size: 'A5',
-    margins: { top: 16, left: 16, right: 16, bottom: 16 }
+    size: 'A4',
+    margins: { top: 36, left: 36, right: 36, bottom: 48 }
   });
   const stream = fs.createWriteStream(outPath);
   doc.pipe(stream);
@@ -46,35 +65,41 @@ exports.generateTicketPdf = async (t, outDir) => {
   const fullW = () => (doc.page.width - doc.page.margins.left - doc.page.margins.right);
   const centerX = () => (doc.page.margins.left + fullW()/2);
   const HR = (y) => {
-    doc.moveTo(doc.page.margins.left, y)
-       .lineTo(doc.page.width - doc.page.margins.right, y)
-       .strokeColor('#d0d0d0').lineWidth(0.6).stroke();
+    doc.save()
+      .moveTo(doc.page.margins.left, y)
+      .lineTo(doc.page.margins.left + fullW(), y)
+      .lineWidth(0.5)
+      .strokeColor('#999')
+      .stroke()
+      .restore();
   };
 
   // ===== Cabeçalho opcional com imagem
   try {
     const headerPath = path.join(__dirname, '..', '..', 'sitevendas', 'img', 'bpe-header.png');
     if (fs.existsSync(headerPath)) {
-      doc.image(headerPath, doc.page.margins.left, doc.y, { fit: [fullW(), 44] });
-      doc.moveDown(0.3);
+      doc.image(headerPath, doc.page.margins.left, doc.y, { fit: [fullW(), 54] });
+      doc.moveDown(0.4);
     }
   } catch(_) {}
 
   // Título
-  doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
+  doc.font('Helvetica-Bold').fontSize(14).fillColor('#000')
      .text('DABP-e - Documento Auxiliar do Bilhete de Passagem Eletrônico', { align: 'center', width: fullW() });
 
-  let y = doc.y + 6;
+  let y = doc.y + 8;
   HR(y);
-  doc.y = y + 6;
+  doc.y = y + 10;
 
   // ===== Empresa (centralizado)
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
+  doc.font('Helvetica-Bold').fontSize(12).fillColor('#000')
      .text(t.empresa || 'TURIN TRANSPORTES LTDA', { align:'center', width: fullW() });
-  doc.font('Helvetica').fontSize(9).fillColor('#000');
+  doc.font('Helvetica').fontSize(10).fillColor('#000');
+
   const parts2 = [];
   if (t.cnpjEmpresa) parts2.push(`CNPJ: ${t.cnpjEmpresa}`);
   if (t.ie) parts2.push(`IE.: ${t.ie}`);
+  if (t.im) parts2.push(`IM.: ${t.im}`);
   doc.text(parts2.join('    '), { align:'center', width: fullW() });
 
   const parts3 = [];
@@ -87,111 +112,128 @@ exports.generateTicketPdf = async (t, outDir) => {
   if (t.telefoneEmpresa) parts4.push(`Telefone: ${t.telefoneEmpresa}`);
   doc.text(parts4.join('  -  '), { align:'center', width: fullW() });
 
-  y = doc.y + 6;
+  y = doc.y + 10;
   HR(y);
-  doc.y = y + 6;
+  doc.y = y + 12;
 
-  // ===== GRID: 3 colunas alinhadas por coordenada (evita sobreposição)
+  // ===== GRID SUPERIOR (3 colunas x 3 linhas) alinhado por coordenadas
+  // Para evitar sobreposição, todos os valores usam lineBreak:false + corte por largura.
   const w = fullW();
-  const colW = Math.floor(w / 3) - 4;   // largura segura por coluna
+  const colW = Math.floor(w / 3) - 8;   // largura segura por coluna
   const x0 = doc.page.margins.left;
-  const x1 = x0 + colW + 14;            // empurra um pouco à direita
-  const x2 = x1 + colW + 14;
-
+  const x1 = x0 + colW + 16;            // espaçamento entre colunas
+  const x2 = x1 + colW + 16;
   const yStart = doc.y;
-  const lh = 14;
+  const lh = 18;
+
   const label = (txt, x, y) => {
-    doc.font('Helvetica').fontSize(8).fillColor('#555').text(txt, x, y, { width: colW, height: lh, lineBreak: false });
+    doc.font('Helvetica').fontSize(9).fillColor('#555')
+       .text(txt, x, y, { width: colW, lineBreak: false });
   };
   const value = (txt, x, y, big=false) => {
-    doc.font('Helvetica-Bold').fontSize(big ? 10.5 : 10).fillColor('#111').text(String(txt || '—'), x, y, { width: colW, height: lh, lineBreak: false });
+    doc.font('Helvetica-Bold').fontSize(big ? 11 : 10).fillColor('#111');
+    const fitted = fit(doc, String(txt || '—'), colW);
+    doc.text(fitted, x, y, { width: colW, lineBreak: false });
   };
   const row = (i, setters) => setters.forEach(fn => fn(yStart + i*lh));
 
   // linha 0
   row(0, [
-    y => { label('Empresa:', x0, y); value(t.empresa, x0, y); },
-    y => { label('Horário:', x1, y); value(t.horaPartida, x1, y); },
-    y => { label('Classe:', x2, y);  value(t.classe, x2, y); }
+    y => { label('Empresa:', x0, y); value(t.empresa, x0, y, true); },
+    y => { label('Horário:', x1, y); value(t.horaPartida, x1, y, true); },
+    y => { label('Classe:',  x2, y); value(t.classe, x2, y, true); }
   ]);
   // linha 1
   row(1, [
-    y => { label('Origem:', x0, y);  value(t.origem, x0, y); },
+    y => { label('Origem:',   x0, y); value(t.origem, x0, y); },
     y => { label('Poltrona:', x1, y); value(t.poltrona, x1, y); },
-    y => { label('Bilhete:', x2, y); value(t.numPassagem, x2, y); }
+    y => { label('Bilhete:',  x2, y); value(t.numPassagem, x2, y); }
   ]);
   // linha 2
   row(2, [
     y => { label('Destino:', x0, y); value(t.destino, x0, y); },
-    y => { label('Linha:', x1, y);    value(t.nomeLinha, x1, y); },
-    y => { label('Série:', x2, y);    value(t.serie, x2, y); }
+    y => { label('Linha:',   x1, y); value(t.nomeLinha, x1, y); },
+    y => { label('Série:',   x2, y); value(t.serie, x2, y); }
   ]);
   // linha 3
   row(3, [
-    y => { label('Data:', x0, y);    value(t.dataViagem, x0, y); },
+    y => { label('Data:',    x0, y); value(t.dataViagem, x0, y); },
     y => { label('Prefixo:', x1, y); value(t.codigoLinha, x1, y); }
   ]);
 
   // separador exatamente após o grid
-  const yAfterGrid = yStart + 4*lh + 6;
+  const yAfterGrid = yStart + 4*lh + 8;
   HR(yAfterGrid);
-  doc.y = yAfterGrid + 6;
+  doc.y = yAfterGrid + 12;
 
   // ===== Passageiro (1 linha): nome à esquerda, documento à direita
   const yPD = doc.y;
-  doc.font('Helvetica').fontSize(8).fillColor('#555').text('Passageiro:', x0, yPD);
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111').text(String(t.nomeCliente || '—'), x0 + 60, yPD, { width: (w/2) - 70, lineBreak: false });
+  const half = Math.floor(w / 2) - 10;
 
-  doc.font('Helvetica').fontSize(8).fillColor('#555').text('Documento:', x2 - 40, yPD);
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111').text(String(t.documento || '—'), x2 + 30, yPD, { width: colW, lineBreak: false });
+  doc.font('Helvetica').fontSize(9).fillColor('#555').text('Passageiro:', x0, yPD, { width: 60, lineBreak:false });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#111')
+     .text(fit(doc, String(t.nomeCliente || '—'), half - 70), x0 + 60, yPD, { width: (half - 70), lineBreak: false });
 
-  y = Math.max(yPD + lh, doc.y) + 4;
-  HR(y);
-  doc.y = y + 6;
+  doc.font('Helvetica').fontSize(9).fillColor('#555').text('Documento:', x0 + half + 20, yPD, { width: 70, lineBreak:false });
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#111')
+     .text(fit(doc, String(t.documento || '—'), half - 80), x0 + half + 20 + 70, yPD, { width: (half - 80), lineBreak:false });
 
-  // ===== Valores (sem Pedágio); Valor Pago com destaque; linha após o MAIOR y
-  const leftX = x0, rightX = x1 + 10;
-  const vLabel = (txt, x, y) => doc.font('Helvetica').fontSize(8).fillColor('#555').text(txt, x, y);
-  const vValue = (txt, x, y, big=false) => doc.font('Helvetica-Bold').fontSize(big ? 12 : 10).fillColor('#000').text(String(txt || '—'), x, y);
+  doc.y = yPD + lh + 6;
 
-  const yL0 = doc.y;
-  vLabel('Tarifa:', leftX, yL0);            vValue(t.tarifa, leftX, doc.y);
-  const yL1 = doc.y; vLabel('Taxa De Embarque:', leftX, yL1); vValue(t.taxaEmbarque, leftX, doc.y);
-  const yL2 = doc.y; vLabel('Outros:', leftX, yL2);           vValue(t.outros, leftX, doc.y);
+  // ===== Totais (4 colunas)
+  const cW = Math.floor(w / 4) - 8;
+  const cx = (i) => doc.page.margins.left + i*(cW + 12);
 
-  const yR0 = yL0; vLabel('Forma De Pagamento:', rightX, yR0); vValue(t.formaPgto, rightX, doc.y);
-  const yR1 = doc.y; vLabel('Valor Pago:', rightX, yR1);       vValue(t.valorTotalFmt, rightX, doc.y, true);
+  const moneyBox = (labelTxt, valueTxt, i, big=false) => {
+    const xx = cx(i);
+    doc.font('Helvetica').fontSize(9).fillColor('#555')
+       .text(labelTxt, xx, doc.y, { width: cW, lineBreak:false });
+    doc.font('Helvetica-Bold').fontSize(big ? 12 : 11).fillColor('#111')
+       .text(String(valueTxt || 'R$ 0,00'), xx, doc.y, { width: cW, lineBreak:false });
+  };
 
-  const yAfterVals = Math.max(doc.y, yL2 + lh, yR1 + lh) + 6;
-  HR(yAfterVals);
-  doc.y = yAfterVals + 6;
+  moneyBox('Tarifa:', t.tarifa, 0);
+  moneyBox('Taxa De Embarque:', t.taxaEmbarque, 1);
+  moneyBox('Outros:', t.outros, 2);
+  moneyBox('Valor Pago:', t.valorTotalFmt, 3, true);
+
+  doc.moveDown(1.2);
+  HR(doc.y);
+  doc.moveDown(1.0);
 
   // ===== QR centralizado e textos ABAIXO do QR
-  const qrSize = 110;
+  const qrSize = 150;
   const qrX = centerX() - (qrSize/2);
   const qrY = doc.y;
   doc.image(qrDataURL, qrX, qrY, { fit: [qrSize, qrSize] });
 
   // força o cursor PARA BAIXO do QR
-  const yAfterQR = qrY + qrSize + 8;
+  const yAfterQR = qrY + qrSize + 10;
   doc.y = yAfterQR;
 
   // Emissão (UTC−3), URL, chave e protocolo (centralizados)
   const emissaoBR = formatEmissaoBR(t.emissaoISO, -180);
-  doc.font('Helvetica').fontSize(9).fillColor('#000')
+  doc.font('Helvetica').fontSize(10).fillColor('#000')
      .text(`Emissão: ${emissaoBR}`, { align:'center', width: fullW() });
 
-  doc.font('Helvetica').fontSize(9).fillColor('#000')
+  doc.font('Helvetica').fontSize(10).fillColor('#000')
      .text(t.qrUrl, { align:'center', width: fullW() });
 
   if (t.chaveBPe) {
-    doc.font('Helvetica').fontSize(9).fillColor('#000')
+    doc.font('Helvetica').fontSize(10).fillColor('#000')
        .text(t.chaveBPe, { align:'center', width: fullW() });
   }
 
-  doc.moveDown(0.3);
-  doc.font('Helvetica').fontSize(10).fillColor('#000')
+  doc.moveDown(0.4);
+  doc.font('Helvetica').fontSize(11).fillColor('#000')
      .text('Protocolo de autorização: EMITIDO EM CONTINGÊNCIA', { align:'center', width: fullW() });
+
+  // Rodapé © sempre centralizado no fim da página
+  doc.font('Helvetica').fontSize(9).fillColor('#666');
+  doc.text(`© ${new Date().getFullYear()} Turin Transportes`, doc.page.margins.left, doc.page.height - doc.page.margins.bottom + 16, {
+    align: 'center',
+    width: fullW()
+  });
 
   doc.end();
   await new Promise((r) => stream.on('finish', r));
