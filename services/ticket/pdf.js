@@ -1,13 +1,10 @@
-// services/ticket/pdf.js — rev5.2 (completo)
-// Gera o DABP-e com logo, detalhes da viagem, passageiro/valores e bloco do QR
-// na ordem solicitada, tudo centralizado quando aplicável.
-
+// services/ticket/pdf.js — rev6 (fix valores vazios, caminho do logo, bloco QR)
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 
-// ---------- helpers ----------
+// Helpers
 function formatEmissaoBR(iso, tzOffsetMin = -180) {
   const src = new Date(iso || Date.now());
   const local = new Date(src.getTime() + (tzOffsetMin + src.getTimezoneOffset()) * 60000);
@@ -20,7 +17,7 @@ function formatEmissaoBR(iso, tzOffsetMin = -180) {
 }
 function fit(doc, text, w) {
   const ell = '…';
-  let s = String(text ?? '');
+  let s = String((text || '')); // <-- aceita '' mas cai no fallback lá no value()
   if (!s) return '';
   if (doc.widthOfString(s) <= w) return s;
   while (s.length && doc.widthOfString(s + ell) > w) s = s.slice(0,-1);
@@ -31,7 +28,6 @@ function safeName(s) {
     .replace(/[^A-Za-z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
 }
 
-// ---------- main ----------
 exports.generateTicketPdf = async (t, outDir) => {
   await fs.promises.mkdir(outDir, { recursive: true });
 
@@ -40,10 +36,7 @@ exports.generateTicketPdf = async (t, outDir) => {
 
   const qrDataURL = await QRCode.toDataURL(t.qrUrl || t.urlQrBPe || '', { margin: 1, scale: 6 });
 
-  const doc = new PDFDocument({
-    size: 'A4',
-    margins: { top: 36, left: 36, right: 36, bottom: 42 }
-  });
+  const doc = new PDFDocument({ size: 'A4', margins: { top: 36, left: 36, right: 36, bottom: 42 } });
   const stream = fs.createWriteStream(outPath);
   doc.pipe(stream);
 
@@ -60,15 +53,21 @@ exports.generateTicketPdf = async (t, outDir) => {
       .restore();
   };
 
-  // ===== Título
+  // Título
   doc.font('Helvetica-Bold').fontSize(14)
      .text('DABP-e - Documento Auxiliar do Bilhete de Passagem Eletrônico', left(), doc.y, { width: pageW(), align:'center' });
   let y = doc.y + 8; HR(y); doc.y = y + 10;
 
-  // ===== Empresa (logo à esquerda + textos à direita; fallback centralizado)
+  // ===== Empresa (logo + textos)
   (function renderEmpresa() {
-    const logoPath = path.join(__dirname, '..', '..', 'sitevendas', 'img', 'Logo Nova ISO2.jpg');
-    if (fs.existsSync(logoPath)) {
+    // 1) procura na raiz /img, 2) fallback /sitevendas/img
+    const logoCandidates = [
+      path.join(__dirname, '..', '..', 'img', 'Logo Nova ISO2.jpg'),
+      path.join(__dirname, '..', '..', 'sitevendas', 'img', 'Logo Nova ISO2.jpg'),
+    ];
+    const logoPath = logoCandidates.find(p => { try { return fs.existsSync(p); } catch { return false; } });
+
+    if (logoPath) {
       const startY = doc.y;
       const imgW = 90;
       const gap  = 10;
@@ -118,7 +117,7 @@ exports.generateTicketPdf = async (t, outDir) => {
     }
   })();
 
-  // ===== Bloco “Detalhes da viagem” (3x4)
+  // ===== Bloco “Detalhes da viagem”
   const w = pageW();
   const colW = Math.floor(w/3) - 12;
   const x0 = left(), x1 = x0 + colW + 18, x2 = x1 + colW + 18;
@@ -127,8 +126,9 @@ exports.generateTicketPdf = async (t, outDir) => {
 
   const label = (txt, x, yy) => doc.font('Helvetica').fontSize(9).fillColor('#555').text(txt, x, yy, { width: colW, lineBreak:false });
   const value = (txt, x, yy, bold=true) => {
+    const val = (txt || '—');                  // <-- aqui corrige string vazia
     doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(11).fillColor('#111');
-    doc.text(fit(doc, String(txt ?? '—'), colW), x, yy, { width: colW, lineBreak:false });
+    doc.text(fit(doc, val, colW), x, yy, { width: colW, lineBreak:false });
   };
   const cell = (x, lbl, val, row) => {
     const yy = gridStartY + row*rowH;
@@ -159,11 +159,11 @@ exports.generateTicketPdf = async (t, outDir) => {
   const half = Math.floor(w/2) - 10;
   doc.font('Helvetica').fontSize(9).fillColor('#555').text('Passageiro:', x0, yPD, { width: 70, lineBreak:false });
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#111')
-     .text(fit(doc, t.nomeCliente || '—', half - 80), x0 + 70, yPD, { width: half-80, lineBreak:false });
+     .text(fit(doc, (t.nomeCliente || '—'), half - 80), x0 + 70, yPD, { width: half-80, lineBreak:false });
 
   doc.font('Helvetica').fontSize(9).fillColor('#555').text('Documento:', x0 + half + 20, yPD, { width: 80, lineBreak:false });
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#111')
-     .text(fit(doc, t.documento || '—', half - 100), x0 + half + 20 + 80, yPD, { width: half-100, lineBreak:false });
+     .text(fit(doc, (t.documento || '—'), half - 100), x0 + half + 20 + 80, yPD, { width: half-100, lineBreak:false });
 
   const yPDLine = yPD + 18;
   HR(yPDLine);
@@ -192,11 +192,11 @@ exports.generateTicketPdf = async (t, outDir) => {
   moneyR('Forma de Pagamento', t.formaPagamento || '—');
   moneyR('Valor Pago', t.valorTotalFmt, true);
 
-  // ------ início do bloco do QR ------
+  // ===== BLOCO DO QR (ordem solicitada)
   const yBeforeQR = Math.max(yL, yR) + 6;
   HR(yBeforeQR);
-  doc.y = yBeforeQR;              // encara o cursor na linha
-  doc.moveDown(2.4);              // “respiro” (~5 linhas)
+  doc.y = yBeforeQR;
+  doc.moveDown(2.4); // respiro
 
   // 1) Consulta via chave de acesso
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
@@ -208,7 +208,7 @@ exports.generateTicketPdf = async (t, outDir) => {
      .text(t.urlConsultaAcesso || 'https://bpe.fazenda.mg.gov.br/bpe/services/BPeConsultaDFe',
        left(), doc.y, { width: pageW(), align:'center' });
 
-  // 3) Chave (quando houver)
+  // 3) Chave logo abaixo da URL
   if (t.chaveBPe) {
     doc.moveDown(0.2);
     doc.font('Helvetica').fontSize(9).fillColor('#000')
@@ -236,7 +236,6 @@ exports.generateTicketPdf = async (t, outDir) => {
   doc.font('Helvetica').fontSize(10).fillColor('#000')
      .text('Protocolo de autorização: EMITIDO EM CONTINGÊNCIA', left(), doc.y, { width: pageW(), align:'center' });
 
-  // ---- fim
   doc.end();
   await new Promise(r => stream.on('finish', r));
   return { path: outPath, filename: baseName };
