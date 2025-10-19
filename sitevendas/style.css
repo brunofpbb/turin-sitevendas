@@ -914,3 +914,74 @@ footer { text-align: center; flex: 0 0 auto; }
 
 /* ajuste fino em qualquer largura: roda-pé central e perto da base */
 footer { text-align: center; }
+
+
+
+
+
+
+
+
+
+/* ===== FIX: espaçamento exagerado no mobile ===== */
+@media (max-width: 768px) {
+  /* 1) Reduz o respiro do conteúdo principal */
+  main {
+    margin: 8px !important;
+    padding: 12px !important;
+    box-shadow: none;
+    border-radius: 8px;
+  }
+
+  /* 2) Título “Viagens disponíveis …” sem margem alta */
+  #schedule-title, .schedule-title, main h2 {
+    margin: 8px 0 !important;
+    font-size: 1.1rem;
+  }
+
+  /* 3) Containers comuns de resultados: sem altura mínima */
+  #schedule-list, #bus-list, .bus-list,
+  #schedule-wrapper, .schedule-wrapper,
+  #results, .results, .results-card {
+    min-height: 0 !important;
+    height: auto !important;
+    margin-top: 8px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    gap: 10px !important;                 /* menos espaço entre cards */
+    border: 0 !important;                  /* evita “caixa vazia” com borda */
+    background: transparent !important;
+  }
+
+  /* 4) Se existir um segundo <main> para os resultados, compacte-o */
+  main + main {
+    margin: 8px !important;
+    padding: 12px !important;
+    min-height: 0 !important;
+  }
+
+  /* 5) Quando não houver viagens, a lista não reserva espaço */
+  #schedule-list:empty, #bus-list:empty, .bus-list:empty {
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+  }
+
+  /* 6) Card e tipografia mais legíveis e compactos */
+  .schedule-card, .bus-item {
+    padding: 12px 14px !important;
+    border-radius: 10px;
+    grid-template-columns: 1fr auto;
+  }
+  .schedule-header, .schedule-body {
+    font-size: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .schedule-actions { width: 100%; justify-content: flex-end; }
+  .select-btn { width: 100%; min-width: 0; }
+}
+
+/* Rodapé sempre centralizado */
+footer { text-align: center; }
