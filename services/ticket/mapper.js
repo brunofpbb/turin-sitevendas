@@ -1,93 +1,80 @@
-const { asBRDate, asBRTimeHHMM, moneyBR } = require('./utils');
+// services/ticket/mapper.js — rev5
+// Constrói o objeto "ticket" consumido pelo pdf.js
 
-/**
- * root pode conter:
- *  - ListaPassagem: [ {...} ] (retorno da Praxio)
- *  - mp: { payment_type_id, payment_method_id, status, installments } (opcional, vindo do servidor)
- *  - emissaoISO: string ISO de quando o BPe foi gerado (opcional)
- */
-exports.mapVendaToTicket = (root) => {
-  const venda = root?.ListaPassagem?.[0] || {};
-  const est   = venda?.DadosEstabelecimento || venda?.DadosEstabEmissor || {};
-  const pg    = Array.isArray(venda?.DadosPagamento) ? venda.DadosPagamento[0] : null;
+module.exports = function mapTicket(root = {}) {
+  const venda = root.venda || root?.bpe || {};
+  const mp    = root.mp || {};
+  const pg    = root.pg || venda?.Pagamento || {};
 
-  const valorNumerico = Number(
-    venda?.ValorPgto ?? venda?.ValorRecebido ?? venda?.ValorBruto ?? 0
-  );
-
-  // Forma de pagamento (prioriza dados do MP, depois mapeia Praxio)
   function resolveFormaPgto() {
-    const mp = root?.mp || {};
     const ptype = String(mp.payment_type_id || '').toLowerCase();
     const pmeth = String(mp.payment_method_id || '').toLowerCase();
 
-    if (ptype === 'credit_card' || ['visa','master','elo','amex','hipercard','diners'].some(b => pmeth.includes(b))) {
+    if (ptype === 'credit_card' ||
+        ['visa','master','elo','amex','hipercard','diners'].some(b => pmeth.includes(b))) {
       return 'Cartão de Crédito';
     }
     if (pmeth === 'pix' || ptype === 'bank_transfer') return 'Pix';
 
-    // Praxio
+    // dados da Praxio
     if (typeof venda?.FormaPgto === 'string' && venda.FormaPgto.trim()) return venda.FormaPgto;
     if (pg) {
-      if (pg.TipoCartao && Number(pg.TipoCartao) !== 0) return 'Cartão';
+      if (pg.TipoCartao && Number(pg.TipoCartao) !== 0) return 'Cartão de Crédito';
       if (pg.Tipo === 0) return 'Dinheiro';
     }
     return '—';
   }
 
-  const ticket = {
-    // Empresa
-    empresa: est?.NomeFantasia || est?.RazaoSocial || 'TURIN TRANSPORTES LTDA',
-    cnpjEmpresa: est?.Cnpj || '',
-    enderecoEmpresa: [ est?.Endereco, est?.Numero ].filter(Boolean).join(', '),
-    bairroEmpresa: est?.Bairro || '',
-    cidadeEmpresa: [est?.NomeCidade, est?.Uf].filter(Boolean).join(' - '),
-    telefoneEmpresa: est?.Telefone || '',
-    im: est?.IMunicipal || '',
-    ie: est?.IEstadual || '',
-
-    // Viagem
-    nomeLinha: venda?.NomeLinha || '',          // descrição (vai em "Linha")
-    codigoLinha: venda?.CodigoLinha || '',      // código (vai em "Prefixo")
-    origem: venda?.Origem || '',
-    destino: venda?.Destino || '',
-    dataViagem: asBRDate(venda?.DataPartida),
-    horaPartida: asBRTimeHHMM(venda?.HoraPartida),
-    poltrona: String(venda?.Poltrona || ''),
-    classe: venda?.DescServico || venda?.TipoCarro || '',
-
-    // Identificadores
-    idViagem: String(venda?.IdViagem || ''),
-    numPassagem: String(venda?.NumPassagem || ''),
-    serie: String(venda?.SerieBloco || ''),
-    localizador: venda?.Localizador || '',
-
-    // Passageiro
-    nomeCliente: venda?.NomeCliente || '',
-    documento: venda?.DocCliente || venda?.CpfCliente || '',
-
-    // Valores
-    tarifa: moneyBR(venda?.ValorTarifa || 0),
-    // pedagio: moneyBR(venda?.Pedagio || 0), // removido do layout
-    taxaEmbarque: moneyBR(venda?.TaxaEmbarque || 0),
-    outros: moneyBR(venda?.Outros || 0),
-    valorTotalFmt: moneyBR(valorNumerico),
-    valorNumerico,
-
-    formaPgto: resolveFormaPgto(),
-
-    // BPe / QR
-    chaveBPe: venda?.ChaveBPe || '',
-    urlQrBPe: venda?.UrlQrCodeBPe || 'https://bpe.fazenda.mg.gov.br/portalbpe/sistema/qrcode.xhtml',
-
-    // Emissão
-    emissaoISO: root?.emissaoISO || new Date().toISOString()
+  // números para "R$ x,xx"
+  const fmtMoney = v => {
+    const n = Number(String(v).replace(',', '.'));
+    if (!isFinite(n)) return 'R$ 0,00';
+    return n.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
   };
 
-  // URL usada no QR e impressa no texto (idêntica)
-  ticket.qrUrl = ticket.chaveBPe
-    ? `${ticket.urlQrBPe}?chBPe=${ticket.chaveBPe}&tpAmb=1`
-    : ticket.urlQrBPe;
+  const ticket = {
+    // Empresa
+    empresa: venda.Empresa || root.empresa || 'TURIN TRANSPORTES LTDA',
+    cnpjEmpresa: venda.CNPJ || root.cnpj || '03308232000108',
+    ie: venda.IE || root.ie || '4610699670002',
+    im: venda.IM || root.im || '1062553',
+    enderecoEmpresa: venda.Endereco || root.endereco || 'Avenida Presidente Juscelino Kubitschek, 890',
+    bairroEmpresa: venda.Bairro || '',
+    cidadeEmpresa: venda.Cidade || root.cidade || 'Ouro Preto - MG',
+    telefoneEmpresa: venda.Telefone || root.telefone || '3135511650',
+
+    // Viagem
+    horaPartida: venda.Hora || root.horaPartida || '',
+    classe: venda.Classe || root.classe || '',
+    origem: venda.Origem || root.origem || '',
+    destino: venda.Destino || root.destino || '',
+    nomeLinha: venda.NomeLinha || root.nomeLinha || '',
+    dataViagem: venda.DataViagem || root.dataViagem || '',
+    codigoLinha: venda.Prefixo || root.codigoLinha || '',
+    numPassagem: venda.Bilhete || root.numPassagem || '',
+    serie: venda.Serie || root.serie || '',
+    poltrona: venda.Poltrona || root.poltrona || '',
+
+    // Passageiro
+    nomeCliente: venda.Passageiro || root.nomeCliente || '',
+    documento: venda.Documento || root.documento || '',
+
+    // Valores
+    tarifa: fmtMoney(venda.Tarifa ?? root.tarifa ?? 0),
+    taxaEmbarque: fmtMoney(venda.TaxaEmbarque ?? root.taxaEmbarque ?? 0),
+    outros: fmtMoney(venda.Outros ?? root.outros ?? 0),
+    valorTotalFmt: fmtMoney(venda.ValorPago ?? root.valorTotal ?? mp.transaction_amount ?? 0),
+    formaPagamento: resolveFormaPgto(),
+
+    // BPe / QR
+    chaveBPe: venda.ChaveBPe || root.chaveBPe || '',
+    urlQrBPe: venda.UrlQrCodeBPe || root.urlQrBPe || 'https://bpe.fazenda.mg.gov.br/portalbpe/sistema/qrcode.xhtml',
+    urlConsultaAcesso: 'https://bpe.fazenda.mg.gov.br/bpe/services/BPeConsultaDFe',
+    qrUrl: venda.UrlQrCodeBPe || root.qrUrl || '',
+
+    // Emissão
+    emissaoISO: root.emissaoISO || new Date().toISOString()
+  };
 
   return ticket;
 };
