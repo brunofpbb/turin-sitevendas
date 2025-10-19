@@ -850,3 +850,67 @@ footer { text-align: center; flex: 0 0 auto; }
 /* De quebra: evita quebra feia do copia-e-cola em telas menores */
 #pix-box .pix-row{ flex-wrap: wrap; }
 #pix-code{ min-width: 260px; }
+
+
+
+
+
+
+
+
+
+
+
+
+/* ===== MOBILE TUNING (<=768px) ===== */
+@media (max-width: 768px) {
+  :root { font-size: 16px; }           /* aumenta base de texto */
+  body { font-size: 16px; }
+
+  /* reduzir “respiro” vertical */
+  main { 
+    max-width: 100%;
+    margin: 8px;                       /* antes 2rem */
+    padding: 12px;                     /* antes 2rem */
+    box-shadow: none;
+    border-radius: 8px;
+  }
+
+  /* título da seção de resultados */
+  #schedule-title, .schedule-title, main h2 {
+    margin: 8px 0 !important;          /* corta o espaço acima/abaixo */
+    font-size: 1.1rem;
+  }
+
+  /* lista de cards: menos espaço entre eles */
+  #schedule-list, #bus-list, .bus-list {
+    gap: 10px !important;              /* antes 16px */
+    margin-top: 8px !important;        /* evita vão grande entre form e lista */
+  }
+
+  /* card ocupa mais a tela e com menos “almofada” */
+  .schedule-card, .bus-item {
+    padding: 12px 14px;
+    border-radius: 10px;
+    grid-template-columns: 1fr auto;   /* info | botão (mantém) */
+  }
+
+  /* textos dos cards maiores e em coluna */
+  .schedule-header,
+  .schedule-body {
+    font-size: 16px;                   /* +legível no mobile */
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  /* destaque um pouco maior no preço */
+  .schedule-header b { font-size: 1.05rem; }
+
+  /* botão ocupa a largura quando necessário */
+  .schedule-actions { width: 100%; justify-content: flex-end; }
+  .select-btn { width: 100%; min-width: 0; }
+}
+
+/* ajuste fino em qualquer largura: roda-pé central e perto da base */
+footer { text-align: center; }
