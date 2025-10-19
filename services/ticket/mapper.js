@@ -1,41 +1,34 @@
-// services/ticket/mapper.js — rev7 (robusto p/ diferentes formatos)
+// services/ticket/mapper.js — rev8 (QR com chBPe & tpAmb)
 
 function mapVendaToTicket(root = {}) {
-  // --- escolher a "venda" certa (tenta em várias estruturas) ---
+  // ————— descobre a venda certa (aceita vários formatos) —————
   const candidates = [];
   if (root?.venda?.ListaPassagem?.[0]) candidates.push(root.venda.ListaPassagem[0]);
   if (root?.ListaPassagem?.[0])        candidates.push(root.ListaPassagem[0]);
   if (root?.venda)                     candidates.push(root.venda);
   if (root?.bpe)                       candidates.push(root.bpe);
-  // por último, o próprio root pode ser a venda
   candidates.push(root);
-
   const venda = candidates.find(v =>
-    v && (
-      v.Origem || v.Destino || v.NomeLinha || v.CodigoLinha ||
-      v.NumPassagem || v.DadosEstabelecimento || v.NomeAgencia
-    )
+    v && (v.Origem || v.Destino || v.NomeLinha || v.CodigoLinha || v.NumPassagem || v.DadosEstabelecimento || v.NomeAgencia)
   ) || {};
 
   const mp = root.mp || {};
   const pg = root.pg || venda.Pagamento || {};
 
-  // ---- helpers ----
+  // ————— helpers —————
   const fmtMoney = v => {
-    const n = Number(String(v ?? 0).toString().replace(',', '.'));
+    const n = Number(String(v ?? 0).replace(',', '.'));
     if (!isFinite(n)) return 'R$ 0,00';
     return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
-  const pad = n => String(n).padStart(2, '0');
-
+  const pad = n => String(n).padStart(2,'0');
   const fmtHora = h => {
     const s = String(h ?? '');
-    if (s.length === 4 && /^\d{4}$/.test(s)) return `${s.slice(0,2)}:${s.slice(2)}`;
+    if (/^\d{4}$/.test(s)) return `${s.slice(0,2)}:${s.slice(2)}`;
+    if (/^\d{3}$/.test(s))  return `${pad(s[0])}:${s.slice(1)}`;
     if (/^\d{2}:\d{2}$/.test(s)) return s;
-    if (s.length === 3 && /^\d{3}$/.test(s)) return `${pad(s[0])}:${s.slice(1)}`;
     return s || '—';
   };
-
   const fmtData = d => {
     const s = String(d ?? '');
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
@@ -44,31 +37,33 @@ function mapVendaToTicket(root = {}) {
     }
     return s || '—';
   };
-
   function resolveFormaPgto() {
-    // Mercado Pago
     const ptype = String(mp.payment_type_id || '').toLowerCase();
     const pmeth = String(mp.payment_method_id || '').toLowerCase();
-    if (ptype === 'credit_card' ||
-        ['visa','master','elo','amex','hipercard','diners'].some(b => pmeth.includes(b)))
-      return 'Cartão de Crédito';
+    if (ptype === 'credit_card' || ['visa','master','elo','amex','hipercard','diners'].some(b => pmeth.includes(b))) return 'Cartão de Crédito';
     if (pmeth === 'pix' || ptype === 'bank_transfer') return 'Pix';
-
-    // Praxio
     if (typeof venda?.FormaPgto === 'string' && venda.FormaPgto.trim()) return venda.FormaPgto;
     if (pg) {
-      if (Number(pg.TipoCartao) !== 0 && pg.TipoCartao != null) return 'Cartão de Crédito';
+      if (pg.TipoCartao != null && Number(pg.TipoCartao) !== 0) return 'Cartão de Crédito';
       if (String(pg.TipoPagamento) === '0') return 'Dinheiro';
     }
     return '—';
   }
 
-  // Empresa (usa DadosEstabelecimento quando existir)
+  // ————— empresa —————
   const est = venda.DadosEstabelecimento || {};
+  const empresa = venda.NomeAgencia || venda.Empresa || est.RazaoSocial || 'TURIN TRANSPORTES LTDA';
+
+  // ————— chBPe / tpAmb / URL do QR —————
+  const chaveBPe = venda.ChaveBPe || venda.Chave || venda.ChaveAcesso || root.chaveBPe || '';
+  const baseQr = venda.UrlQrCodeBPe || root.urlQrBPe || 'https://bpe.fazenda.mg.gov.br/portalbpe/sistema/qrcode.xhtml';
+  // tpAmb: 1 produção, 2 homologação
+  const tpAmb = (est.AmbienteProducao === false || String(est.AmbienteProducao) === 'false') ? 2 : 1;
+  const qrUrlFull = chaveBPe ? `${baseQr}?chBPe=${encodeURIComponent(chaveBPe)}&tpAmb=${tpAmb}` : baseQr;
 
   const ticket = {
     // Empresa
-    empresa: venda.NomeAgencia || venda.Empresa || est.RazaoSocial || 'TURIN TRANSPORTES LTDA',
+    empresa,
     cnpjEmpresa: venda.CNPJPrincipal || est.Cnpj || '03308232000108',
     ie: venda.IEstadual || est.IEstadual || '4610699670002',
     im: venda.IMunicipal || est.IMunicipal || '1062553',
@@ -78,7 +73,7 @@ function mapVendaToTicket(root = {}) {
                     (est.NomeCidade ? `${est.NomeCidade} - ${est.Uf || 'MG'}` : 'Ouro Preto - MG')),
     telefoneEmpresa: venda.Telefone || est.Telefone || '3135511650',
 
-    // Viagem / bilhete
+    // Viagem
     horaPartida: fmtHora(venda.HoraPartida ?? venda.Hora ?? root.horaPartida),
     classe: venda.TipoCarro || venda.DescServico || '—',
     origem: venda.Origem || root.origem || '—',
@@ -102,13 +97,17 @@ function mapVendaToTicket(root = {}) {
     formaPagamento: resolveFormaPgto(),
 
     // BPe / QR
-    chaveBPe: venda.ChaveBPe || venda.Chave || venda.ChaveAcesso || root.chaveBPe || '',
-    urlQrBPe: venda.UrlQrCodeBPe || root.urlQrBPe || 'https://bpe.fazenda.mg.gov.br/portalbpe/sistema/qrcode.xhtml',
+    chaveBPe,
+    urlQrBPe: baseQr,                 // base (sem params) — só se precisar
     urlConsultaAcesso: 'https://bpe.fazenda.mg.gov.br/bpe/services/BPeConsultaDFe',
-    qrUrl: venda.UrlQrCodeBPe || root.qrUrl || '',
+    qrUrl: qrUrlFull,                 // ← usar ESTE para gerar o QR
+    tpAmb,
 
     // Emissão
-    emissaoISO: root.emissaoISO || new Date().toISOString()
+    emissaoISO: root.emissaoISO || new Date().toISOString(),
+
+    // Preferência visual opcional (se quiser centralizar tudo no cabeçalho)
+    headerCentered: !!root.headerCentered
   };
 
   return ticket;
