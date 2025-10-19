@@ -263,7 +263,7 @@ footer{
   display:flex;
   flex-direction:column;
   gap:10px;
-  min-height: 420px;           /* ajuste fino conforme sua altura do card */
+  min-height: 200px;           /* ajuste fino conforme sua altura do card */
 }
 .search-actions{
   margin-top:auto;             /* empurra ações para o rodapé do card */
