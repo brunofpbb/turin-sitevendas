@@ -1,28 +1,52 @@
-<main class="two-cols">
-  <!-- CARD LATERAL -->
-  <aside>
-    <form id="search-form" class="search-form">
-      <label for="origin">Origem</label>
-      <input id="origin" type="text" placeholder="Cidade de origem" autocomplete="off" />
-      <div id="ac-origin" class="ac-panel" hidden></div>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>Turin Transportes – Venda de Passagens</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Sem type="module" para evitar problemas de import -->
+  <script src="seats.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Turin Transportes – Venda de Passagens</h1>
+    <nav id="user-nav"></nav>
+  </header>
 
-      <label for="destination">Destino</label>
-      <input id="destination" type="text" placeholder="Cidade de destino" autocomplete="off" />
-      <div id="ac-destination" class="ac-panel" hidden></div>
+  <!-- LAYOUT PRINCIPAL: COLUNA LATERAL (form) + CONTEÚDO (resultados) -->
+  <main class="two-cols">
+    
+    <!-- CARD LATERAL -->
+    <aside>
+      <form id="search-form" class="search-form">
+        <label for="origin">Origem</label>
+        <input id="origin" type="text" placeholder="Cidade de origem" autocomplete="off" />
+        <div id="ac-origin" class="ac-panel" hidden></div>
 
-      <label for="date">Data da ida</label>
-      <input id="date" type="date" />
+        <label for="destination">Destino</label>
+        <input id="destination" type="text" placeholder="Cidade de destino" autocomplete="off" />
+        <div id="ac-destination" class="ac-panel" hidden></div>
 
-      <label for="return-date">Data da volta (opcional)</label>
-      <input id="return-date" type="date" />
+        <label for="date">Data da ida</label>
+        <input id="date" type="date" />
 
-      <div class="search-actions">
-        <button type="submit" class="btn btn-primary">Pesquisar</button>
-        <a class="btn btn-ghost" href="https://turintransportes.com" target="_self" rel="noopener">Sair</a>
-      </div>
-    </form>
-  </aside>
+        <label for="return-date">Data da volta (opcional)</label>
+        <input id="return-date" type="date" />
 
-  <!-- CARD CENTRAL -->
-  <section class="content-card" id="content-root"></section>
-</main>
+        <div class="search-actions">
+          <button type="submit" class="btn btn-primary">Pesquisar</button>
+          <a class="btn btn-ghost" href="https://turintransportes.com" target="_self" rel="noopener">Sair</a>
+        </div>
+      </form>
+    </aside>
+
+    <!-- CARD CENTRAL (resultados de pesquisa / viagens) -->
+    <section class="content-card" id="content-root"></section>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Turin Transportes</p>
+  </footer>
+</body>
+</html>
