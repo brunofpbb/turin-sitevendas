@@ -1,51 +1,28 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-  <meta charset="UTF-8" />
-  <title>Turin Transportes – Venda de Passagens</title>
-  <link rel="stylesheet" href="style.css" />
-  <!-- Sem type="module" para evitar problemas de import -->
-  <script src="seats.js" defer></script>
-  <script src="main.js" defer></script>
-</head>
-<body>
-  <header>
-    <h1>Turin Transportes – Venda de Passagens</h1>
-    <nav id="user-nav"></nav>
-  </header>
+<main class="two-cols">
+  <!-- CARD LATERAL -->
+  <aside>
+    <form id="search-form" class="search-form">
+      <label for="origin">Origem</label>
+      <input id="origin" type="text" placeholder="Cidade de origem" autocomplete="off" />
+      <div id="ac-origin" class="ac-panel" hidden></div>
 
-  <!-- SOMENTE 2 CARDS: lateral fixo + central dinâmico -->
-  <main class="two-cols">
-    <!-- CARD LATERAL (sempre visível, colado à esquerda) -->
-<form id="search-form" class="search-form">
-  <label for="origin">Origem</label>
-  <input id="origin" type="text" placeholder="Cidade de origem" autocomplete="off" />
-  <div id="ac-origin" class="ac-panel" hidden></div>
+      <label for="destination">Destino</label>
+      <input id="destination" type="text" placeholder="Cidade de destino" autocomplete="off" />
+      <div id="ac-destination" class="ac-panel" hidden></div>
 
-  <label for="destination">Destino</label>
-  <input id="destination" type="text" placeholder="Cidade de destino" autocomplete="off" />
-  <div id="ac-destination" class="ac-panel" hidden></div>
+      <label for="date">Data da ida</label>
+      <input id="date" type="date" />
 
-  <label for="date">Data da ida</label>
-  <input id="date" type="date" />
+      <label for="return-date">Data da volta (opcional)</label>
+      <input id="return-date" type="date" />
 
-  <label for="return-date">Data da volta (opcional)</label>
-  <input id="return-date" type="date" />
+      <div class="search-actions">
+        <button type="submit" class="btn btn-primary">Pesquisar</button>
+        <a class="btn btn-ghost" href="https://turintransportes.com" target="_self" rel="noopener">Sair</a>
+      </div>
+    </form>
+  </aside>
 
-  <div class="search-actions">
-    <button type="submit" class="btn btn-primary">Pesquisar</button>
-    <a class="btn btn-ghost" href="https://turintransportes.com" target="_self" rel="noopener">Sair</a>
-  </div>
-</form>
-
-    </aside>
-
-    <!-- CARD CENTRAL (inicia completamente vazio) -->
-    <section class="content-card" id="content-root"></section>
-  </main>
-
-  <footer>
-    <p>&copy; 2025 Turin Transportes</p>
-  </footer>
-</body>
-</html>
+  <!-- CARD CENTRAL -->
+  <section class="content-card" id="content-root"></section>
+</main>
