@@ -59,7 +59,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (st === 'approved') {
           clearInterval(pixPollTimer);
-          setPixStatus('Pagamento aprovado! Emitindo bilhete…');
+         // setPixStatus('Pagamento aprovado! Emitindo bilhete…');
+          showIssuanceOverlay('Emitindo bilhete, por favor aguarde!');
+
           try {
             const venda = await venderPraxioApósAprovado(paymentId);
             if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
@@ -351,7 +353,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // === CARTÃO APROVADO ===
             if (data.status === 'approved') {
-              alert('Pagamento aprovado!');
+              // alert('Pagamento aprovado!');
+              showIssuanceOverlay('Emitindo bilhete, por favor aguarde!');
+
               const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
               if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
                 const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
