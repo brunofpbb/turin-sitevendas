@@ -127,7 +127,80 @@ exports.generateTicketPdf = async (t, outDir) => {
 })();
 
   
-  
+  (function renderEmpresa() {
+  // tenta /img e /sitevendas/img
+  const logoCandidates = [
+    path.join(__dirname, '..', '..', 'img', 'Logo Nova ISO2.jpg'),
+    path.join(__dirname, '..', '..', 'sitevendas', 'img', 'Logo Nova ISO2.jpg'),
+  ];
+  const logoPath = logoCandidates.find(p => { try { return fs.existsSync(p); } catch { return false; } });
+
+  // preferências
+  const wantGroupedCentered = t.headerCentered === true; // centralizar "logo + textos" como um grupo
+  const startY = doc.y;
+  const imgW = logoPath ? 90 : 0;
+  const gap  = logoPath ? 10 : 0;
+
+  // 1) medimos a largura necessária do bloco de textos
+  const title = String(t.empresa || 'TURIN TRANSPORTES LTDA');
+  const l1 = [
+    t.cnpjEmpresa ? `CNPJ: ${t.cnpjEmpresa}` : null,
+    t.ie          ? `IE.: ${t.ie}`           : null,
+    t.im          ? `IM.: ${t.im}`           : null,
+  ].filter(Boolean).join('    ');
+  const l2 = [t.enderecoEmpresa, t.bairroEmpresa ? `- ${t.bairroEmpresa}` : null].filter(Boolean).join(' ');
+  const l3 = [
+    t.cidadeEmpresa || null,
+    t.telefoneEmpresa ? `Telefone: ${t.telefoneEmpresa}` : null,
+  ].filter(Boolean).join(' - ');
+
+  // medir com as fontes corretas
+  doc.font('Helvetica-Bold').fontSize(11);
+  const wTitle = doc.widthOfString(title || '');
+
+  doc.font('Helvetica').fontSize(9);
+  const wL1 = doc.widthOfString(l1 || '');
+  const wL2 = doc.widthOfString(l2 || '');
+  const wL3 = doc.widthOfString(l3 || '');
+
+  const textW = Math.max(wTitle, wL1, wL2, wL3, 180); // mínimo razoável p/ evitar quebra
+  const groupW = imgW + gap + textW;
+
+  // 2) decide posicionamento
+  let xLogo, xText, textWidth;
+  if (logoPath && wantGroupedCentered) {
+    const xStart = left() + (pageW() - groupW) / 2;
+    xLogo = xStart;
+    xText = xStart + imgW + gap;
+    textWidth = textW;
+  } else if (logoPath) {
+    // tabulado à esquerda (logo esq., texto à direita)
+    xLogo = left();
+    xText = left() + imgW + gap;
+    textWidth = pageW() - imgW - gap;
+  } else {
+    // sem logo — tudo centralizado padrão
+    xLogo = null;
+    xText = left();
+    textWidth = pageW();
+  }
+
+  // 3) desenhar
+  if (xLogo != null) doc.image(logoPath, xLogo, startY, { width: imgW });
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
+     .text(title || '', xText, startY, { width: textWidth, align: (logoPath ? 'left' : 'center') });
+
+  doc.font('Helvetica').fontSize(9).fillColor('#000');
+  if (l1) doc.text(l1, xText, doc.y, { width: textWidth, align: (logoPath ? 'left' : 'center') });
+  if (l2) doc.text(l2, xText, doc.y, { width: textWidth, align: (logoPath ? 'left' : 'center') });
+  if (l3) doc.text(l3, xText, doc.y, { width: textWidth, align: (logoPath ? 'left' : 'center') });
+
+  const afterY = Math.max(startY + 52, doc.y);
+  HR(afterY);
+  doc.y = afterY + 8;
+})();
+
   
   
   
