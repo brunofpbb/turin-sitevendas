@@ -139,7 +139,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   const wantGroupedCentered = t.headerCentered === true; // centralizar "logo + textos" como um grupo
   const startY = doc.y;
   const imgW = logoPath ? 90 : 0;
-  const gap  = logoPath ? 10 : 0;
+  const gap  = logoPath ? 30 : 0; // era 10
 
   // 1) medimos a largura necessária do bloco de textos
   const title = String(t.empresa || 'TURIN TRANSPORTES LTDA');
