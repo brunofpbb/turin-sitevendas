@@ -381,6 +381,43 @@ doc.font('Helvetica').fontSize(9).fillColor('#000')
   doc.font('Helvetica').fontSize(10).fillColor('#000')
      .text('Protocolo de autorização: EMITIDO EM CONTINGÊNCIA', left(), doc.y, { width: pageW(), align:'center' });
 
+
+  
+
+// ── separador abaixo do protocolo
+const yInfoSep = doc.y + 8;
+HR(yInfoSep);
+doc.y = yInfoSep + 10;
+
+// ── Informações importantes (tudo centralizado)
+doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
+   .text('Informações importantes:', left(), doc.y, { width: pageW(), align:'center' });
+
+// 1ª linha do parágrafo (normal)
+doc.moveDown(0.3);
+const policy1 = 'Política de Cancelamento: Em Minas Gerais, para os usuários do transporte intermunicipal vale o que determinam a Lei estadual 13.655, de 2000, e o Decreto 44.603, de 2007, que estipulam o prazo de até';
+doc.font('Helvetica').fontSize(9).fillColor('#000')
+   .text(policy1, left(), doc.y, { width: pageW(), align:'center' });
+
+// trecho em negrito (pedido)
+doc.font('Helvetica-Bold').fontSize(9)
+   .text('12 horas antes do embarque', left(), doc.y, { width: pageW(), align:'center' });
+
+// 3ª linha do parágrafo (normal)
+const policy3 = 'para que o passageiro cancele e tenha direito ao reembolso ou remarque sua passagem.';
+doc.font('Helvetica').fontSize(9)
+   .text(policy3, left(), doc.y, { width: pageW(), align:'center' });
+
+// suporte
+doc.moveDown(0.6);
+doc.font('Helvetica-Bold').fontSize(10)
+   .text('Suporte via WhatsApp (31) 3551-1650', left(), doc.y, { width: pageW(), align:'center' });
+
+
+
+
+
+  
   doc.end();
   await new Promise(r => stream.on('finish', r));
   return { path: outPath, filename: baseName };
