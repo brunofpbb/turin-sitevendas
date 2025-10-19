@@ -12,7 +12,7 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
   margin: 24px 24px 24px px;
   padding: 24px;                 /* sem respiro */
   display: grid;
-  grid-template-columns: 200px minmax(780px, 1050px) 1fr;
+  grid-template-columns: 340px minmax(400px, 1050px) 1fr;
   gap: 26px;
   align-items: start;
 }
