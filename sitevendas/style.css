@@ -258,16 +258,8 @@ footer{
 /* Se quiser tudo centralizado (texto também), descomente as duas linhas abaixo */
  .calc-left, .calc-right{ text-align: center; }
 
-/* === Card fixo (form) em coluna, botões no rodapé === 
-.search-form{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  min-height: 200px;           /* ajuste fino conforme sua altura do card */
-}
 
 
-*/
 
 
 
@@ -280,7 +272,7 @@ footer{
   display:flex;
   flex-direction:column;
   gap:10px;
-  min-height:200px;     /* ajuste se quiser mais/menos alto */
+  min-height:400px;     /* ajuste se quiser mais/menos alto */
 }
 
 
