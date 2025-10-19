@@ -202,18 +202,17 @@ exports.generateTicketPdf = async (t, outDir) => {
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
      .text('Consulta via chave de acesso', left(), doc.y, { width: pageW(), align:'center' });
 
-  // 2) URL oficial
-  doc.moveDown(0.3);
-  doc.font('Helvetica').fontSize(10).fillColor('#000')
-     .text(t.urlConsultaAcesso || 'https://bpe.fazenda.mg.gov.br/bpe/services/BPeConsultaDFe',
-       left(), doc.y, { width: pageW(), align:'center' });
+// 2) URL oficial
+doc.moveDown(0.3);
+doc.font('Helvetica').fontSize(10).fillColor('#000')
+   .text(t.urlConsultaAcesso || 'https://bpe.fazenda.mg.gov.br/bpe/services/BPeConsultaDFe',
+     left(), doc.y, { width: pageW(), align:'center' });
 
-  // 3) Chave logo abaixo da URL
-  if (t.chaveBPe) {
-    doc.moveDown(0.2);
-    doc.font('Helvetica').fontSize(9).fillColor('#000')
-       .text(t.chaveBPe, left(), doc.y, { width: pageW(), align:'center' });
-  }
+// 3) Chave logo abaixo da URL (sempre reserva a linha)
+doc.moveDown(0.2);
+doc.font('Helvetica').fontSize(9).fillColor('#000')
+   .text(t.chaveBPe ? t.chaveBPe : ' ', left(), doc.y, { width: pageW(), align:'center' });
+
 
   // 4) Título do QR
   doc.moveDown(0.9);
