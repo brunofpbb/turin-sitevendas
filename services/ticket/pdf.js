@@ -61,7 +61,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   // ===== Empresa (logo + textos)
   
   
-  
+  /*
   (function renderEmpresa() {
   // tenta /img e /sitevendas/img
   const logoCandidates = [
@@ -125,7 +125,7 @@ exports.generateTicketPdf = async (t, outDir) => {
     HR(doc.y); doc.y += 8;
   }
 })();
-
+*/
   
   (function renderEmpresa() {
   // tenta /img e /sitevendas/img
