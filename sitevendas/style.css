@@ -985,3 +985,33 @@ footer { text-align: center; }
 
 /* Rodapé sempre centralizado */
 footer { text-align: center; }
+
+
+
+
+
+
+
+/* ======== LAYOUT RESPONSIVO ======== */
+@media (max-width: 768px) {
+  .two-cols {
+    display: flex;
+    flex-direction: column;   /* empilha: form em cima, conteúdo embaixo */
+    gap: 1rem;
+  }
+
+  aside, .content-card {
+    width: 100%;
+    margin: 0;
+    padding: 1rem;
+    box-shadow: none;
+    border-radius: 8px;
+  }
+
+  /* Quando não há resultados, remove espaço extra */
+  .content-card:empty {
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
