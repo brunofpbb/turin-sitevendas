@@ -1040,23 +1040,7 @@ footer { text-align: center; }
 
 // logo branca
 
-.site-header{
-  background:#0a5a2e; /* seu verde do topo */
-  color:#fff;
-}
-.site-header .site-header-inner{
-  display:flex; align-items:center; gap:16px;
-  max-width:1200px; margin:0 auto; padding:10px 16px;
-}
-.site-header .brand-logo{
-  height:52px; /* ajuste aqui: 48–64px */
-  width:auto; display:block;
-}
-.site-header h1{
-  margin:0; font-size:1.6rem; font-weight:700;
-}
-
-/* ===== Header com logo à esquerda, título central e user-nav abaixo ===== */
+/* Header com logo à esquerda, título central e user-nav abaixo */
 .site-header{ background:#0a5a2e; color:#fff; }
 .site-header .site-header-grid{
   max-width:1200px; margin:0 auto; padding:12px 16px;
@@ -1074,3 +1058,4 @@ footer { text-align: center; }
   .brand-logo{ height:44px; }
   .site-title h1{ font-size:1.35rem; }
 }
+
