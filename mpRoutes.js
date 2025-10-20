@@ -1,4 +1,4 @@
-// mpRoutes.js — Mercado Pago (SDK v2) com Payments API
+// mpRoutes.js — Mercado Pago (SDK v2) com Payments API (sem preferência)
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
@@ -14,12 +14,9 @@ if (!ACCESS_TOKEN) {
 
 // Instância global do SDK
 const mp = new MercadoPagoConfig({ accessToken: ACCESS_TOKEN });
-const payments = new Payment(mp);
+const payments = new Payment(mp); // <— AGORA definido aqui para usar em todos os handlers
 
 const onlyDigits = (v) => String(v ?? '').replace(/\D/g, '');
-const sanitizeExtRef = (v) => String(v ?? '')
-  .replace(/[^A-Za-z0-9_-]/g, '')  // só letras, números, -, _
-  .slice(0, 64);                   // máx 64
 
 router.get('/pubkey', (_req, res) => {
   res.json({ publicKey: PUBLIC_KEY || '' });
@@ -33,19 +30,12 @@ router.get('/_diag', (_req, res) => {
   });
 });
 
-/**
- * Cria pagamento (cartão/pix) usando MP SDK v2.
- * - Usa X-Idempotency-Key do header OU gera UUID.
- * - Garante external_reference no body (mesmo valor da idempotency by default).
- * - Devolve idempotency_key e external_reference para o front.
- */
 router.post('/pay', async (req, res) => {
+  const startedAt = Date.now();
   try {
-    if (!ACCESS_TOKEN) {
-      return res.status(500).json({ error: true, message: 'MP_ACCESS_TOKEN não configurado.' });
-    }
+    if (!ACCESS_TOKEN) return res.status(500).json({ error: true, message: 'MP_ACCESS_TOKEN não configurado.' });
 
-    // aceita camel/snake do Brick
+    // aceita camel/snake
     const paymentMethodId   = req.body.paymentMethodId ?? req.body.payment_method_id;
     const transactionAmount = Number(req.body.transactionAmount ?? req.body.transaction_amount ?? 0);
     const token             = req.body.token;
@@ -53,14 +43,6 @@ router.post('/pay', async (req, res) => {
     const issuerId          = req.body.issuerId ?? req.body.issuer_id;
     const description       = req.body.description || 'Compra Turin Transportes';
     const payerIn           = req.body.payer || {};
-    const extRefIn          = req.body.external_reference;
-
-    // idempotency key: header > body.external_reference > uuid
-    const headerIdem = req.headers['x-idempotency-key'];
-    const idempotencyKey = sanitizeExtRef(headerIdem) || sanitizeExtRef(extRefIn) || uuidv4();
-
-    // external_reference seguro (aproveita a mesma chave, bom para correlação)
-    const external_reference = sanitizeExtRef(extRefIn || idempotencyKey);
 
     if (payerIn?.identification?.number) {
       payerIn.identification.number = onlyDigits(payerIn.identification.number);
@@ -69,12 +51,13 @@ router.post('/pay', async (req, res) => {
       return res.status(400).json({ error: true, message: 'Valor inválido.' });
     }
 
+    const idempotencyKey = uuidv4();
+
     const base = {
       transaction_amount: transactionAmount,
       description,
-      external_reference,                 // <<< importante
       payer: {
-        email: /*payerIn.email*/ 'teste@teste.com' || '',                                                 // respeita email do front
+        email: "teste@teste.com"/*payerIn.email*/ || '',
         identification: payerIn?.identification?.number
           ? { type: payerIn.identification.type || 'CPF', number: payerIn.identification.number }
           : undefined
@@ -83,39 +66,29 @@ router.post('/pay', async (req, res) => {
 
     let body;
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
-      if (!base.payer?.email) {
-        return res.status(400).json({ error: true, message: 'E-mail obrigatório para Pix.' });
-      }
+      if (!base.payer?.email) return res.status(400).json({ error: true, message: 'E-mail obrigatório para Pix.' });
       body = { ...base, payment_method_id: 'pix' };
     } else {
-      if (!token) {
-        return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
-      }
+      if (!token) return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });
       body = {
         ...base,
         token,
-        installments: installments || 1,
+        installments,
         capture: true,
-        // mantém info do método emissor quando vier do Brick
-        payment_method_id: paymentMethodId,
-        issuer_id: issuerId
+        // opcional: manter o método emissor caso venha do Brick:
+        // payment_method_id: req.body.payment_method_id || paymentMethodId,
+        // issuer_id: issuerId
       };
     }
 
-    const mpResp = await payments.create({
-      body,
-      requestOptions: { idempotencyKey } // <<< envia ao MP
-    });
+    const mpResp = await payments.create({ body, requestOptions: { idempotencyKey } });
 
-    // devolve também a correlação
     return res.json({
       id: mpResp?.id,
       status: mpResp?.status,
       status_detail: mpResp?.status_detail,
       point_of_interaction: mpResp?.point_of_interaction,
-      transaction_details: mpResp?.transaction_details,
-      idempotency_key: idempotencyKey,
-      external_reference
+      transaction_details: mpResp?.transaction_details
     });
 
   } catch (err) {
