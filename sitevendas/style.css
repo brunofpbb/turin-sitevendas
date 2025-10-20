@@ -1073,7 +1073,7 @@ footer { text-align: center; }
 /* Container central com altura controlada */
 .site-header-inner{
   position:relative;
-  max-width:500px;
+  max-width:1600px;
   margin:0 auto;
   padding:8px 16px;         /* menos padding para não "crescer" */
   min-height:72px;          /* altura estável da barra */
