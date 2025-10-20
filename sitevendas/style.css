@@ -1054,7 +1054,7 @@ footer { text-align: center; }
 .site-header .site-header-grid{
   width:100%;               /* ocupa toda a faixa verde */
   margin:0;                 /* nada de centralizar o container */
-  padding:12px 16px;        /* margem interna */
+  padding:0px 40px;        /* margem interna */
   display:grid;
   grid-template-columns:auto 1fr auto;
   align-items:center;
