@@ -340,7 +340,7 @@ function hideOverlayIfShown() {
           bankTransfer: ['pix'],
           minInstallments: 1, maxInstallments: 1
         },
-        visual: { showInstallmentsSelector: false }
+        visual: { showInstallmentsSelector: true }
       },
       callbacks: {
         onReady: () => console.log('[MP] Brick pronto'),
