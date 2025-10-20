@@ -37,8 +37,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let pixPollTimer = null;
 
   async function fetchPaymentStatus(paymentId) {
-    const r = await fetch(`/api/mp/payments/${paymentId}`);
-    if (!r.ok) throw new Error('Falha ao consultar status do pagamento');
+    // tenta /payment-status?id=... e /payment/:id (use o que seu backend expõe)
+    let r = await fetch(`/api/mp/payment-status?id=${paymentId}`).catch(()=>null);
+    if (!r || !r.ok) r = await fetch(`/api/mp/payment/${paymentId}`).catch(()=>null);
+    if (!r || !r.ok) throw new Error('Falha ao consultar status do pagamento');
     return r.json();
   }
   function setPixStatus(msg) {
@@ -74,63 +76,114 @@ function showOverlayOnce(
   }
 }
 
+
+  
+
 function hideOverlayIfShown() {
   if (!overlayShown) return;
   overlayShown = false;
   if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
 }
 
-  // ====== storage / carrinho
-  function getOpenOrders() {
-    try {
-      return JSON.parse(localStorage.getItem('openOrders') || '[]') || [];
-    } catch { return []; }
-  }
-  function getPaidOrders() {
-    try {
-      return JSON.parse(localStorage.getItem('bookings') || '[]')?.filter(b => b.paid) || [];
-    } catch { return []; }
-  }
-  function setPaidOrders(list) {
-    localStorage.setItem('bookings', JSON.stringify(list || []));
-  }
-  function removeFromStorageByOpenIndex(openIdx) {
-    const all = JSON.parse(localStorage.getItem('bookings') || '[]') || [];
-    const paid = all.filter(b => b.paid === true);
-    const open = (all.filter(b => !b.paid) || []).filter((_,i) => i !== openIdx);
-    localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
+
+
+
+  
+function hideOverlayIfShown() {
+  if (!overlayShown) return;
+  overlayShown = false;
+  if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
+}
+
+
+
+  
+  async function startPixPolling(paymentId) {
+    clearInterval(pixPollTimer);
+    const t0 = Date.now();
+    setPixStatus('Aguardando pagamento…');
+
+    pixPollTimer = setInterval(async () => {
+      try {
+        const data = await fetchPaymentStatus(paymentId);
+        const st = String(data?.status || '').toLowerCase();
+        const detail = String(data?.status_detail || '').toLowerCase();
+
+        if (st === 'approved') {
+          clearInterval(pixPollTimer);
+          showOverlayOnce('Emitindo bilhete, por favor aguarde!');
+
+          try {
+            const venda = await venderPraxioApósAprovado(paymentId);
+            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+              const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+                .map(b => ({ ...b, paid: true }));
+              localStorage.setItem('bookings', JSON.stringify(bookings));
+              localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+              location.href = 'profile.html';
+              return;
+            }
+          } catch (e) {
+            console.error('Erro ao emitir bilhete após aprovação:', e);
+            hideOverlayIfShown();
+            alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+        }
+        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
+        } else {
+          setPixStatus('Aguardando pagamento…');
+        }
+
+        if (Date.now() - t0 > POLL_TIMEOUT_MS) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Tempo esgotado. Gere um novo Pix se necessário.');
+        }
+      } catch (e) {
+        console.warn('Falha no polling Pix:', e);
+        // continua tentando até timeout
+      }
+    }, POLL_MS);
   }
 
-  // ===== dados base
-  let order = getOpenOrders();
-  const firstTotal = (order || []).reduce((acc, it) => acc + Number(it.total || 0), 0);
-
-  // ===== helpers do pedido
-  function cartTotal() {
-    try { return order.reduce((acc, it) => acc + Number(it.total || 0), 0); } catch { return 0; }
+  // ——— carrinho
+  function readCart() {
+    const b = JSON.parse(localStorage.getItem('bookings') || '[]');
+    const open = b.filter(x => x.paid !== true);
+    if (open.length) return open;
+    const p = JSON.parse(localStorage.getItem('pendingPurchase') || 'null');
+    return p && Array.isArray(p.legs) ? p.legs : [];
   }
+  let order = readCart();
+
+  // ===== valores
+  const itemSubtotal = (it) => {
+    const s = it.schedule || {};
+    const unit = Number(String(s.price || 0).replace(',', '.')) || 0;
+    return unit * ((it.seats || []).length || 0);
+  };
+  const cartTotal = () => order.reduce((acc, it) => acc + itemSubtotal(it), 0);
+
+  // ===== helpers Praxio
   function getScheduleFromItem(it) {
-    const s = it && it.schedule;
-    if (!s) return null;
+    const s = it.schedule || {};
     return {
-      idViagem: s.idViagem || s.IdViagem || '',
-      horaPartida: s.horaPartida || s.HoraPartida || '',
-      origem: s.origem || s.Origem || '',
-      destino: s.destino || s.Destino || '',
-      data: s.data || s.Data || '',
-      agencia: s.agencia || s.Agencia || '93',
-      codigoLinha: s.codigoLinha || s.CodigoLinha || '',
-      nomeLinha: s.nomeLinha || s.NomeLinha || ''
+      idViagem: s.idViagem || s.IdViagem || s.id || s.Id || s.viagemId,
+      horaPartida: s.horaPartida || s.departureTime,
+      idOrigem: s.idOrigem || s.IdOrigem || s.originId || s.CodigoOrigem,
+      idDestino: s.idDestino || s.IdDestino || s.destinationId || s.CodigoDestino,
+      agencia: s.agencia || s.IdEstabelecimento || s.IdEstabelecimentoVenda || '93'
     };
   }
   function getPassengersFromItem(it) {
     const pax = [];
-    const seats = it?.seats || [];
-    if (Array.isArray(it?.passengers) && it.passengers.length) {
-      for (const p of it.passengers) {
+    const seats = Array.isArray(it.seats) ? it.seats : [];
+    const passengers = Array.isArray(it.passengers) ? it.passengers : [];
+    if (passengers.length) {
+      for (const p of passengers) {
         pax.push({
-          seatNumber: p.seatNumber || p.poltrona || '',
-          name: (p.name || p.nome || '').toString(),
+          seatNumber: p.seatNumber || p.poltrona || seats[0],
+          name: p.name || p.nome || '',
           document: (p.document || p.cpf || '').toString()
         });
       }
@@ -161,25 +214,40 @@ function hideOverlayIfShown() {
         serieBloco: '93'
       })
     });
-    if (!r.ok) throw new Error('Falha na emissão do bilhete');
-    return r.json();
+    const j = await r.json();
+    if (!j.ok) {
+      console.error('Venda Praxio falhou:', j);
+      alert('Pagamento aprovado, mas falhou ao emitir bilhete. Nosso suporte foi notificado.');
+      return null;
+    }
+    return j;
+  }
+
+  // ===== storage remove
+  function removeFromStorageByOpenIndex(openIdx) {
+    const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+    const paid = all.filter(b => b.paid === true);
+    const open = all.filter(b => b.paid !== true);
+    if (openIdx >= 0 && openIdx < open.length) open.splice(openIdx, 1);
+    localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
   }
 
   // ===== resumo
   function renderSummary() {
-    const total = cartTotal();
     const lines = [];
+    let total = 0;
 
     order.forEach((it, idx) => {
       const s = it.schedule || {};
-      const origem  = pick(s.origem, it.origem, '—');
-      const destino = pick(s.destino, it.destino, '—');
-      const dataV   = formatDateBR(pick(s.data, it.data, ''));
-      const hora    = pick(s.horaPartida, it.hora, it.saida, '—');
-      const seats   = (it.seats || []).join(', ');
-      const paxList = (it.passengers || []).map(p => (p.name || p.nome)).filter(Boolean);
+      const origem = pick(s.originName, s.origin, s.origem, '—');
+      const destino = pick(s.destinationName, s.destination, s.destino, '—');
+      const dataV = formatDateBR(s.date);
+      const hora = pick(s.departureTime, s.horaPartida, '—');
+      const seats = (it.seats || []).join(', ');
+      const paxList = Array.isArray(it.passengers) ? it.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
+      const sub = itemSubtotal(it);
+      total += sub;
 
-      const sub = Number(it.total || 0);
       lines.push(`
         <div class="order-item" data-open-index="${idx}">
           <button class="item-remove" title="Remover" aria-label="Remover">×</button>
@@ -211,36 +279,50 @@ function hideOverlayIfShown() {
           const openIdx = Number(wrap.getAttribute('data-open-index'));
           order.splice(openIdx, 1);
           removeFromStorageByOpenIndex(openIdx);
+          const newTotal = cartTotal();
           renderSummary();
-          awaitMountBricks(cartTotal());
+          await awaitMountBricks(newTotal);
         });
       });
     }
+    return total;
   }
 
-  // ===== PIX box
+  // ======= Bricks
+  let publicKey = '';
+  try {
+    const r = await fetch('/api/mp/pubkey');
+    const j = await r.json();
+    publicKey = j.publicKey || '';
+  } catch (e) { console.error('Erro /api/mp/pubkey', e); }
+  if (!publicKey) { alert('Chave pública do Mercado Pago não configurada.'); return; }
+
+  const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
+  const bricks = mp.bricks();
+
+  const brickContainerId =
+    document.getElementById('payment-bricks') ? 'payment-bricks' :
+    (document.getElementById('payment-brick-container') ? 'payment-brick-container' : null);
+
+  if (!brickContainerId) { console.error('Container do Bricks não encontrado.'); return; }
+
+  let brickController = null;
+  let currentTotal = 0;
+
+  // ——— exibição do PIX
   function showPixBox({ qr_b64, qr_text }) {
     if (!pixBox) return;
     pixBox.style.display = 'block';
-    if (pixQR) {
-      pixQR.innerHTML = '';
-      if (qr_b64) {
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${qr_b64}`;
-        img.alt = 'QR Code PIX';
-        img.width = 220;
-        pixQR.appendChild(img);
-      }
-    }
-    if (pixCode) {
-      pixCode.value = qr_text || '';
-      if (pixCopy) {
-        pixCopy.onclick = () => {
-          pixCode.select();
-          document.execCommand('copy');
-          alert('Código Pix copiado!');
-        };
-      }
+    pixQR.innerHTML = qr_b64 ? `<img src="data:image/png;base64,${qr_b64}" alt="QR Pix">` : '<p class="mute">QR não disponível.</p>';
+    pixCode.value = qr_text || '';
+    setPixStatus('Aguardando pagamento…');
+
+    if (pixCopy && qr_text) {
+      pixCopy.onclick = () => {
+        pixCode.select();
+        document.execCommand('copy');
+        alert('Código Pix copiado!');
+      };
     }
     pixBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -250,7 +332,7 @@ function hideOverlayIfShown() {
     currentTotal = Number((amount || 0).toFixed(2));
 
     brickController = await bricks.create('payment', brickContainerId, {
-      initialization: { amount: currentTotal, payer: { email: /*user.email*/ 'teste@teste.com' || '', entityType: 'individual' } },              //EMAIL TESTE
+      initialization: { amount: currentTotal, payer: { email: user.email || '', entityType: 'individual' } },
       customization: {
         paymentMethods: {
           creditCard: 'all',
@@ -262,27 +344,42 @@ function hideOverlayIfShown() {
       },
       callbacks: {
         onReady: () => console.log('[MP] Brick pronto'),
-        onError: async (e) => {
-          console.error('[MP] Brick error:', e);
-          const msg = String(e?.message || '').toLowerCase();
-          if (msg.includes('installments') || msg.includes('identification') || msg.includes('503')) {
-            setTimeout(() => awaitMountBricks(currentTotal), 3000);
-            return;
-          }
-          alert('Erro ao iniciar o pagamento. Tente novamente em instantes.');
-        },
+        onError: (e) => { console.error('[MP] Brick error:', e); alert('Erro ao iniciar o pagamento.'); },
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
 
-          const idem = crypto.getRandomValues(new Uint32Array(4)).join('-');
-          const isPix = (selectedPaymentMethod === 'bank_transfer' || formData.payment_method_id === 'pix');
 
+
+           function genIdem() {
+ if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+ // fallback simples
+ const a = Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  return `${a.slice(0,8)}-${a.slice(8,12)}-${a.slice(12,16)}-${a.slice(16,20)}-${a.slice(20)}`;
+}
+
+
+
+
+
+
+
+          
           try {
+            const method = String(selectedPaymentMethod || '').toLowerCase();
+            const isPix = method === 'bank_transfer' ||
+                          String(formData?.payment_method_id || '').toLowerCase() === 'pix';
+
+  const idem = genIdem();
+
             const body = {
-              amount: currentTotal,
-              description: 'Compra de passagem Turin',
+              transaction_amount: currentTotal,
+              description: 'Compra Turin Transportes',
+              external_reference: idem,
               payer: {
-                email: (/*user?.email*/ 'teste@teste.com' || ''),              //EMAIL TESTE
-                identification: formData?.payer?.identification
+                email: /*user.email*/ "teste@teste.com" || '',                                                        //EMAIL TESTE
+                identification: formData?.payer?.identification ? {
+                  type: formData.payer.identification.type || 'CPF',
+                  number: String(formData.payer.identification.number || '').replace(/\D/g, '')
+                } : undefined
               }
             };
 
@@ -308,30 +405,31 @@ function hideOverlayIfShown() {
 
             // === CARTÃO APROVADO ===
             if (data.status === 'approved') {
-              showOverlayOnce('Pagamento confirmado!', 'Emitindo bilhete, por favor aguarde!');
+              showOverlayOnce('Emitindo bilhete, por favor aguarde!');
 
-              try {
-                const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-                if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-                  const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
-                    .map(b => ({ ...b, paid: true }));
-                  localStorage.setItem('bookings', JSON.stringify(bookings));
-                  localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
-                  location.href = 'profile.html';
-                  return;
-                }
-                hideOverlayIfShown();
-                alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
-              } catch (e) {
-                console.error('Erro ao emitir bilhete após aprovação:', e);
-                hideOverlayIfShown();
-                alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+            try {
+            const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+                const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+                  .map(b => ({ ...b, paid: true }));
+                localStorage.setItem('bookings', JSON.stringify(bookings));
+                localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+                location.href = 'profile.html';
+                return;
               }
-              return;
+          // se não veio arquivo, considera erro de emissão
+              hideOverlayIfShown();
+              alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
+            } catch (e) {
+            console.error('Falha na emissão pós-aprovação (cartão):', e);
+            hideOverlayIfShown();
+            alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
+            }
+            return;
             }
 
-            // === PIX GERADO ===
-            const pix = data?.point_of_interaction?.transaction_data || data;
+            // === PIX (gera QR, aprovação é posterior) ===
+            const pix = data?.point_of_interaction?.transaction_data;
             if (pix?.qr_code || pix?.qr_code_base64) {
               showPixBox({ qr_b64: pix.qr_code_base64, qr_text: pix.qr_code });
               alert('Pix gerado! Conclua o pagamento no seu banco.');
@@ -362,71 +460,11 @@ function hideOverlayIfShown() {
       if (container) container.innerHTML = '<p class="mute">Seu carrinho está vazio.</p>';
       return;
     }
-
-    // Mercado Pago SDK
-    const mp = new MercadoPago(window.MP_PUBLIC_KEY, { locale: 'pt-BR' });
-    window.bricks = mp.bricks();
-
-    window.brickContainerId = 'payment-bricks';
-    window.brickController = null;
-    window.currentTotal = Number((total || 0).toFixed(2));
-
-    await mountBricks(window.currentTotal);
+    await mountBricks(total);
   }
 
-  function startPixPolling(paymentId) {
-    setPixStatus('Aguardando pagamento…');
-    const t0 = Date.now();
-    clearInterval(pixPollTimer);
-    pixPollTimer = setInterval(async () => {
-      try {
-        const info = await fetchPaymentStatus(paymentId);
-        const st = (info?.status || '').toLowerCase();
-        const detail = (info?.status_detail || '').toLowerCase();
-
-        if (st === 'approved') {
-          clearInterval(pixPollTimer);
-          setPixStatus('Pagamento aprovado! Emitindo bilhete…');
-
-          showOverlayOnce('Pagamento confirmado!', 'Emitindo bilhete, por favor aguarde!');
-
-          try {
-            const venda = await venderPraxioApósAprovado(paymentId);
-            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-              const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
-                .map(b => ({ ...b, paid: true }));
-              localStorage.setItem('bookings', JSON.stringify(bookings));
-              localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
-              location.href = 'profile.html';
-              return;
-            }
-          } catch (e) {
-            console.error('Erro ao emitir bilhete após aprovação:', e);
-            hideOverlayIfShown();
-            alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
-          }
-        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
-          clearInterval(pixPollTimer);
-          setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
-        } else {
-          setPixStatus('Aguardando pagamento…');
-        }
-
-        if (Date.now() - t0 > POLL_TIMEOUT_MS) {
-          clearInterval(pixPollTimer);
-          setPixStatus('Tempo esgotado. Gere um novo Pix se necessário.');
-        }
-      } catch (e) {
-        console.warn('Falha no polling Pix:', e);
-        // continua tentando até timeout
-      }
-    }, POLL_MS);
-  }
-
-  // ===== render inicial
-  renderSummary();
-
-  // ===== Mount Bricks
+  // ===== inicialização
+  const firstTotal = renderSummary();
   await awaitMountBricks(firstTotal);
 
   // ===== Botões
