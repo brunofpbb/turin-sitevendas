@@ -6,16 +6,16 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 
-// === novos serviços de bilhete PDF ===
+// === serviços de bilhete (PDF) ===
 const { mapVendaToTicket } = require('./services/ticket/mapper');
 const { generateTicketPdf } = require('./services/ticket/pdf');
 
 const app = express();
-const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
+const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
-/* =================== CSP pró-Bricks (válido p/ todo o site) =================== */
+/* =================== CSP (Bricks) =================== */
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -36,12 +36,13 @@ app.use((req, res, next) => {
 /* =================== Middlewares =================== */
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(PUBLIC_DIR));
+app.use('/img', express.static(path.join(__dirname, 'img')));
 
-// estático dos bilhetes PDF
+// servir PDFs
 if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR);
 app.use('/tickets', express.static(TICKETS_DIR, { maxAge: '7d', index: false }));
 
-/* =================== Rotas Mercado Pago =================== */
+/* =================== Rotas Mercado Pago existentes =================== */
 const mpRoutes = require('./mpRoutes');
 app.use('/api/mp', mpRoutes);
 
@@ -55,7 +56,7 @@ app.get('/api/_diag', (_req, res) => {
   });
 });
 
-/* =================== SMTP / Brevo (envio código login) =================== */
+/* =================== SMTP / Brevo =================== */
 function createSSL() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
@@ -202,7 +203,28 @@ app.post('/api/auth/verify-code', (req, res) => {
   res.json({ ok: true, user });
 });
 
-/* =================== Praxio: helpers =================== */
+/* =================== Praxio helpers =================== */
+
+
+// Coloque junto dos outros helpers, acima das rotas
+function normalizeHoraPartida(h) {
+  if (!h) return '';
+  // remove tudo que não for dígito (ex.: "17:00" -> "1700")
+  let s = String(h).replace(/\D/g, '');
+  // se vier "900" vira "0900"
+  if (s.length === 3) s = '0' + s;
+  // garante 4 dígitos
+  if (s.length >= 4) s = s.slice(0, 4);
+  return s;
+}
+
+
+
+
+
+
+
+
 async function praxioLogin() {
   const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -222,7 +244,6 @@ async function praxioLogin() {
   return j.IdSessaoOp;
 }
 
-// bodyVenda: campos mínimos para VendaPassagem (construídos a partir do metadata do pagamento)
 async function praxioVendaPassagem(bodyVenda) {
   const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/VendaPassagem/VendaPassagem', {
     method: 'POST',
@@ -237,7 +258,25 @@ async function praxioVendaPassagem(bodyVenda) {
   return data;
 }
 
-/* =================== Busca Partidas/Poltronas (como já existia) =================== */
+// Data com offset -03:00 (ex.: 2025-10-17T22:12:24-03:00)
+function nowWithTZOffsetISO(offsetMinutes = -(3 * 60)) {
+  const now = new Date();
+  const tzNow = new Date(now.getTime() + (offsetMinutes + now.getTimezoneOffset()) * 60000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = tzNow.getFullYear();
+  const m = pad(tzNow.getMonth() + 1);
+  const d = pad(tzNow.getDate());
+  const hh = pad(tzNow.getHours());
+  const mm = pad(tzNow.getMinutes());
+  const ss = pad(tzNow.getSeconds());
+  const sign = offsetMinutes <= 0 ? '-' : '+';
+  const abs = Math.abs(offsetMinutes);
+  const oh = pad(Math.floor(abs / 60));
+  const om = pad(abs % 60);
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}${sign}${oh}:${om}`;
+}
+
+/* =================== Partidas/Poltronas =================== */
 app.post('/api/partidas', async (req, res) => {
   try {
     const { origemId, destinoId, data } = req.body;
@@ -290,7 +329,7 @@ app.post('/api/poltronas', async (req, res) => {
   }
 });
 
-/* =================== Ticket render (útil p/ testes manuais) =================== */
+/* =================== Render manual de ticket (debug) =================== */
 app.post('/api/ticket/render', async (req, res) => {
   try {
     const vendaRoot = req.body;
@@ -309,103 +348,168 @@ app.post('/api/ticket/render', async (req, res) => {
   }
 });
 
-/* =================== Webhook Mercado Pago -> Venda + PDF =================== */
-/**
- * Configure a URL de webhook no Mercado Pago para este endpoint:
- *   POST https://SEU_DOMINIO/api/mp/webhook
- * Ele espera eventos "payment".
- * Recomendado: inclua no pagamento (preferência/brick) um "metadata" com:
- *  {
- *    idViagem, horaPartida, idOrigem, idDestino,
- *    idEstabelecimentoVenda, serieBloco, poltrona,
- *    nomeCli, docCli, valorTotal, agencia, idEstabelecimentoTicket
- *  }
- */
+/* =================== Webhook MP (somente log) =================== */
 app.post('/api/mp/webhook', async (req, res) => {
-  // sempre responde rápido ao MP
   res.status(200).json({ received: true });
   try {
     const { type, data } = req.body || {};
-    if (type !== 'payment' || !data?.id) return;
-
-    const accessToken = process.env.MP_ACCESS_TOKEN;
-    if (!accessToken) throw new Error('MP_ACCESS_TOKEN ausente');
-
-    // 1) consulta o pagamento
-    const pResp = await fetch(`https://api.mercadopago.com/v1/payments/${data.id}`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    const payment = await pResp.json();
-
-    const status = payment?.status;
-    if (!status || !['approved', 'accredited'].includes(status)) {
-      console.log('[MP] pagamento não aprovado:', status, payment?.id);
-      return;
-    }
-
-    // 2) extrai metadata para montar a venda Praxio
-    const md = payment?.metadata || {};
-    const IdSessaoOp = await praxioLogin();
-
-    // campos de fallback
-    const idEstabVenda = String(md.idEstabelecimentoVenda || '1');
-    const idEstabTicket = String(md.idEstabelecimentoTicket || idEstabVenda);
-    const serieBloco = String(md.serieBloco || '93');
-
-    const bodyVenda = {
-      listVendasXmlEnvio: [{
-        IdSessaoOp,
-        IdEstabelecimentoVenda: idEstabVenda,
-        IdViagem: String(md.idViagem),
-        HoraPartida: String(md.horaPartida),     // "1145"
-        IdOrigem: String(md.idOrigem),
-        IdDestino: String(md.idDestino),
-        Embarque: "S", Seguro: "N", Excesso: "N",
-        BPe: 1,
-        passagemXml: [{
-          IdEstabelecimento: idEstabTicket,
-          SerieBloco: serieBloco,
-          Poltrona: String(md.poltrona),
-          NomeCli: String(md.nomeCli || ''),
-          IdentidadeCli: String(md.docCli || ''),
-        }],
-        pagamentoXml: [{
-          DataPagamento: new Date().toISOString(), // ISO; Praxio aceita "YYYY-MM-DDTHH:mm:ss"
-          TipoPagamento: "0",   // 0=dinheiro | 2=cartão?  -> mantemos 0 para compat bilhete; se quiser, mapeie por md.tipo
-          TipoCartao: "0",
-          QtdParcelas: Number(payment.installments || 1),
-          ValorPagamento: Number(md.valorTotal || payment.transaction_amount || 0)
-        }]
-      }]
-    };
-
-    // 3) faz a venda
-    const vendaResult = await praxioVendaPassagem(bodyVenda);
-
-    // 4) gera o PDF
-    const ticket = mapVendaToTicket(vendaResult);
-    const subDir = new Date().toISOString().slice(0,10);
-    const outDir = path.join(TICKETS_DIR, subDir);
-    const pdf = await generateTicketPdf(ticket, outDir);
-    const pdfUrl = `/tickets/${subDir}/${pdf.filename}`;
-
-    console.log('[MP->Praxio] venda OK', {
-      payment_id: payment.id,
-      numPassagem: ticket.numPassagem,
-      arquivo: pdfUrl
-    });
-
-    // TODO: aqui você pode:
-    // - enviar link por e-mail/SMS/WhatsApp
-    // - atualizar seu DB de pedidos
-    // - chamar alguma rota interna do front via WebSocket/SSE
-
+    console.log('[MP webhook] type:', type, 'id:', data?.id);
+    // Decidimos emitir a venda pelo front -> /api/praxio/vender
   } catch (err) {
-    console.error('[webhook MP] erro:', err?.message || err);
+    console.error('[MP webhook] erro:', err?.message || err);
   }
 });
 
-/* =================== Fallback p/ .html direto da pasta =================== */
+/* =================== Venda Praxio + PDF + Webhook salvarBpe =================== */
+app.post('/api/praxio/vender', async (req, res) => {
+  try {
+    const {
+      mpPaymentId,                 // id do pagamento aprovado
+      schedule,                    // { idViagem, horaPartida, idOrigem, idDestino, agencia? }
+      passengers,                  // [{ seatNumber, name, document }]
+      totalAmount,                 // valor total cobrado
+      idEstabelecimentoVenda = '1',
+      idEstabelecimentoTicket = '93',
+      serieBloco = '93'
+    } = req.body || {};
+
+    // 1) Revalidar pagamento no MP
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
+      headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+    });
+    const payment = await r.json();
+    if (!r.ok || !['approved','accredited'].includes(payment?.status)) {
+      return res.status(400).json({ ok:false, error:'Pagamento não está aprovado.' });
+    }
+    const mpAmount = Number(payment.transaction_amount || 0);
+    if (totalAmount && Math.abs(mpAmount - Number(totalAmount)) > 0.01) {
+      return res.status(400).json({ ok:false, error:'Valor divergente do pagamento.' });
+    }
+
+    // 2) Login Praxio
+    const IdSessaoOp = await praxioLogin();
+
+    // 3) Montar body da venda (várias passagens)
+    const passagemXml = (passengers || []).map(p => ({
+      IdEstabelecimento: String(idEstabelecimentoTicket),
+      SerieBloco: String(serieBloco),
+      Poltrona: String(p.seatNumber),
+      NomeCli: String(p.name || ''),
+      IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
+    }));
+
+    if (!schedule?.idViagem || !schedule?.horaPartida || !schedule?.idOrigem || !schedule?.idDestino || !passagemXml.length) {
+      return res.status(400).json({ ok:false, error:'Dados mínimos ausentes para venda.' });
+    }
+
+    // Dentro do POST /api/praxio/vender, antes de montar bodyVenda:
+const horaPad = normalizeHoraPartida(schedule.horaPartida);
+
+// Na validação mínima:
+if (!schedule?.idViagem || !horaPad || !schedule?.idOrigem || !schedule?.idDestino || !passagemXml.length) {
+  return res.status(400).json({ ok:false, error:'Dados mínimos ausentes para venda.' });
+}
+
+// No body enviado à Praxio:
+const bodyVenda = {
+  listVendasXmlEnvio: [{
+    IdSessaoOp,
+    IdEstabelecimentoVenda: String(idEstabelecimentoVenda),
+    IdViagem: String(schedule.idViagem),
+    HoraPartida: horaPad,                    // <<<< AQUI normalizado "1700"
+    IdOrigem: String(schedule.idOrigem),
+    IdDestino: String(schedule.idDestino),
+    Embarque: "S", Seguro: "N", Excesso: "N",
+    BPe: 1,
+    passagemXml,
+    pagamentoXml: [{
+      DataPagamento: nowWithTZOffsetISO(-180),
+      TipoPagamento: "0",
+      TipoCartao: "0",
+      QtdParcelas: Number(payment.installments || 1),
+      ValorPagamento: Number(totalAmount || mpAmount)
+    }]
+  }]
+};
+
+    console.log('[Praxio][Venda] body:', JSON.stringify(bodyVenda).slice(0, 4000));
+
+    // 4) Chamar a Praxio
+    const vendaResult = await praxioVendaPassagem(bodyVenda);
+    console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
+
+    // 5) Gerar PDFs
+    const subDir = new Date().toISOString().slice(0,10);
+    const outDir = path.join(TICKETS_DIR, subDir);
+    await fs.promises.mkdir(outDir, { recursive: true });
+
+    const arquivos = [];
+for (const p of (vendaResult.ListaPassagem || [])) {
+  const ticket = mapVendaToTicket({
+    ListaPassagem: [p],
+    mp: {
+      payment_type_id: payment.payment_type_id,
+      payment_method_id: (payment.payment_method?.id || payment.payment_method_id || ''),
+      status: payment.status,
+      installments: payment.installments
+    },
+    emissaoISO: new Date().toISOString()
+  });
+
+  const pdf = await generateTicketPdf(ticket, outDir);
+  arquivos.push({ numPassagem: ticket.numPassagem, pdf: `/tickets/${subDir}/${pdf.filename}` });
+}
+
+
+    // 6) Disparar webhook salvarBpe (não bloqueante)
+    try {
+      const payloadWebhook = {
+        fonte: 'sitevendas',
+        mp: {
+          id: payment.id,
+          status: payment.status,
+          status_detail: payment.status_detail,
+          external_reference: payment.external_reference || null,
+          amount: payment.transaction_amount
+        },
+        viagem: {
+          idViagem: schedule.idViagem,
+          horaPartida: schedule.horaPartida,
+          idOrigem: schedule.idOrigem,
+          idDestino: schedule.idDestino
+        },
+        bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
+          numPassagem: p.NumPassagem,
+          chaveBPe: p.ChaveBPe,
+          origem: p.Origem,
+          destino: p.Destino,
+          poltrona: p.Poltrona,
+          nomeCliente: p.NomeCliente,
+          docCliente: p.DocCliente,
+          valor: p.ValorPgto
+        })),
+        arquivos // [{ numPassagem, pdf }]
+      };
+
+      const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadWebhook),
+      });
+      console.log('[Webhook salvarBpe] status:', hook.status);
+    } catch (e) {
+      console.error('[Webhook salvarBpe] erro:', e?.message || e);
+    }
+
+    return res.json({ ok:true, venda: vendaResult, arquivos });
+
+  } catch (e) {
+    console.error('praxio/vender error:', e);
+    res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
+  }
+});
+
+/* =================== Fallback para .html =================== */
 app.get('*', (req, res, next) => {
   if (req.path.endsWith('.html')) {
     return res.sendFile(path.join(PUBLIC_DIR, req.path));
