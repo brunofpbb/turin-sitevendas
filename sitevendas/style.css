@@ -1083,7 +1083,7 @@ footer { text-align: center; }
 /* Logo encostada à esquerda do container e centralizada verticalmente */
 .brand-logo{
   position:absolute;
-  left:30px;
+  left:-50px;
   top:50%;
   transform:translateY(-50%);
   height:48px;              /* ajuste fino: 44–56px */
