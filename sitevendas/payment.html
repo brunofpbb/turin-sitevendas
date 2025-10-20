@@ -77,12 +77,18 @@
     // se a página for descarregada, garante que o overlay não "grude"
     window.addEventListener('beforeunload', () => hideIssuanceOverlay());
   </script>
-</head>
-<body>
-  <header>
-    <h1>Turin Transportes – Pagamento</h1>
-    <nav id="user-nav"></nav>
-  </header>
+
+  <!-- HEADER em GRID -->
+<header class="site-header">
+  <div class="site-header-inner">
+    <img class="brand-logo" src="/img/turin-wordmark-white.png" alt="Turin Transportes">
+
+    <div class="site-title">
+      <h1>Turin Transportes – Pagamento</h1>
+      <nav id="user-nav" class="user-nav"></nav>
+    </div>
+  </div>
+</header> 
 
   <main class="two-cols-pay">
     <!-- Card lateral fixo: Resumo -->
