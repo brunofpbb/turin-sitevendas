@@ -281,7 +281,7 @@ function hideOverlayIfShown() {
               amount: currentTotal,
               description: 'Compra de passagem Turin',
               payer: {
-                email: (user?.email || 'teste@teste.com'),
+                email: (/*user?.email*/ 'teste@teste.com' || ''),
                 identification: formData?.payer?.identification
               }
             };
