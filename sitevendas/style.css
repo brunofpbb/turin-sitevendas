@@ -1067,15 +1067,49 @@ footer { text-align: center; }
 
 
 
-.brand-logo{ height:52px; width:auto; display:block; justify-self:start; }
-.site-title{ display:flex; flex-direction:column; align-items:center; gap:6px; }
-.site-title h1{ margin:0; font-size:1.6rem; font-weight:700; text-align:center; }
-.user-nav{ font-size:.95rem; text-align:center; }
+/* Barra verde */
+.site-header{ background:#0a5a2e; color:#fff; }
+
+/* Container central com altura controlada */
+.site-header-inner{
+  position:relative;
+  max-width:1200px;
+  margin:0 auto;
+  padding:8px 16px;         /* menos padding para não "crescer" */
+  min-height:72px;          /* altura estável da barra */
+  display:block;            /* sem flex/grid aqui */
+}
+
+/* Logo encostada à esquerda do container e centralizada verticalmente */
+.brand-logo{
+  position:absolute;
+  left:16px;
+  top:50%;
+  transform:translateY(-50%);
+  height:48px;              /* ajuste fino: 44–56px */
+  width:auto;
+}
+
+/* Título centralizado na faixa + user-nav abaixo, também central */
+.site-title{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  text-align:center;
+}
+.site-title h1{
+  margin:0;
+  font-size:1.6rem;
+  font-weight:700;
+  line-height:1.2;
+}
+.user-nav{ font-size:.95rem; }
 
 /* Mobile */
 @media (max-width:768px){
-  .site-header .site-header-grid{ padding:10px 12px; column-gap:12px; }
-  .brand-logo{ height:44px; }
+  .site-header-inner{ padding:8px 12px; min-height:64px; }
+  .brand-logo{ height:42px; left:12px; }
   .site-title h1{ font-size:1.35rem; }
 }
 
