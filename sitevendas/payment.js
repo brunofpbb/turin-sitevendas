@@ -1,4 +1,4 @@
-// payment.js — Resumo com remoção de itens + total dinâmico + Bricks (Payments API, sem preferência)
+// payment.js — Resumo + Bricks + PIX (QR + copia-e-cola + polling)
 document.addEventListener('DOMContentLoaded', async () => {
   // ——— login obrigatório
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -9,15 +9,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   if (typeof updateUserNav === 'function') updateUserNav();
 
-  // ——— atachos de DOM (funciona com layout novo e antigo)
-  const summaryBodyEl = document.getElementById('summary-body');      // lista (layout novo)
-  const summaryTotalEl = document.getElementById('summary-total');    // total (layout novo)
-  const legacySummaryEl = document.getElementById('order-summary');   // layout antigo (um container só)
-  const payBtn = document.getElementById('pay-button');
+  // ——— DOM
+  const summaryBodyEl  = document.getElementById('summary-body');
+  const summaryTotalEl = document.getElementById('summary-total');
+  const legacySummaryEl = document.getElementById('order-summary');
   const cancelBtn = document.getElementById('btn-cancel') || document.getElementById('cancel-order');
 
-  // garante visual do botão pagar = botão pesquisar
-  if (payBtn) payBtn.className = 'btn btn-primary';
+  // PIX UI
+  const pixBox   = document.getElementById('pix-box');
+  const pixQR    = document.getElementById('pix-qr');
+  const pixCode  = document.getElementById('pix-code');
+  const pixCopy  = document.getElementById('pix-copy');
+  const pixStatus= document.getElementById('pix-status');
 
   // ——— utils
   const fmtBRL = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -28,53 +31,155 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
   };
 
-  // ——— lê carrinho (somente itens NÃO pagos)
-  function readCart() {
-    const b = JSON.parse(localStorage.getItem('bookings') || '[]');
-    const open = b.filter(x => x.paid !== true);
-    if (open.length) return open;
-    const p = JSON.parse(localStorage.getItem('pendingPurchase') || 'null');
-    return p && Array.isArray(p.legs) ? p.legs : [];
+  // ====== PIX polling
+  const POLL_MS = 5000;                 // 5s entre consultas
+  const POLL_TIMEOUT_MS = 15 * 60 * 1000; // 15 min máximo
+  let pixPollTimer = null;
+
+  async function fetchPaymentStatus(paymentId) {
+    const r = await fetch(`/api/mp/payments/${paymentId}`);
+    if (!r.ok) throw new Error('Falha ao consultar status do pagamento');
+    return r.json();
   }
-  let order = readCart();
+  function setPixStatus(msg) {
+    if (pixStatus) pixStatus.textContent = msg;
+  }
 
-  // ===== helpers de valores
-  const itemSubtotal = (it) => {
-    const s = it.schedule || {};
-    const unit = Number(String(s.price || 0).replace(',', '.')) || 0;
-    return unit * ((it.seats || []).length || 0);
-  };
-  const cartTotal = () => order.reduce((acc, it) => acc + itemSubtotal(it), 0);
 
-  // ===== atualiza storage removendo UM item da lista de não pagas (por índice)
+ // Overlay: mostra só uma vez e esconde em caso de erro
+/*let overlayShown = false;
+function showOverlayOnce(msg = 'Pagamento confirmado!\nEmitindo bilhete, por favor aguarde!') {
+  if (overlayShown) return;
+  overlayShown = true;
+  if (typeof showIssuanceOverlay === 'function') showIssuanceOverlay(msg);
+}*/
+
+
+// Overlay: mostra só uma vez e esconde em caso de erro
+let overlayShown = false;
+
+function showOverlayOnce(
+  title = 'Pagamento confirmado!',
+  subtitle = 'Emitindo bilhete, por favor aguarde!'
+) {
+  if (overlayShown) return;
+  overlayShown = true;
+
+  if (typeof showIssuanceOverlay === 'function') {
+    // mostra o overlay já com o título
+    showIssuanceOverlay(title);
+    // preenche o subtítulo, se existir no DOM
+    const subEl = document.querySelector('#issuance-overlay .io-sub');
+    if (subEl) subEl.textContent = subtitle;
+  }
+}
+
+function hideOverlayIfShown() {
+  if (!overlayShown) return;
+  overlayShown = false;
+  if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
+}
+
+  // ====== storage / carrinho
+  function getOpenOrders() {
+    try {
+      return JSON.parse(localStorage.getItem('openOrders') || '[]') || [];
+    } catch { return []; }
+  }
+  function getPaidOrders() {
+    try {
+      return JSON.parse(localStorage.getItem('bookings') || '[]')?.filter(b => b.paid) || [];
+    } catch { return []; }
+  }
+  function setPaidOrders(list) {
+    localStorage.setItem('bookings', JSON.stringify(list || []));
+  }
   function removeFromStorageByOpenIndex(openIdx) {
-    const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+    const all = JSON.parse(localStorage.getItem('bookings') || '[]') || [];
     const paid = all.filter(b => b.paid === true);
-    const open = all.filter(b => b.paid !== true);
-    // remove exatamente o índice solicitado (se existir)
-    if (openIdx >= 0 && openIdx < open.length) {
-      open.splice(openIdx, 1);
-    }
+    const open = (all.filter(b => !b.paid) || []).filter((_,i) => i !== openIdx);
     localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
   }
 
-  // ===== render do resumo (dois modos)
+  // ===== dados base
+  let order = getOpenOrders();
+  const firstTotal = (order || []).reduce((acc, it) => acc + Number(it.total || 0), 0);
+
+  // ===== helpers do pedido
+  function cartTotal() {
+    try { return order.reduce((acc, it) => acc + Number(it.total || 0), 0); } catch { return 0; }
+  }
+  function getScheduleFromItem(it) {
+    const s = it && it.schedule;
+    if (!s) return null;
+    return {
+      idViagem: s.idViagem || s.IdViagem || '',
+      horaPartida: s.horaPartida || s.HoraPartida || '',
+      origem: s.origem || s.Origem || '',
+      destino: s.destino || s.Destino || '',
+      data: s.data || s.Data || '',
+      agencia: s.agencia || s.Agencia || '93',
+      codigoLinha: s.codigoLinha || s.CodigoLinha || '',
+      nomeLinha: s.nomeLinha || s.NomeLinha || ''
+    };
+  }
+  function getPassengersFromItem(it) {
+    const pax = [];
+    const seats = it?.seats || [];
+    if (Array.isArray(it?.passengers) && it.passengers.length) {
+      for (const p of it.passengers) {
+        pax.push({
+          seatNumber: p.seatNumber || p.poltrona || '',
+          name: (p.name || p.nome || '').toString(),
+          document: (p.document || p.cpf || '').toString()
+        });
+      }
+    } else {
+      for (const seat of seats) {
+        pax.push({ seatNumber: seat, name: (user.name || user.email || ''), document: '' });
+      }
+    }
+    return pax;
+  }
+  async function venderPraxioApósAprovado(paymentId) {
+    const first = order[0];
+    const schedule = getScheduleFromItem(first);
+    let passengers = [];
+    order.forEach(it => { passengers = passengers.concat(getPassengersFromItem(it)); });
+    const totalAmount = cartTotal();
+
+    const r = await fetch('/api/praxio/vender', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        mpPaymentId: paymentId,
+        schedule,
+        passengers,
+        totalAmount,
+        idEstabelecimentoVenda: '1',
+        idEstabelecimentoTicket: schedule.agencia || '93',
+        serieBloco: '93'
+      })
+    });
+    if (!r.ok) throw new Error('Falha na emissão do bilhete');
+    return r.json();
+  }
+
+  // ===== resumo
   function renderSummary() {
+    const total = cartTotal();
     const lines = [];
-    let total = 0;
 
     order.forEach((it, idx) => {
       const s = it.schedule || {};
-      const origem = pick(s.originName, s.origin, s.origem, '—');
-      const destino = pick(s.destinationName, s.destination, s.destino, '—');
-      const dataV = formatDateBR(s.date);
-      const hora = pick(s.departureTime, s.horaPartida, '—');
-      const seats = (it.seats || []).join(', ');
-      const paxList = Array.isArray(it.passengers) ? it.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
-      const sub = itemSubtotal(it);
-      total += sub;
+      const origem  = pick(s.origem, it.origem, '—');
+      const destino = pick(s.destino, it.destino, '—');
+      const dataV   = formatDateBR(pick(s.data, it.data, ''));
+      const hora    = pick(s.horaPartida, it.hora, it.saida, '—');
+      const seats   = (it.seats || []).join(', ');
+      const paxList = (it.passengers || []).map(p => (p.name || p.nome)).filter(Boolean);
 
-      // classes esperadas pelo CSS: .order-item, .item-remove, .title, .meta, .price
+      const sub = Number(it.total || 0);
       lines.push(`
         <div class="order-item" data-open-index="${idx}">
           <button class="item-remove" title="Remover" aria-label="Remover">×</button>
@@ -90,112 +195,94 @@ document.addEventListener('DOMContentLoaded', async () => {
       `);
     });
 
+    const html = lines.join('') + `<div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>`;
     if (summaryBodyEl) {
-      // layout novo
-      summaryBodyEl.innerHTML = lines.join('') + `
-        <div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>
-      `;
+      summaryBodyEl.innerHTML = html;
       if (summaryTotalEl) summaryTotalEl.textContent = fmtBRL(total);
     } else if (legacySummaryEl) {
-      // layout antigo (um container único)
-      legacySummaryEl.innerHTML = lines.join('') + `
-        <div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>
-      `;
+      legacySummaryEl.innerHTML = html;
     }
 
-    // Bind de remoção (X)
     const container = summaryBodyEl || legacySummaryEl;
     if (container) {
       container.querySelectorAll('.order-item .item-remove').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const wrap = btn.closest('.order-item');
           const openIdx = Number(wrap.getAttribute('data-open-index'));
-          // remove do estado e do storage
           order.splice(openIdx, 1);
           removeFromStorageByOpenIndex(openIdx);
-          // re-render + atualizar bricks
-          const newTotal = cartTotal();
           renderSummary();
-          awaitMountBricks(newTotal);
+          awaitMountBricks(cartTotal());
         });
       });
     }
+  }
 
-    // habilita/desabilita botão pagar
-    if (payBtn) {
-      if (order.length) payBtn.removeAttribute('disabled');
-      else payBtn.setAttribute('disabled', 'disabled');
+  // ===== PIX box
+  function showPixBox({ qr_b64, qr_text }) {
+    if (!pixBox) return;
+    pixBox.style.display = 'block';
+    if (pixQR) {
+      pixQR.innerHTML = '';
+      if (qr_b64) {
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${qr_b64}`;
+        img.alt = 'QR Code PIX';
+        img.width = 220;
+        pixQR.appendChild(img);
+      }
     }
-
-    return total;
+    if (pixCode) {
+      pixCode.value = qr_text || '';
+      if (pixCopy) {
+        pixCopy.onclick = () => {
+          pixCode.select();
+          document.execCommand('copy');
+          alert('Código Pix copiado!');
+        };
+      }
+    }
+    pixBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-
-  // ======= Bricks (controlador para desmontar/montar com novo total)
-  // carrega public key
-  let publicKey = '';
-  try {
-    const r = await fetch('/api/mp/pubkey');
-    const j = await r.json();
-    publicKey = j.publicKey || '';
-  } catch (e) { console.error('Erro /api/mp/pubkey', e); }
-  if (!publicKey) { alert('Chave pública do Mercado Pago não configurada.'); return; }
-
-  // cria SDK
-  const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
-  const bricks = mp.bricks();
-
-  const brickContainerId =
-    document.getElementById('payment-bricks') ? 'payment-bricks' :
-    (document.getElementById('payment-brick-container') ? 'payment-brick-container' : null);
-
-  if (!brickContainerId) {
-    console.error('Container do Bricks não encontrado.');
-    return;
-  }
-
-  let brickController = null;       // referência do brick para unmount
-  let currentTotal = 0;             // total atual usado no submit
 
   async function mountBricks(amount) {
-    // desmonta anterior
     try { await brickController?.unmount?.(); } catch(_) {}
-
     currentTotal = Number((amount || 0).toFixed(2));
 
     brickController = await bricks.create('payment', brickContainerId, {
-      initialization: {
-        amount: currentTotal,
-        payer: { email: user.email || '' }
-      },
+      initialization: { amount: currentTotal, payer: { email: user.email || '', entityType: 'individual' } },
       customization: {
         paymentMethods: {
           creditCard: 'all',
           debitCard: 'all',
           bankTransfer: ['pix'],
-          minInstallments: 1,
-          maxInstallments: 1
+          minInstallments: 1, maxInstallments: 1
         },
         visual: { showInstallmentsSelector: false }
       },
       callbacks: {
         onReady: () => console.log('[MP] Brick pronto'),
-        onError: (e) => { console.error('[MP] Brick error:', e); alert('Erro ao iniciar o pagamento.'); },
+        onError: async (e) => {
+          console.error('[MP] Brick error:', e);
+          const msg = String(e?.message || '').toLowerCase();
+          if (msg.includes('installments') || msg.includes('identification') || msg.includes('503')) {
+            setTimeout(() => awaitMountBricks(currentTotal), 3000);
+            return;
+          }
+          alert('Erro ao iniciar o pagamento. Tente novamente em instantes.');
+        },
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
-          try {
-            // usa SEMPRE o currentTotal
-            const method = String(selectedPaymentMethod || '').toLowerCase();
-            const isPix = method === 'bank_transfer' ||
-                          String(formData?.payment_method_id || '').toLowerCase() === 'pix';
 
+          const idem = crypto.getRandomValues(new Uint32Array(4)).join('-');
+          const isPix = (selectedPaymentMethod === 'bank_transfer' || formData.payment_method_id === 'pix');
+
+          try {
             const body = {
-              transaction_amount: currentTotal,
-              description: 'Compra Turin Transportes',
+              amount: currentTotal,
+              description: 'Compra de passagem Turin',
               payer: {
-                email: user.email || '',
-                identification: formData?.payer?.identification ? {
-                  type: formData.payer.identification.type || 'CPF',
-                  number: String(formData.payer.identification.number || '').replace(/\D/g, '')
-                } : undefined
+                email: (user?.email || 'teste@teste.com'),
+                identification: formData?.payer?.identification
               }
             };
 
@@ -204,7 +291,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
               if (!formData?.token) { alert('Não foi possível tokenizar o cartão.'); return; }
               body.token = formData.token;
-              body.payment_method_id = formData.payment_method_id; // ex.: 'visa'
+              body.payment_method_id = formData.payment_method_id;
               body.installments = 1;
               if (formData.issuer_id) body.issuer_id = formData.issuer_id;
             }
@@ -213,26 +300,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
 
             const resp = await fetch('/api/mp/pay', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': idem },
               body: JSON.stringify(body)
             });
             const data = await resp.json();
-
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
+            // === CARTÃO APROVADO ===
             if (data.status === 'approved') {
-              // marca TODAS as não pagas como pagas e vai para profile
-              const bookings = JSON.parse(localStorage.getItem('bookings') || '[]')
-                .map(b => ({ ...b, paid: true }));
-              localStorage.setItem('bookings', JSON.stringify(bookings));
-              alert('Pagamento aprovado!');
-              location.href = 'profile.html';
+              showOverlayOnce('Pagamento confirmado!', 'Emitindo bilhete, por favor aguarde!');
+
+              try {
+                const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+                if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+                  const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+                    .map(b => ({ ...b, paid: true }));
+                  localStorage.setItem('bookings', JSON.stringify(bookings));
+                  localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+                  location.href = 'profile.html';
+                  return;
+                }
+                hideOverlayIfShown();
+                alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
+              } catch (e) {
+                console.error('Erro ao emitir bilhete após aprovação:', e);
+                hideOverlayIfShown();
+                alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+              }
               return;
             }
 
-            const pix = data?.point_of_interaction?.transaction_data;
-            if (pix?.qr_code || pix?.qr_code_base64 || pix?.qr_text) {
+            // === PIX GERADO ===
+            const pix = data?.point_of_interaction?.transaction_data || data;
+            if (pix?.qr_code || pix?.qr_code_base64) {
+              showPixBox({ qr_b64: pix.qr_code_base64, qr_text: pix.qr_code });
               alert('Pix gerado! Conclua o pagamento no seu banco.');
+              const paymentId = data.id || data?.payment?.id;
+              if (paymentId) startPixPolling(paymentId); // <<<<<< POLLING AQUI
               return;
             }
 
@@ -251,42 +355,89 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // função wrapper que lida com carrinho vazio
   async function awaitMountBricks(total) {
     if (!order.length) {
-      // carrinho vazio: desmonta e mostra aviso
       try { await brickController?.unmount?.(); } catch(_) {}
       const container = document.getElementById(brickContainerId);
       if (container) container.innerHTML = '<p class="mute">Seu carrinho está vazio.</p>';
       return;
     }
-    await mountBricks(total);
+
+    // Mercado Pago SDK
+    const mp = new MercadoPago(window.MP_PUBLIC_KEY, { locale: 'pt-BR' });
+    window.bricks = mp.bricks();
+
+    window.brickContainerId = 'payment-bricks';
+    window.brickController = null;
+    window.currentTotal = Number((total || 0).toFixed(2));
+
+    await mountBricks(window.currentTotal);
   }
 
-  // ===== Inicializa resumo + bricks
-  const firstTotal = renderSummary();
+  function startPixPolling(paymentId) {
+    setPixStatus('Aguardando pagamento…');
+    const t0 = Date.now();
+    clearInterval(pixPollTimer);
+    pixPollTimer = setInterval(async () => {
+      try {
+        const info = await fetchPaymentStatus(paymentId);
+        const st = (info?.status || '').toLowerCase();
+        const detail = (info?.status_detail || '').toLowerCase();
+
+        if (st === 'approved') {
+          clearInterval(pixPollTimer);
+          setPixStatus('Pagamento aprovado! Emitindo bilhete…');
+
+          showOverlayOnce('Pagamento confirmado!', 'Emitindo bilhete, por favor aguarde!');
+
+          try {
+            const venda = await venderPraxioApósAprovado(paymentId);
+            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+              const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+                .map(b => ({ ...b, paid: true }));
+              localStorage.setItem('bookings', JSON.stringify(bookings));
+              localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+              location.href = 'profile.html';
+              return;
+            }
+          } catch (e) {
+            console.error('Erro ao emitir bilhete após aprovação:', e);
+            hideOverlayIfShown();
+            alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+          }
+        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
+        } else {
+          setPixStatus('Aguardando pagamento…');
+        }
+
+        if (Date.now() - t0 > POLL_TIMEOUT_MS) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Tempo esgotado. Gere um novo Pix se necessário.');
+        }
+      } catch (e) {
+        console.warn('Falha no polling Pix:', e);
+        // continua tentando até timeout
+      }
+    }, POLL_MS);
+  }
+
+  // ===== render inicial
+  renderSummary();
+
+  // ===== Mount Bricks
   await awaitMountBricks(firstTotal);
 
-  // ===== Botões gerais
+  // ===== Botões
   cancelBtn?.addEventListener('click', () => {
     const ok = confirm('Cancelar este pedido? Os itens do carrinho serão removidos.');
     if (!ok) return;
-    // limpa não pagas do storage e do estado
     const all = JSON.parse(localStorage.getItem('bookings') || '[]');
     const paid = all.filter(b => b.paid === true);
     localStorage.setItem('bookings', JSON.stringify(paid));
     order = [];
     renderSummary();
     awaitMountBricks(0);
-    // opcional: voltar para home
-    // location.href = 'index.html';
-  });
-
-  // (opcional) botão pagar via click direto — o bricks já cuida via onSubmit,
-  // mas mantemos um guard aqui para UX:
-  payBtn?.addEventListener('click', () => {
-    if (!order.length) {
-      alert('Seu carrinho está vazio.');
-    }
   });
 });
