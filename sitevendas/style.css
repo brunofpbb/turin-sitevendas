@@ -1036,3 +1036,23 @@ footer { text-align: center; }
   animation:io-spin 1s linear infinite;
 }
 @keyframes io-spin{ to{ transform:rotate(360deg); } }
+
+
+// logo branca
+
+.site-header{
+  background:#0a5a2e; /* seu verde do topo */
+  color:#fff;
+}
+.site-header .site-header-inner{
+  display:flex; align-items:center; gap:16px;
+  max-width:1200px; margin:0 auto; padding:10px 16px;
+}
+.site-header .brand-logo{
+  height:52px; /* ajuste aqui: 48–64px */
+  width:auto; display:block;
+}
+.site-header h1{
+  margin:0; font-size:1.6rem; font-weight:700;
+}
+
