@@ -5,45 +5,62 @@
   <title>Turin Transportes – Venda de Passagens</title>
   <link rel="stylesheet" href="style.css" />
 
+  <!-- Favicons -->
+  <link rel="icon" href="/img/turin-mark.ico?v=2">
+  <link rel="icon" type="image/png" href="/img/turin-mark-32.png?v=2" sizes="32x32">
+  <link rel="icon" type="image/png" href="/img/turin-mark-192.png?v=2" sizes="192x192">
+  <link rel="apple-touch-icon" href="/img/turin-mark-180.png?v=2">
+  <link rel="shortcut icon" href="/img/turin-mark-32.png?v=2">
 
-  <link rel="icon" href="/img/turin-mark.ico?v=1">
-  <link rel="icon" type="image/png" href="../img/turin-mark-32.png?v=1" sizes="32x32">
-  <link rel="icon" type="image/png" href="../img/turin-mark-192.png?v=1" sizes="192x192">
-  <link rel="apple-touch-icon" href="../img/turin-mark-180.png?v=1">
-  <link rel="shortcut icon" href="../img/turin-mark-32.png?v=1">
+  <style>
+    /* ===== Header com logo ===== */
+    .site-header{
+      background:#0a5a2e; /* cor da faixa superior */
+      color:#fff;
+    }
+    .site-header .site-header-inner{
+      display:flex; align-items:center; gap:16px;
+      max-width:1200px; margin:0 auto; padding:12px 16px;
+    }
+    .site-header .brand-logo{
+      height:52px; /* ajuste aqui (ex.: 48–64px) */
+      width:auto; display:block; object-fit:contain;
+    }
+    .site-header h1{
+      margin:0; font-size:1.6rem; font-weight:700;
+      line-height:1.2;
+    }
+    .site-header #user-nav{
+      margin-left:auto; /* empurra nav para a direita */
+      display:flex; align-items:center;
+    }
 
+    /* ===== Ajustes mobile já existentes ===== */
+    @media (max-width:768px){
+      .two-cols{display:flex;flex-direction:column;gap:1rem}
+      .content-card:empty{min-height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important}
+      #content-root:empty{min-height:0!important}
+      #schedule-list,#bus-list,.bus-list{min-height:0!important;gap:10px!important;margin-top:8px!important}
+      main{margin:8px!important;padding:12px!important;box-shadow:none;border-radius:8px}
+      .site-header .site-header-inner{gap:12px; padding:10px 12px}
+      .site-header .brand-logo{height:46px}
+      .site-header h1{font-size:1.35rem}
+    }
+  </style>
 
-
-
-
-<style>
-@media (max-width:768px){
-  .two-cols{display:flex;flex-direction:column;gap:1rem}
-  .content-card:empty{min-height:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important}
-  #content-root:empty{min-height:0!important}
-  #schedule-list,#bus-list,.bus-list{min-height:0!important;gap:10px!important;margin-top:8px!important}
-  main{margin:8px!important;padding:12px!important;box-shadow:none;border-radius:8px}
-}
-</style>
-
-
-
-
-
-
-
-
-
-
-
-  <!-- Sem type="module" para evitar problemas de import -->
+  <!-- Scripts (sem type="module") -->
   <script src="seats.js" defer></script>
   <script src="main.js" defer></script>
 </head>
 <body>
-  <header>
-    <h1>Turin Transportes – Venda de Passagens</h1>
-    <nav id="user-nav"></nav>
+  <!-- ===== Header com logo ===== -->
+  <header class="site-header">
+    <div class="site-header-inner">
+      <!-- use ../img/... caso NÃO tenha exposto /img no server.js -->
+      <img class="brand-logo" src="/img/turin-wordmark-white.png" alt="Turin Transportes">
+      <h1>Turin Transportes – Venda de Passagens</h1>
+      <nav id="user-nav"></nav>
+    </div>
   </header>
 
   <!-- LAYOUT PRINCIPAL: COLUNA LATERAL (form) + CONTEÚDO (resultados) -->
