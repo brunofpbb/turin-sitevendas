@@ -172,10 +172,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           creditCard: 'all',
           debitCard: 'all',
           bankTransfer: ['pix'],
-          minInstallments: 1,
-          maxInstallments: 1
+         // minInstallments: 1,
+        //  maxInstallments: 1
         },
-        visual: { showInstallmentsSelector: false }
+       // visual: { showInstallmentsSelector: false }
       },
       callbacks: {
         onReady: () => console.log('[MP] Brick pronto'),
