@@ -49,12 +49,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
  // Overlay: mostra só uma vez e esconde em caso de erro
-let overlayShown = false;
-function showOverlayOnce(msg = 'Emitindo bilhete, por favor aguarde!') {
+/*let overlayShown = false;
+function showOverlayOnce(msg = 'Pagamento confirmado!\nEmitindo bilhete, por favor aguarde!') {
   if (overlayShown) return;
   overlayShown = true;
   if (typeof showIssuanceOverlay === 'function') showIssuanceOverlay(msg);
+}*/
+
+
+// Overlay: mostra só uma vez e esconde em caso de erro
+let overlayShown = false;
+
+function showOverlayOnce(
+  title = 'Pagamento confirmado!',
+  subtitle = 'Emitindo bilhete, por favor aguarde!'
+) {
+  if (overlayShown) return;
+  overlayShown = true;
+
+  if (typeof showIssuanceOverlay === 'function') {
+    // mostra o overlay já com o título
+    showIssuanceOverlay(title);
+    // preenche o subtítulo, se existir no DOM
+    const subEl = document.querySelector('#issuance-overlay .io-sub');
+    if (subEl) subEl.textContent = subtitle;
+  }
 }
+
+
+  
+
+function hideOverlayIfShown() {
+  if (!overlayShown) return;
+  overlayShown = false;
+  if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
+}
+
+
+
+
+  
 function hideOverlayIfShown() {
   if (!overlayShown) return;
   overlayShown = false;
