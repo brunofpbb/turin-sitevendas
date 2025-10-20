@@ -1086,7 +1086,7 @@ footer { text-align: center; }
   left:-50px;
   top:50%;
   transform:translateY(-50%);
-  height:48px;              /* ajuste fino: 44–56px */
+  height:64px;              /* ajuste fino: 44–56px */
   width:auto;
 }
 
