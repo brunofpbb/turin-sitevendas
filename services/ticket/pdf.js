@@ -59,74 +59,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   let y = doc.y + 8; HR(y); doc.y = y + 10;
 
   // ===== Empresa (logo + textos)
-  
-  
-  /*
-  (function renderEmpresa() {
-  // tenta /img e /sitevendas/img
-  const logoCandidates = [
-    path.join(__dirname, '..', '..', 'img', 'Logo Nova ISO2.jpg'),
-    path.join(__dirname, '..', '..', 'sitevendas', 'img', 'Logo Nova ISO2.jpg'),
-  ];
-  const logoPath = logoCandidates.find(p => { try { return fs.existsSync(p); } catch { return false; } });
-  const centered = !!t.headerCentered;
-
-  if (logoPath && !centered) {
-    // --- logo à esquerda, texto à direita (tabulado) ---
-    const startY = doc.y;
-    const imgW = 90, gap = 10;
-    const textX = left() + imgW + gap;
-    const textW = pageW() - imgW - gap;
-
-    doc.image(logoPath, left(), startY, { width: imgW });
-
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
-       .text(t.empresa || 'TURIN TRANSPORTES LTDA', textX, startY, { width: textW, align:'left' });
-
-    doc.font('Helvetica').fontSize(9).fillColor('#000');
-    const l1 = [];
-    if (t.cnpjEmpresa) l1.push(`CNPJ: ${t.cnpjEmpresa}`);
-    if (t.ie)          l1.push(`IE.: ${t.ie}`);
-    if (t.im)          l1.push(`IM.: ${t.im}`);
-    if (l1.length) doc.text(l1.join('    '), { width: textW, align:'left' });
-
-    const l2 = [];
-    if (t.enderecoEmpresa) l2.push(t.enderecoEmpresa);
-    if (t.bairroEmpresa)   l2.push(`- ${t.bairroEmpresa}`);
-    if (l2.length) doc.text(l2.join(' '), { width: textW, align:'left' });
-
-    const l3 = [];
-    if (t.cidadeEmpresa)   l3.push(t.cidadeEmpresa);
-    if (t.telefoneEmpresa) l3.push(`Telefone: ${t.telefoneEmpresa}`);
-    if (l3.length) doc.text(l3.join(' - '), { width: textW, align:'left' });
-
-    const afterY = Math.max(startY + 52, doc.y);
-    HR(afterY);
-    doc.y = afterY + 8;
-  } else {
-    // --- tudo centralizado (logo + textos) ---
-    if (logoPath) {
-      doc.image(logoPath, left() + (pageW() - 90)/2, doc.y, { width: 90 });
-      doc.moveDown(0.2);
-    }
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
-       .text(t.empresa || 'TURIN TRANSPORTES LTDA', { width: pageW(), align:'center' });
-    doc.font('Helvetica').fontSize(9).fillColor('#000');
-    const l1 = [];
-    if (t.cnpjEmpresa) l1.push(`CNPJ: ${t.cnpjEmpresa}`);
-    if (t.ie)          l1.push(`IE.: ${t.ie}`);
-    if (t.im)          l1.push(`IM.: ${t.im}`);
-    if (l1.length) doc.text(l1.join('    '), { width: pageW(), align:'center' });
-    if (t.enderecoEmpresa) doc.text(t.enderecoEmpresa, { width: pageW(), align:'center' });
-    const l3 = [];
-    if (t.cidadeEmpresa)   l3.push(t.cidadeEmpresa);
-    if (t.telefoneEmpresa) l3.push(`Telefone: ${t.telefoneEmpresa}`);
-    if (l3.length) doc.text(l3.join(' - '), { width: pageW(), align:'center' });
-    HR(doc.y); doc.y += 8;
-  }
-})();
-*/
-  
+    
   (function renderEmpresa() {
   // tenta /img e /sitevendas/img
   const logoCandidates = [
@@ -139,7 +72,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   const wantGroupedCentered = t.headerCentered === true; // centralizar "logo + textos" como um grupo
   const startY = doc.y;
   const imgW = logoPath ? 90 : 0;
-  const gap  = logoPath ? 30 : 0; // era 10
+  const gap  = logoPath ? 80 : 0; // era 10
 
   // 1) medimos a largura necessária do bloco de textos
   const title = String(t.empresa || 'TURIN TRANSPORTES LTDA');
@@ -202,67 +135,6 @@ exports.generateTicketPdf = async (t, outDir) => {
 })();
 
   
-  
-  
-  /*
-  (function renderEmpresa() {
-    // 1) procura na raiz /img, 2) fallback /sitevendas/img
-    const logoCandidates = [
-      path.join(__dirname, '..', '..', 'img', 'Logo Nova ISO2.jpg'),
-      path.join(__dirname, '..', '..', 'sitevendas', 'img', 'Logo Nova ISO2.jpg'),
-    ];
-    const logoPath = logoCandidates.find(p => { try { return fs.existsSync(p); } catch { return false; } });
-
-    if (logoPath) {
-      const startY = doc.y;
-      const imgW = 90;
-      const gap  = 10;
-      const textX = left() + imgW + gap;
-      const textW = pageW() - imgW - gap;
-
-      doc.image(logoPath, left(), startY, { width: imgW });
-
-      doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
-         .text(t.empresa || 'TURIN TRANSPORTES LTDA', textX, startY, { width: textW, align:'left' });
-
-      doc.font('Helvetica').fontSize(9).fillColor('#000');
-      const l1 = [];
-      if (t.cnpjEmpresa) l1.push(`CNPJ: ${t.cnpjEmpresa}`);
-      if (t.ie)          l1.push(`IE.: ${t.ie}`);
-      if (t.im)          l1.push(`IM.: ${t.im}`);
-      if (l1.length) doc.text(l1.join('    '), { width: textW, align:'left' });
-
-      const l2 = [];
-      if (t.enderecoEmpresa) l2.push(t.enderecoEmpresa);
-      if (t.bairroEmpresa)   l2.push(`- ${t.bairroEmpresa}`);
-      if (l2.length) doc.text(l2.join(' '), { width: textW, align:'left' });
-
-      const l3 = [];
-      if (t.cidadeEmpresa)   l3.push(t.cidadeEmpresa);
-      if (t.telefoneEmpresa) l3.push(`Telefone: ${t.telefoneEmpresa}`);
-      if (l3.length) doc.text(l3.join(' - '), { width: textW, align:'left' });
-
-      const afterY = Math.max(startY + 52, doc.y);
-      HR(afterY);
-      doc.y = afterY + 8;
-    } else {
-      doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
-         .text(t.empresa || 'TURIN TRANSPORTES LTDA', { width: pageW(), align:'center' });
-      doc.font('Helvetica').fontSize(9).fillColor('#000');
-      const l1 = [];
-      if (t.cnpjEmpresa) l1.push(`CNPJ: ${t.cnpjEmpresa}`);
-      if (t.ie)          l1.push(`IE.: ${t.ie}`);
-      if (t.im)          l1.push(`IM.: ${t.im}`);
-      if (l1.length) doc.text(l1.join('    '), { width: pageW(), align:'center' });
-      if (t.enderecoEmpresa) doc.text(t.enderecoEmpresa, { width: pageW(), align:'center' });
-      const l3 = [];
-      if (t.cidadeEmpresa)   l3.push(t.cidadeEmpresa);
-      if (t.telefoneEmpresa) l3.push(`Telefone: ${t.telefoneEmpresa}`);
-      if (l3.length) doc.text(l3.join(' - '), { width: pageW(), align:'center' });
-      HR(doc.y); doc.y += 8;
-    }
-  })();    */
-
   // ===== Bloco “Detalhes da viagem”
   const w = pageW();
   const colW = Math.floor(w/3) - 12;
