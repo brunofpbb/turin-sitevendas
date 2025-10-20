@@ -1046,9 +1046,9 @@ footer { text-align: center; }
   max-width:1200px; margin:0 auto; padding:12px 16px;
   display:grid; grid-template-columns:auto 1fr auto; align-items:center;
   column-gap:16px;
-}*/
+}
 
-
+*/
 
 
 .site-header .site-header-grid{
@@ -1073,7 +1073,7 @@ footer { text-align: center; }
 /* Container central com altura controlada */
 .site-header-inner{
   position:relative;
-  max-width:1200px;
+  max-width:500px;
   margin:0 auto;
   padding:8px 16px;         /* menos padding para não "crescer" */
   min-height:72px;          /* altura estável da barra */
