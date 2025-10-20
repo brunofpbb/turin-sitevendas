@@ -51,17 +51,22 @@
   <!-- Scripts (sem type="module") -->
   <script src="seats.js" defer></script>
   <script src="main.js" defer></script>
-</head>
-<body>
-  <!-- ===== Header com logo ===== -->
-  <header class="site-header">
-    <div class="site-header-inner">
-      <!-- use ../img/... caso NÃO tenha exposto /img no server.js -->
-      <img class="brand-logo" src="/img/turin-wordmark-white.png" alt="Turin Transportes">
+<header class="site-header">
+  <div class="site-header-grid">
+    <!-- ESQUERDA: LOGO -->
+    <img class="brand-logo" src="/img/turin-wordmark-white.png" alt="Turin Transportes">
+
+    <!-- CENTRO: TÍTULO + SUBTÍTULO (user-nav) -->
+    <div class="site-title">
       <h1>Turin Transportes – Venda de Passagens</h1>
-      <nav id="user-nav"></nav>
+      <nav id="user-nav" class="user-nav"></nav>
     </div>
-  </header>
+
+    <!-- DIREITA: espaço vazio só para balancear o grid -->
+    <div class="spacer" aria-hidden="true"></div>
+  </div>
+</header>
+
 
   <!-- LAYOUT PRINCIPAL: COLUNA LATERAL (form) + CONTEÚDO (resultados) -->
   <main class="two-cols">
