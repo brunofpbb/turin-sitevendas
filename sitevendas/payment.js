@@ -332,7 +332,7 @@ function hideOverlayIfShown() {
     currentTotal = Number((amount || 0).toFixed(2));
 
     brickController = await bricks.create('payment', brickContainerId, {
-      initialization: { amount: currentTotal, payer: { email: user.email || '', entityType: 'individual' } },
+      initialization: { amount: currentTotal, payer: { email: /*user.email*/ 'teste@teste.com' || '', entityType: 'individual' } },                              //EMAIL TESTE
       customization: {
         paymentMethods: {
           creditCard: 'all',
@@ -375,7 +375,7 @@ function hideOverlayIfShown() {
               description: 'Compra Turin Transportes',
               external_reference: idem,
               payer: {
-                email: /*user.email*/ "teste@teste.com" || '',                                                        //EMAIL TESTE
+                email: /*user.email*/ 'teste@teste.com' || '',                                                        //EMAIL TESTE
                 identification: formData?.payer?.identification ? {
                   type: formData.payer.identification.type || 'CPF',
                   number: String(formData.payer.identification.number || '').replace(/\D/g, '')
