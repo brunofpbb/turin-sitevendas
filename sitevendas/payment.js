@@ -234,8 +234,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       callbacks: {
         onReady: () => console.log('[MP] Brick pronto'),
         onError: (e) => { console.error('[MP] Brick error:', e); alert('Erro ao iniciar o pagamento.'); },
-        onSubmit: async ({ selectedPaymentMethod, formData }) => {
+       
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+        
+       /* 
+       
+       
+       
+       onSubmit: async ({ selectedPaymentMethod, formData }) => {
           try {
+
+    // normaliza doc e define entityType
+    if (formData?.payer?.identification) {
+      const id = formData.payer.identification;
+      const t = String(id.type || '').toUpperCase();           // "CPF" | "CNPJ"
+      id.type = t;
+      id.number = String(id.number || '').replace(/\D/g, '');  // só dígitos
+      formData.payer.entityType = t === 'CPF' ? 'individual' : t === 'CNPJ' ? 'association' : undefined;
+    }
+
+
+            
             const method = String(selectedPaymentMethod || '').toLowerCase();
             const isPix = method === 'bank_transfer' ||
                           String(formData?.payment_method_id || '').toLowerCase() === 'pix';
@@ -244,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               transaction_amount: currentTotal,
               description: 'Compra Turin Transportes',
               payer: {
-                email: /*user.email*/'teste1@teste.com.br' || '',                      //email teste para o sandbox
+                email: user.email || '',                      //email teste para o sandbox
                 identification: formData?.payer?.identification ? {
                   type: formData.payer.identification.type || 'CPF',
                   number: String(formData.payer.identification.number || '').replace(/\D/g, '')
@@ -307,6 +340,118 @@ document.addEventListener('DOMContentLoaded', async () => {
             alert('Pagamento falhou: ' + (err?.message || 'erro'));
           }
         }
+        
+        */
+
+
+
+
+onSubmit: async ({ selectedPaymentMethod, formData }) => {
+  try {
+    // normaliza doc e define entityType (CPF -> individual | CNPJ -> association)
+    if (formData?.payer?.identification) {
+      const id = formData.payer.identification;
+      const t = String(id.type || '').toUpperCase();  // "CPF" | "CNPJ"
+      id.type = t;
+      id.number = String(id.number || '').replace(/\D/g, '');
+      formData.payer.entityType = t === 'CPF' ? 'individual' : (t === 'CNPJ' ? 'association' : undefined);
+    }
+
+    const method = String(selectedPaymentMethod || '').toLowerCase();
+    const pmFromForm = String(formData?.payment_method_id || '').toLowerCase();
+    const isPix = method === 'pix' || pmFromForm === 'pix' || method === 'bank_transfer';
+
+    // >>>>>> MAPEAMENTO EM camelCase para o nosso backend
+    const body = {
+      transactionAmount: currentTotal,
+      description: 'Compra Turin Transportes',
+      payer: {
+        email: /* user.email */ 'teste1@teste.com.br' || '',
+        identification: formData?.payer?.identification ? {
+          type: formData.payer.identification.type || 'CPF',
+          number: String(formData.payer.identification.number || '').replace(/\D/g, '')
+        } : undefined,
+        entityType: formData?.payer?.entityType    // opcional, o back também infere
+      }
+    };
+
+    if (isPix) {
+      body.paymentMethodId = 'pix';
+    } else {
+      if (!formData?.token) { alert('Não foi possível tokenizar o cartão.'); return; }
+      body.token = formData.token;
+      body.paymentMethodId = formData.payment_method_id; // ex.: "master", "visa"
+      body.installments = 1;
+      if (formData.issuer_id) body.issuerId = formData.issuer_id;
+    }
+
+    // limpa undefined
+    Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+    if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
+
+    const resp = await fetch('/api/mp/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
+
+    // === CARTÃO APROVADO ===
+    if (data.status === 'approved') {
+      alert('Pagamento aprovado!');
+      const venda = await venderPraxioApósAprovado(data.id);
+
+      if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
+        const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+          .map(b => ({ ...b, paid: true }));
+        localStorage.setItem('bookings', JSON.stringify(bookings));
+
+        localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+        location.href = 'profile.html';
+      }
+      return;
+    }
+
+    // === PIX (nosso backend devolve em data.pix) ===
+    if (isPix && data?.pix) {
+      // data.pix.qr_base64 (imagem), data.pix.qr_text (copia-e-cola), data.pix.expires_at
+      // -> aqui você exibe o QR e o copia-e-cola
+      alert('PIX gerado! Conclua o pagamento no seu banco.');
+      return;
+    }
+
+    if (data?.id && data?.status === 'in_process') {
+      alert('Pagamento em análise. Acompanhe em Minhas viagens.');
+      return;
+    }
+
+    alert(`Pagamento: ${data.status} - ${data.status_detail || ''}`);
+  } catch (err) {
+    console.error('Pagamento falhou:', err);
+    alert('Pagamento falhou: ' + (err?.message || 'erro'));
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+
+        
       }
     });
   }
