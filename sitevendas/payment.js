@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     brickController = await bricks.create('payment', brickContainerId, {
       initialization: {
         amount: currentTotal,
-        payer: { email: user.email || 'teste1@teste.com.br' }
+        payer: { email: /*user.email*/'teste1@teste.com.br'|| '' }                          //email teste
       },
       customization: {
         paymentMethods: { creditCard: 'all', debitCard: 'all', bankTransfer: ['pix'] },
@@ -140,7 +140,7 @@ async function onSubmit({ selectedPaymentMethod, formData }) {
       transactionAmount: Number(currentTotal),          // número!
       description: 'Compra Turin Transportes',
       payer: {
-        email: user.email || 'teste1@teste.com.br',
+        email: /*user.email*/'teste1@teste.com.br' || '',                    //EMAIL TESTE
         identification: formData?.payer?.identification,
         entityType: formData?.payer?.entityType
       },
