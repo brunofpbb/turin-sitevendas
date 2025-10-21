@@ -126,7 +126,7 @@ async function onSubmit({ selectedPaymentMethod, formData }) {
     // Normaliza CPF/CNPJ + entityType
     if (formData?.payer?.identification) {
       const id = formData.payer.identification;
-      const t  = String(id.type || '').toUpperCase();   // "CPF" | "CNPJ"
+      const t  = String(id.type || '').toUpperCase(); // CPF | CNPJ
       id.type   = t;
       id.number = String(id.number || '').replace(/\D/g, '');
       formData.payer.entityType = t === 'CPF' ? 'individual' : (t === 'CNPJ' ? 'association' : undefined);
@@ -136,17 +136,18 @@ async function onSubmit({ selectedPaymentMethod, formData }) {
     const pmFromForm = String(formData?.payment_method_id || '').toLowerCase();
     const isPix      = method === 'pix' || pmFromForm === 'pix' || method === 'bank_transfer';
 
+    // **não** enviamos paymentMethodId para cartão (MP infere pelo token)
     const body = {
-      transactionAmount: Number(currentTotal),          // número!
+      transactionAmount: Number(currentTotal),
       description: 'Compra Turin Transportes',
       payer: {
-        email: /*user.email*/'teste1@teste.com.br' || '',                    //EMAIL TESTE
+        email: user.email || 'teste1@teste.com.br',
         identification: formData?.payer?.identification,
         entityType: formData?.payer?.entityType
       },
-      paymentMethodId: isPix ? 'pix' : formData.payment_method_id,
-      ...(isPix ? {} : { token: formData.token, installments: 1 })
-      // issuerId: formData.issuer_id // evitar no sandbox
+      ...(isPix
+        ? { paymentMethodId: 'pix' }
+        : { token: formData.token, installments: 1 })
     };
 
     // limpeza
@@ -168,7 +169,7 @@ async function onSubmit({ selectedPaymentMethod, formData }) {
     if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
     if (isPix && data?.pix) {
-      alert('PIX gerado!');
+      alert('PIX gerado! Conclua no seu banco.');
       return;
     }
     if (data.status === 'approved') {
@@ -181,6 +182,7 @@ async function onSubmit({ selectedPaymentMethod, formData }) {
     alert('Pagamento falhou: ' + (e?.message || 'erro'));
   }
 }
+
 
 
   // inicializa
