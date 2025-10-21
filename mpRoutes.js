@@ -1,18 +1,19 @@
+// routes/mpRoutes.js (compatível com mercadopago v2 + CommonJS)
+// Usa import dinâmico para evitar mudar o projeto para ESM.
+
 const express = require('express');
 const router = express.Router();
-const mercadopago = require('mercadopago');
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const MP_PUBLIC_KEY  = process.env.MP_PUBLIC_KEY;
 
 if (!MP_ACCESS_TOKEN) console.warn('[MP] ⚠ MP_ACCESS_TOKEN não definido');
-mercadopago.configure({ access_token: MP_ACCESS_TOKEN });
+if (!MP_PUBLIC_KEY)  console.warn('[MP] ⚠ MP_PUBLIC_KEY não definido');
 
-// helpers
+// ===== Helpers =====
 const onlyDigits = v => String(v || '').replace(/\D/g, '');
+
 function resolveEntityType(payer = {}) {
-  // aceita: payer.entityType (front), payer.entity_type (front/back),
-  // ou derivado do identification.type (CPF/CNPJ)
   const tRaw = payer.entityType || payer.entity_type || payer?.identification?.type;
   const t = String(tRaw || '').toUpperCase();
   if (t === 'CPF') return 'individual';
@@ -21,28 +22,46 @@ function resolveEntityType(payer = {}) {
   return undefined;
 }
 
-// publica a public key para o Brick
-router.get('/pubkey', (_req, res) => res.json({ publicKey: MP_PUBLIC_KEY || null }));
+// ===== Lazy init SDK v2 (ESM) =====
+let mpPayment = null;
+async function ensureMP() {
+  if (mpPayment) return mpPayment;
+  const sdk = await import('mercadopago'); // v2 ESM
+  const { MercadoPagoConfig, Payment } = sdk;
+  const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
+  mpPayment = new Payment(client);
+  return mpPayment;
+}
 
+// ===== Endpoints =====
+
+// Public Key para o Brick
+router.get('/pubkey', (_req, res) => {
+  res.json({ publicKey: MP_PUBLIC_KEY || null });
+});
+
+// Criar pagamento (PIX + Cartão)
 router.post('/pay', async (req, res) => {
   try {
-    // ===== recebe do front em camelCase =====
+    const payment = await ensureMP();
+
+    // recebido do front em camelCase
     const {
       transactionAmount,
       description,
       token,
       installments,
       paymentMethodId,
-      issuerId,
+      issuerId,          // não vamos enviar por padrão (pode quebrar no sandbox)
       payer = {},
     } = req.body || {};
 
-    // ===== normaliza documento e entity_type =====
+    // normalização de documento e entity_type
     const idType   = String(payer?.identification?.type || '').toUpperCase(); // "CPF"/"CNPJ"
     const idNumber = onlyDigits(payer?.identification?.number);
     const entityType = resolveEntityType({ ...payer, identification: { type: idType } });
 
-    // ===== monta body no formato do SDK (snake_case) =====
+    // monta payload v2 (snake_case)
     const base = {
       transaction_amount: Number(transactionAmount),
       description: description || 'Compra Turin Transportes',
@@ -54,23 +73,21 @@ router.post('/pay', async (req, res) => {
           type: idType || undefined,
           number: idNumber || undefined,
         },
-        entity_type: entityType, // <- ESSENCIAL NO BRASIL
+        entity_type: entityType, // <-- ESSENCIAL NO BRASIL
       },
     };
 
     const method = String(paymentMethodId || '').toLowerCase();
 
-    // PIX
+    // ===== PIX =====
     if (method === 'pix') {
       base.payment_method_id = 'pix';
       base.date_of_expiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
-      // logs úteis
       console.log('[MP] PIX create payload ->', JSON.stringify(base));
-
       const idemKey = req.headers['x-idempotency-key'];
-      const r = await mercadopago.payment.create(base, idemKey ? { idempotencyKey: idemKey } : undefined);
-      const body = r?.body || {};
+      const resp = await payment.create(base, idemKey ? { idempotencyKey: idemKey } : undefined);
+      const body = resp || {};
       const td = body?.point_of_interaction?.transaction_data;
 
       return res.json({
@@ -85,19 +102,18 @@ router.post('/pay', async (req, res) => {
       });
     }
 
-    // CARTÃO
-    base.payment_method_id = paymentMethodId; // ex.: "master"
-    base.token = token;                        // token do Brick
+    // ===== Cartão =====
+    base.payment_method_id = paymentMethodId; // "master", "visa", etc.
+    base.token = token;
     base.installments = Number(installments || 1);
-    // ⚠ issuer_id costuma causar 400 se não casar com o BIN no sandbox — só envie se veio mesmo:
+    // ⚠ issuer_id pode causar 400 no sandbox — envie só se necessário:
     if (issuerId) base.issuer_id = issuerId;
     base.capture = true;
 
     console.log('[MP] CARD create payload ->', JSON.stringify(base));
-
     const idemKey = req.headers['x-idempotency-key'];
-    const r = await mercadopago.payment.create(base, idemKey ? { idempotencyKey: idemKey } : undefined);
-    const body = r?.body || {};
+    const resp = await payment.create(base, idemKey ? { idempotencyKey: idemKey } : undefined);
+    const body = resp || {};
 
     return res.json({
       id: body?.id,
@@ -105,7 +121,8 @@ router.post('/pay', async (req, res) => {
       status_detail: body?.status_detail,
     });
   } catch (err) {
-    const e = err?.response?.data || err;
+    // Na v2, erros vêm como { message, error, cause[] }
+    const e = err;
     console.error('[MP] /api/mp/pay ERROR ->', JSON.stringify(e));
     return res.status(400).json({
       error: true,
