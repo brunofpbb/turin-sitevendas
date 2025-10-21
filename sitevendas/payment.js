@@ -367,12 +367,12 @@ onSubmit: async ({ selectedPaymentMethod, formData }) => {
       description: 'Compra Turin Transportes',
       payer: {
         email: /* user.email */ 'teste1@teste.com.br' || '',
-        identification: formData?.payer?.identification ? {
-          type: formData.payer.identification.type || 'CPF',
-          number: String(formData.payer.identification.number || '').replace(/\D/g, '')
-        } : undefined,
-        entityType: formData?.payer?.entityType    // opcional, o back também infere
-      }
+        identification: formData.payer.identification,
+        entityType: formData?.payer.entityType    // opcional, o back também infere
+      },
+      paymentMethodId: formData.payment_method_id,  // ex.: "master"
+      installments: 1,
+      token: formData.token
     };
 
     if (isPix) {
