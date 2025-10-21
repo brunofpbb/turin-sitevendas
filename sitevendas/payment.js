@@ -119,67 +119,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     formData.payer.entityType = t === 'CPF' ? 'individual' : (t === 'CNPJ' ? 'association' : undefined);
   }
 
-  async function onSubmit({ selectedPaymentMethod, formData }) {
-    try {
-      normalizePayer(formData);
+  /* sitevendas/payment.js – pontos essenciais */
 
-      const method     = String(selectedPaymentMethod || '').toLowerCase();
-      const pmFromForm = String(formData?.payment_method_id || '').toLowerCase();
-      const isPix      = method === 'pix' || pmFromForm === 'pix' || method === 'bank_transfer';
-
-      const body = {
-        transactionAmount: Number(currentTotal),
-        description: 'Compra Turin Transportes',
-        payer: {
-          email: user.email || 'teste1@teste.com.br',
-          identification: formData?.payer?.identification,
-          entityType: formData?.payer?.entityType
-        },
-        paymentMethodId: isPix ? 'pix' : formData.payment_method_id,
-        ...(isPix ? {} : { token: formData.token, installments: 1 })
-        // issuerId: formData.issuer_id  // evite no sandbox
-      };
-
-      // limpa undefined
-      Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
-      if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
-
-      console.log('[PAY] body =>', body);
-      const resp = await fetch('/api/mp/pay', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-idempotency-key': (crypto?.randomUUID?.() || String(Date.now()))
-        },
-        body: JSON.stringify(body)
-      });
-      const data = await resp.json();
-
-      if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
-
-      if (isPix && data?.pix) {
-        alert('PIX gerado! Conclua o pagamento no seu banco.');
-        // aqui você pode abrir modal com data.pix.qr_base64 / data.pix.qr_text
-        return;
-      }
-
-      if (data.status === 'approved') {
-        alert('Pagamento aprovado!');
-        // aqui segue com sua emissão Praxio, se desejar
-        return;
-      }
-
-      if (data?.status === 'in_process') {
-        alert('Pagamento em análise. Acompanhe em Minhas viagens.');
-        return;
-      }
-
-      alert(`Pagamento: ${data.status} - ${data.status_detail || ''}`);
-    } catch (e) {
-      console.error('Pagamento falhou:', e);
-      alert('Pagamento falhou: ' + (e?.message || 'erro'));
+async function onSubmit({ selectedPaymentMethod, formData }) {
+  try {
+    // Normaliza CPF/CNPJ + entityType
+    if (formData?.payer?.identification) {
+      const id = formData.payer.identification;
+      const t  = String(id.type || '').toUpperCase();   // "CPF" | "CNPJ"
+      id.type   = t;
+      id.number = String(id.number || '').replace(/\D/g, '');
+      formData.payer.entityType = t === 'CPF' ? 'individual' : (t === 'CNPJ' ? 'association' : undefined);
     }
+
+    const method     = String(selectedPaymentMethod || '').toLowerCase();
+    const pmFromForm = String(formData?.payment_method_id || '').toLowerCase();
+    const isPix      = method === 'pix' || pmFromForm === 'pix' || method === 'bank_transfer';
+
+    const body = {
+      transactionAmount: Number(currentTotal),          // número!
+      description: 'Compra Turin Transportes',
+      payer: {
+        email: user.email || 'teste1@teste.com.br',
+        identification: formData?.payer?.identification,
+        entityType: formData?.payer?.entityType
+      },
+      paymentMethodId: isPix ? 'pix' : formData.payment_method_id,
+      ...(isPix ? {} : { token: formData.token, installments: 1 })
+      // issuerId: formData.issuer_id // evitar no sandbox
+    };
+
+    // limpeza
+    Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+    if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
+
+    console.log('[PAY] body =>', body);
+
+    const resp = await fetch('/api/mp/pay', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-idempotency-key': (crypto?.randomUUID?.() || String(Date.now()))
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
+
+    if (isPix && data?.pix) {
+      alert('PIX gerado!');
+      return;
+    }
+    if (data.status === 'approved') {
+      alert('Pagamento aprovado!');
+      return;
+    }
+    alert(`Pagamento: ${data.status} - ${data.status_detail || ''}`);
+  } catch (e) {
+    console.error('Pagamento falhou:', e);
+    alert('Pagamento falhou: ' + (e?.message || 'erro'));
   }
+}
+
 
   // inicializa
   const total = renderSummary();
