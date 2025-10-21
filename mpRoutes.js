@@ -1,4 +1,4 @@
-// routes/mpRoutes.js — Mercado Pago SDK v2 + CommonJS (import dinâmico)
+// routes/mpRoutes.js — Mercado Pago SDK v2 + CommonJS (import dinâmico, chamada correta: create({ body }))
 
 const express = require('express');
 const router = express.Router();
@@ -33,16 +33,13 @@ async function ensureMP() {
 }
 
 // ===== Endpoints =====
-
-// Public key para o Brick
 router.get('/pubkey', (_req, res) => res.json({ publicKey: MP_PUBLIC_KEY || null }));
 
-// Criar pagamento (Cartão / PIX)
 router.post('/pay', async (req, res) => {
   try {
     const payment = await ensureMP();
 
-    // ===== compat: aceita camelCase e snake_case vindos do front =====
+    // === transactionAmount compat (camel/snake) ===
     const rawAmount =
       req.body?.transactionAmount ??
       req.body?.transaction_amount ??
@@ -50,21 +47,21 @@ router.post('/pay', async (req, res) => {
       null;
 
     let transactionAmountNum = NaN;
-
     if (typeof rawAmount === 'number') {
       transactionAmountNum = rawAmount;
     } else if (typeof rawAmount === 'string') {
       let s = rawAmount.trim().replace(/\s/g, '');
+      // Se tem vírgula, trata como pt-BR "1.234,56"
       if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
       transactionAmountNum = Number(s);
     }
-
     console.log('[MP] amount raw =>', rawAmount, typeof rawAmount, '=>', transactionAmountNum);
 
     if (!Number.isFinite(transactionAmountNum) || transactionAmountNum <= 0) {
       return res.status(400).json({ error: true, message: 'transactionAmount inválido ou ausente' });
     }
 
+    // === demais campos ===
     const description     = req.body?.description || 'Compra Turin Transportes';
     const token           = req.body?.token;
     const installments    = Number(req.body?.installments || 1);
@@ -94,15 +91,17 @@ router.post('/pay', async (req, res) => {
     };
 
     const isPix = paymentMethodId === 'pix' || paymentMethodId === 'bank_transfer';
+    const idemKey = req.headers['x-idempotency-key'];
 
-    // ===== PIX =====
     if (isPix) {
       base.payment_method_id = 'pix';
       base.date_of_expiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
       console.log('[MP] PIX create payload ->', JSON.stringify(base));
-      const idemKey = req.headers['x-idempotency-key'];
-      const resp = await payment.create(base, idemKey ? { idempotencyKey: idemKey } : undefined);
+      const resp = await payment.create(
+        { body: base },
+        idemKey ? { idempotencyKey: idemKey } : undefined
+      );
       const body = resp || {};
       const td = body?.point_of_interaction?.transaction_data;
 
@@ -118,17 +117,18 @@ router.post('/pay', async (req, res) => {
       });
     }
 
-    // ===== Cartão =====
+    // Cartão
     base.payment_method_id = paymentMethodId; // "master", "visa" etc.
     base.token = token;
     base.installments = installments;
-    // no sandbox evite enviar issuer_id; só envie se necessário:
-    if (issuerId) base.issuer_id = issuerId;
+    if (issuerId) base.issuer_id = issuerId;  // deixe de fora no sandbox se der 400
     base.capture = true;
 
     console.log('[MP] CARD create payload ->', JSON.stringify(base));
-    const idemKey = req.headers['x-idempotency-key'];
-    const resp = await payment.create(base, idemKey ? { idempotencyKey: idemKey } : undefined);
+    const resp = await payment.create(
+      { body: base },                                  // <<<<<< CORRETO
+      idemKey ? { idempotencyKey: idemKey } : undefined
+    );
     const body = resp || {};
 
     return res.json({
