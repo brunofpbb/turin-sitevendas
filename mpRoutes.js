@@ -13,7 +13,6 @@ if (!MP_PUBLIC_KEY)  console.warn('[MP] ⚠ MP_PUBLIC_KEY não definido');
 const onlyDigits = v => String(v || '').replace(/\D/g, '');
 
 function resolveEntityType(payer = {}) {
-  // aceita entityType, entity_type ou infere de CPF/CNPJ
   const tRaw = payer.entityType || payer.entity_type || payer?.identification?.type;
   const t = String(tRaw || '').toUpperCase();
   if (t === 'CPF') return 'individual';
@@ -50,13 +49,17 @@ router.post('/pay', async (req, res) => {
       req.body?.amount ??
       null;
 
-    // normaliza número com ,/.
-    const transactionAmountNum = Number(
-      String(rawAmount ?? '')
-        .replace(/\s/g, '')
-        .replace(/\./g, '')
-        .replace(',', '.')
-    );
+    let transactionAmountNum = NaN;
+
+    if (typeof rawAmount === 'number') {
+      transactionAmountNum = rawAmount;
+    } else if (typeof rawAmount === 'string') {
+      let s = rawAmount.trim().replace(/\s/g, '');
+      if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+      transactionAmountNum = Number(s);
+    }
+
+    console.log('[MP] amount raw =>', rawAmount, typeof rawAmount, '=>', transactionAmountNum);
 
     if (!Number.isFinite(transactionAmountNum) || transactionAmountNum <= 0) {
       return res.status(400).json({ error: true, message: 'transactionAmount inválido ou ausente' });
@@ -134,7 +137,6 @@ router.post('/pay', async (req, res) => {
       status_detail: body?.status_detail,
     });
   } catch (err) {
-    // SDK v2 retorna { message, error, cause[] }
     console.error('[MP] /api/mp/pay ERROR ->', JSON.stringify(err));
     return res.status(400).json({
       error: true,
