@@ -332,7 +332,7 @@ function hideOverlayIfShown() {
     currentTotal = Number((amount || 0).toFixed(2));
 
     brickController = await bricks.create('payment', brickContainerId, {
-      initialization: { amount: currentTotal, payer: { email: /*user.email*/ 'teste@teste.com' || '', entityType: 'individual' } },                              //EMAIL TESTE
+      initialization: { amount: currentTotal, payer: { email: /*user.email*/ 'teste@teste.com' || ''/*, entityType: 'individual'*/} },                              //EMAIL TESTE
       customization: {
         paymentMethods: {
           creditCard: 'all',
