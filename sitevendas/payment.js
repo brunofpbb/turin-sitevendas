@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     brickController = await bricks.create('payment', brickContainerId, {
       initialization: {
         amount: currentTotal,
-        payer: { email: user.email || '' }
+        payer: { email: /*user.email*/'teste@teste.com.br' || '' }
       },
       customization: {
         paymentMethods: {
@@ -244,7 +244,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               transaction_amount: currentTotal,
               description: 'Compra Turin Transportes',
               payer: {
-                email: user.email || '',
+                email: /*user.email*/'teste@teste.com.br' || '',
                 identification: formData?.payer?.identification ? {
                   type: formData.payer.identification.type || 'CPF',
                   number: String(formData.payer.identification.number || '').replace(/\D/g, '')
