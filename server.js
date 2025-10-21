@@ -478,6 +478,21 @@ for (const p of (vendaResult.ListaPassagem || [])) {
           idOrigem: schedule.idOrigem,
           idDestino: schedule.idDestino
         },
+
+
+
+
+
+        
+        dados: {
+          email: user.email,
+          telefone: user.telefone,
+
+
+
+
+          
+        },
         bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
           numPassagem: p.NumPassagem,
           chaveBPe: p.ChaveBPe,
