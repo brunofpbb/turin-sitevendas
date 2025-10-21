@@ -1,5 +1,4 @@
-// routes/mpRoutes.js (compatível com mercadopago v2 + CommonJS)
-// Usa import dinâmico para evitar mudar o projeto para ESM.
+// routes/mpRoutes.js — Mercado Pago SDK v2 + CommonJS (import dinâmico)
 
 const express = require('express');
 const router = express.Router();
@@ -14,6 +13,7 @@ if (!MP_PUBLIC_KEY)  console.warn('[MP] ⚠ MP_PUBLIC_KEY não definido');
 const onlyDigits = v => String(v || '').replace(/\D/g, '');
 
 function resolveEntityType(payer = {}) {
+  // aceita entityType, entity_type ou infere de CPF/CNPJ
   const tRaw = payer.entityType || payer.entity_type || payer?.identification?.type;
   const t = String(tRaw || '').toUpperCase();
   if (t === 'CPF') return 'individual';
@@ -26,7 +26,7 @@ function resolveEntityType(payer = {}) {
 let mpPayment = null;
 async function ensureMP() {
   if (mpPayment) return mpPayment;
-  const sdk = await import('mercadopago'); // v2 ESM
+  const sdk = await import('mercadopago'); // v2 (ESM)
   const { MercadoPagoConfig, Payment } = sdk;
   const client = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
   mpPayment = new Payment(client);
@@ -35,52 +35,65 @@ async function ensureMP() {
 
 // ===== Endpoints =====
 
-// Public Key para o Brick
-router.get('/pubkey', (_req, res) => {
-  res.json({ publicKey: MP_PUBLIC_KEY || null });
-});
+// Public key para o Brick
+router.get('/pubkey', (_req, res) => res.json({ publicKey: MP_PUBLIC_KEY || null }));
 
-// Criar pagamento (PIX + Cartão)
+// Criar pagamento (Cartão / PIX)
 router.post('/pay', async (req, res) => {
   try {
     const payment = await ensureMP();
 
-    // recebido do front em camelCase
-    const {
-      transactionAmount,
-      description,
-      token,
-      installments,
-      paymentMethodId,
-      issuerId,          // não vamos enviar por padrão (pode quebrar no sandbox)
-      payer = {},
-    } = req.body || {};
+    // ===== compat: aceita camelCase e snake_case vindos do front =====
+    const rawAmount =
+      req.body?.transactionAmount ??
+      req.body?.transaction_amount ??
+      req.body?.amount ??
+      null;
 
-    // normalização de documento e entity_type
-    const idType   = String(payer?.identification?.type || '').toUpperCase(); // "CPF"/"CNPJ"
+    // normaliza número com ,/.
+    const transactionAmountNum = Number(
+      String(rawAmount ?? '')
+        .replace(/\s/g, '')
+        .replace(/\./g, '')
+        .replace(',', '.')
+    );
+
+    if (!Number.isFinite(transactionAmountNum) || transactionAmountNum <= 0) {
+      return res.status(400).json({ error: true, message: 'transactionAmount inválido ou ausente' });
+    }
+
+    const description     = req.body?.description || 'Compra Turin Transportes';
+    const token           = req.body?.token;
+    const installments    = Number(req.body?.installments || 1);
+    const paymentMethodId = String(req.body?.paymentMethodId || req.body?.payment_method_id || '').toLowerCase();
+    const issuerId        = req.body?.issuerId || req.body?.issuer_id; // evite no sandbox
+    const payer           = req.body?.payer || {};
+
+    // normaliza CPF/CNPJ e entity_type
+    const idType   = String(payer?.identification?.type || '').toUpperCase(); // "CPF" | "CNPJ"
     const idNumber = onlyDigits(payer?.identification?.number);
     const entityType = resolveEntityType({ ...payer, identification: { type: idType } });
 
-    // monta payload v2 (snake_case)
+    // payload v2 (snake_case)
     const base = {
-      transaction_amount: Number(transactionAmount),
-      description: description || 'Compra Turin Transportes',
+      transaction_amount: transactionAmountNum,
+      description,
       payer: {
         email: payer?.email || '',
         first_name: payer?.first_name,
         last_name:  payer?.last_name,
         identification: {
-          type: idType || undefined,
+          type:   idType || undefined,
           number: idNumber || undefined,
         },
-        entity_type: entityType, // <-- ESSENCIAL NO BRASIL
+        entity_type: entityType, // ESSENCIAL no BR
       },
     };
 
-    const method = String(paymentMethodId || '').toLowerCase();
+    const isPix = paymentMethodId === 'pix' || paymentMethodId === 'bank_transfer';
 
     // ===== PIX =====
-    if (method === 'pix') {
+    if (isPix) {
       base.payment_method_id = 'pix';
       base.date_of_expiration = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
@@ -103,10 +116,10 @@ router.post('/pay', async (req, res) => {
     }
 
     // ===== Cartão =====
-    base.payment_method_id = paymentMethodId; // "master", "visa", etc.
+    base.payment_method_id = paymentMethodId; // "master", "visa" etc.
     base.token = token;
-    base.installments = Number(installments || 1);
-    // ⚠ issuer_id pode causar 400 no sandbox — envie só se necessário:
+    base.installments = installments;
+    // no sandbox evite enviar issuer_id; só envie se necessário:
     if (issuerId) base.issuer_id = issuerId;
     base.capture = true;
 
@@ -121,13 +134,12 @@ router.post('/pay', async (req, res) => {
       status_detail: body?.status_detail,
     });
   } catch (err) {
-    // Na v2, erros vêm como { message, error, cause[] }
-    const e = err;
-    console.error('[MP] /api/mp/pay ERROR ->', JSON.stringify(e));
+    // SDK v2 retorna { message, error, cause[] }
+    console.error('[MP] /api/mp/pay ERROR ->', JSON.stringify(err));
     return res.status(400).json({
       error: true,
-      message: e?.message || e?.error || 'Falha ao processar pagamento',
-      cause: e?.cause || undefined,
+      message: err?.message || err?.error || 'Falha ao processar pagamento',
+      cause: err?.cause || undefined,
     });
   }
 });
