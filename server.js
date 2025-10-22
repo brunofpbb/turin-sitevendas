@@ -36,7 +36,6 @@ app.use((req, res, next) => {
 /* =================== Middlewares =================== */
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(PUBLIC_DIR));
-app.use('/img', express.static(path.join(__dirname, 'img')));
 
 // servir PDFs
 if (!fs.existsSync(TICKETS_DIR)) fs.mkdirSync(TICKETS_DIR);
@@ -477,21 +476,6 @@ for (const p of (vendaResult.ListaPassagem || [])) {
           horaPartida: schedule.horaPartida,
           idOrigem: schedule.idOrigem,
           idDestino: schedule.idDestino
-        },
-
-
-
-
-
-        
-        dados: {
-          email: user.email,
-          telefone: user.telefone,
-
-
-
-
-          
         },
         bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
           numPassagem: p.NumPassagem,
