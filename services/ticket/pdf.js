@@ -72,7 +72,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   const wantGroupedCentered = t.headerCentered === true; // centralizar "logo + textos" como um grupo
   const startY = doc.y;
   const imgW = logoPath ? 90 : 0;
-  const gap  = logoPath ? 80 : 0; // era 10
+  const gap  = logoPath ? 110 : 0; // era 10
 
   // 1) medimos a largura necessária do bloco de textos
   const title = String(t.empresa || 'TURIN TRANSPORTES LTDA');
@@ -145,7 +145,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   const label = (txt, x, yy) => doc.font('Helvetica').fontSize(9).fillColor('#555').text(txt, x, yy, { width: colW, lineBreak:false });
   const value = (txt, x, yy, bold=true) => {
     const val = (txt || '—');                  // <-- aqui corrige string vazia
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(16).fillColor('#111');
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#111');
     doc.text(fit(doc, val, colW), x, yy, { width: colW, lineBreak:false });
   };
   const cell = (x, lbl, val, row) => {
