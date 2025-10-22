@@ -439,7 +439,7 @@ const bodyVenda = {
     // 4) Chamar a Praxio
     const vendaResult = await praxioVendaPassagem(bodyVenda);
     console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
-
+/*
     // 5) Gerar PDFs
     const subDir = new Date().toISOString().slice(0,10);
     const outDir = path.join(TICKETS_DIR, subDir);
@@ -461,7 +461,56 @@ for (const p of (vendaResult.ListaPassagem || [])) {
   const pdf = await generateTicketPdf(ticket, outDir);
   arquivos.push({ numPassagem: ticket.numPassagem, pdf: `/tickets/${subDir}/${pdf.filename}` });
 }
+*/
 
+// 5) Gerar PDFs (local) e subir no Google Drive
+const subDir = new Date().toISOString().slice(0,10);
+const outDir = path.join(TICKETS_DIR, subDir);
+await fs.promises.mkdir(outDir, { recursive: true });
+
+const arquivos = [];
+for (const p of (vendaResult.ListaPassagem || [])) {
+  const ticket = mapVendaToTicket({
+    ListaPassagem: [p],
+    mp: {
+      payment_type_id: payment.payment_type_id,
+      payment_method_id: (payment.payment_method?.id || payment.payment_method_id || ''),
+      status: payment.status,
+      installments: payment.installments
+    },
+    emissaoISO: new Date().toISOString()
+  });
+
+  // gera arquivo .pdf em disco
+  const pdf = await generateTicketPdf(ticket, outDir);
+  const localPath = path.join(outDir, pdf.filename);
+  const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
+
+  // sobe no Drive
+  let drive = null;
+  try {
+    const buf = await fs.promises.readFile(localPath);
+    const nome = `BPE_${ticket.numPassagem}.pdf`;
+    drive = await uploadPdfToDrive({
+      buffer: buf,
+      filename: nome,
+      folderId: process.env.GDRIVE_FOLDER_ID,
+    });
+  } catch (e) {
+    console.error('[Drive] upload falhou:', e?.message || e);
+  }
+
+  arquivos.push({
+    numPassagem: ticket.numPassagem,
+    pdfLocal: localUrl,              // fallback
+    driveUrl: drive?.webViewLink || null,
+    driveFileId: drive?.id || null
+  });
+}
+
+
+
+   /* 
 
     // 6) Disparar webhook salvarBpe (não bloqueante)
     try {
@@ -510,7 +559,56 @@ for (const p of (vendaResult.ListaPassagem || [])) {
     res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
   }
 });
+*/
 
+
+// 6) Disparar webhook salvarBpe (não bloqueante)
+try {
+  const payloadWebhook = {
+    fonte: 'sitevendas',
+    mp: {
+      id: payment.id,
+      status: payment.status,
+      status_detail: payment.status_detail,
+      external_reference: payment.external_reference || null,
+      amount: payment.transaction_amount
+    },
+    viagem: {
+      idViagem: schedule.idViagem,
+      horaPartida: schedule.horaPartida,
+      idOrigem: schedule.idOrigem,
+      idDestino: schedule.idDestino
+    },
+    bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
+      numPassagem: p.NumPassagem,
+      chaveBPe: p.ChaveBPe,
+      origem: p.Origem,
+      destino: p.Destino,
+      poltrona: p.Poltrona,
+      nomeCliente: p.NomeCliente,
+      docCliente: p.DocCliente,
+      valor: p.ValorPgto
+    })),
+    arquivos // agora contém driveUrl/driveFileId e pdfLocal
+  };
+
+  const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payloadWebhook),
+  });
+  console.log('[Webhook salvarBpe] status:', hook.status);
+} catch (e) {
+  console.error('[Webhook salvarBpe] erro:', e?.message || e);
+}
+
+
+
+
+
+
+
+    
 /* =================== Fallback para .html =================== */
 app.get('*', (req, res, next) => {
   if (req.path.endsWith('.html')) {
