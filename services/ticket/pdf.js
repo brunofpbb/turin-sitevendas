@@ -140,7 +140,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   const colW = Math.floor(w/3) - 12;
   const x0 = left(), x1 = x0 + colW + 18, x2 = x1 + colW + 18;
   const gridStartY = doc.y;
-  const rowH = 26;
+  const rowH = 11;              //era 26
 
   const label = (txt, x, yy) => doc.font('Helvetica').fontSize(9).fillColor('#555').text(txt, x, yy, { width: colW, lineBreak:false });
   const value = (txt, x, yy, bold=true) => {
