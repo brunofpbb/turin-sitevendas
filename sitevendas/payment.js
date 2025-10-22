@@ -101,7 +101,7 @@ function hideOverlayIfShown() {
         if (st === 'approved') {
           clearInterval(pixPollTimer);
          // setPixStatus('Pagamento aprovado! Emitindo bilhete…');
-          showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…);
+          showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
 
           try {
             const venda = await venderPraxioApósAprovado(paymentId);
