@@ -397,7 +397,7 @@ function hideOverlayIfShown() {
             // === CARTÃO APROVADO ===
 
 
-  if (data.status === 'approved') {
+ /* if (data.status === 'approved') {
   showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
   try {
@@ -415,12 +415,12 @@ function hideOverlayIfShown() {
     hideOverlayIfShown();
   }
 }
-
+*/
 
 
 
             
-/*if (data.status === 'approved') {
+if (data.status === 'approved') {
   showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
 
   try {
@@ -439,7 +439,7 @@ function hideOverlayIfShown() {
     alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
   }
   return;
-}*/
+}
 
 
             // === PIX (gera QR, aprovação é posterior) ===
