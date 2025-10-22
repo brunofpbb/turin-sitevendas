@@ -187,7 +187,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   HR(yPDLine);
 
   // ===== Totais (2 colunas)
-  const yVals = yPDLine + 10;
+ /* const yVals = yPDLine + 10;
   const halfW = Math.floor(w/2) - 12;
   const colRightX = x0 + halfW + 24;
 
@@ -208,7 +208,49 @@ exports.generateTicketPdf = async (t, outDir) => {
     yR += 28;
   };
   moneyR('Forma de Pagamento', t.formaPagamento || '—');
-  moneyR('Valor Pago', t.valorTotalFmt, true);
+  moneyR('Valor Pago', t.valorTotalFmt, true);*/
+
+
+// ===== Totais (2 colunas)
+const yVals   = yPDLine + 10;
+const halfW   = Math.floor(w/2) - 12;
+const colRX   = x0 + halfW + 24;
+
+let yL = yVals;
+const moneyL = (lbl, val) => {
+  doc.font('Helvetica').fontSize(9).fillColor('#555')
+     .text(lbl, x0, yL, { width: halfW, lineBreak:false });
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#111')
+     .text(String(val || 'R$ 0,00'), x0, yL + 11, { width: halfW, lineBreak:false });
+
+  yL += 28;
+};
+moneyL('Tarifa', t.tarifa);
+moneyL('Taxa de Embarque', t.taxaEmbarque);
+moneyL('Outros', t.outros);
+
+let yR = yVals;
+// >>> aceitando tamanho customizado para o valor <<<
+const moneyR = (lbl, val, valueSize = 11) => {
+  doc.font('Helvetica').fontSize(9).fillColor('#555')
+     .text(lbl, colRX, yR, { width: halfW, lineBreak:false });
+
+  doc.font('Helvetica-Bold').fontSize(valueSize).fillColor('#111')
+     .text(String(val || '—'), colRX, yR + 11, { width: halfW, lineBreak:false });
+
+  // um pouco mais de espaçamento quando a fonte é maior
+  yR += (valueSize > 11 ? 32 : 28);
+};
+
+moneyR('Forma de Pagamento', t.formaPagamento || '—', 11);
+// aqui você escolhe o tamanho só do conteúdo (ex.: 14 ou 16)
+moneyR('Valor Pago', t.valorTotalFmt, 14);
+
+
+
+
+  
 
   // ===== BLOCO DO QR (ordem solicitada)
   const yBeforeQR = Math.max(yL, yR) + 6;
