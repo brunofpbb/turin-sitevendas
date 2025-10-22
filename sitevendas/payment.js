@@ -395,13 +395,38 @@ function hideOverlayIfShown() {
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
             // === CARTÃO APROVADO ===
-if (data.status === 'approved') {
+
+
+  if (data.status === 'approved') {
+  showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
+
+  try {
+    const venda = await venderPraxioApósAprovacao(data); // seu método, se existir
+    if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length > 0) {
+      location.href = 'profile.html';
+      return;
+    }
+
+    // se não veio arquivo, considera erro de emissão
+    hideOverlayIfShown();
+    alert('Pagamento aprovado, mas não foi possível emitir o BPe automaticamente.');
+  } catch (e) {
+    console.error('Falha na emissão pós-aprovação:', e);
+    hideOverlayIfShown();
+  }
+}
+
+
+
+
+            
+/*if (data.status === 'approved') {
   showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
 
   try {
     const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
     if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-      ...
+      
       location.href = 'profile.html';
       return;
     }
@@ -414,7 +439,7 @@ if (data.status === 'approved') {
     alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
   }
   return;
-}
+}*/
 
 
             // === PIX (gera QR, aprovação é posterior) ===
