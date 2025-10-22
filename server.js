@@ -5,6 +5,8 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
+const { uploadPdfToDrive } = require('./drive');
+
 
 // === serviços de bilhete (PDF) ===
 const { mapVendaToTicket } = require('./services/ticket/mapper');
