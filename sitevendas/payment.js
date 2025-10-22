@@ -395,34 +395,18 @@ function hideOverlayIfShown() {
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
             // === CARTÃO APROVADO ===
-
-
- /* if (data.status === 'approved') {
-  showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
-
-  try {
-    const venda = await venderPraxioApósAprovacao(data); // seu método, se existir
-    if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length > 0) {
-      location.href = 'profile.html';
-      return;
-    }
-
-    // se não veio arquivo, considera erro de emissão
-    hideOverlayIfShown();
-    alert('Pagamento aprovado, mas não foi possível emitir o BPe automaticamente.');
-  } catch (e) {
-    console.error('Falha na emissão pós-aprovação:', e);
-    hideOverlayIfShown();
-  }
-}
-*/
-
-
-
-            
+           
 if (data.status === 'approved') {
   showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
 
+  const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
+  .map(b => ({ ...b, paid: true }));
+  localStorage.setItem('bookings', JSON.stringify(bookings));
+  localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
+
+
+
+  
   try {
     const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
     if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
