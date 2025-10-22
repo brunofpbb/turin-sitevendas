@@ -77,40 +77,12 @@
     // se a página for descarregada, garante que o overlay não "grude"
     window.addEventListener('beforeunload', () => hideIssuanceOverlay());
   </script>
-
-  <script>
-  function showIssuanceOverlay(msg){
-    const el = document.getElementById('issuance-overlay');
-    if(!el) return;
-    if(msg) el.querySelector('.io-title').textContent = msg;
-    el.style.display = 'flex';
-    // evita scroll/duplo clique
-    document.body.style.pointerEvents = 'none';
-    document.body.style.overflow = 'hidden';
-  }
-  function hideIssuanceOverlay(){
-    const el = document.getElementById('issuance-overlay');
-    if(!el) return;
-    el.style.display = 'none';
-    document.body.style.pointerEvents = '';
-    document.body.style.overflow = '';
-  }
-  // opção: se algo travar por muito tempo, solta o overlay (ex.: 90s)
-  window.addEventListener('beforeunload', () => hideIssuanceOverlay());
-</script>
-
-
-  <!-- HEADER em GRID -->
-<header class="site-header">
-  <div class="site-header-inner">
-    <img class="brand-logo" src="/img/turin-wordmark-white.png" alt="Turin Transportes">
-
-    <div class="site-title">
-      <h1>Turin Transportes – Pagamento</h1>
-      <nav id="user-nav" class="user-nav"></nav>
-    </div>
-  </div>
-</header> 
+</head>
+<body>
+  <header>
+    <h1>Turin Transportes – Pagamento</h1>
+    <nav id="user-nav"></nav>
+  </header>
 
   <main class="two-cols-pay">
     <!-- Card lateral fixo: Resumo -->
@@ -128,7 +100,7 @@
       <h2 class="step-title">Informações de Pagamento</h2>
       <p class="mute">Pagamento seguro via Checkout API do Mercado Pago (Bricks).</p>
 
-      <!-- Container do Brick --> <!--payment-bricks-->
+      <!-- Container do Brick -->
       <div id="payment-bricks" style="margin-top:12px;"></div>
 
       <!-- Resultado PIX (criado/atualizado pelo JS) -->
@@ -156,15 +128,5 @@
       <div class="io-sub">Estamos confirmando sua compra e gerando o DABP-e…</div>
     </div>
   </div>
-
-  <!-- Overlay de carregamento -->
-<div id="issuance-overlay" style="display:none">
-  <div class="io-card">
-    <div class="io-spinner" aria-hidden="true"></div>
-    <div class="io-title">Emitindo bilhete, por favor aguarde!</div>
-    <div class="io-sub">Estamos confirmando sua compra e gerando o DABP-e…</div>
-  </div>
-</div>
-
 </body>
 </html>
