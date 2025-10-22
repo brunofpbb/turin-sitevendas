@@ -1,5 +1,4 @@
-// profile.js — Minhas viagens (render com "Ver Bilhete" e nº do bilhete)
-// Agora ordena os bilhetes do mais recente para o mais antigo (último vendido primeiro)
+// profile.js — Minhas viagens (com link do Drive)
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -14,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const fmtBRL = (n)=> (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   const pick   = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '—';
 
-  // fila de bilhetes recém-gerados (salvos pelo payment.js)
+  // fila de bilhetes recém-gerados (salva pelo payment.js: venda.arquivos)
+  // pode conter: { numPassagem, driveUrl, pdfLocal, pdf }
   const lastTickets = JSON.parse(localStorage.getItem('lastTickets') || '[]');
   const ticketsQueue = Array.isArray(lastTickets) ? lastTickets.slice() : [];
 
@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ---------- NOVO: ordenação por "último vendido" ----------
+  // ordena pagos do mais recente para o mais antigo
   const parseTs = (v) => {
     if (!v) return NaN;
     if (v instanceof Date) return v.getTime();
@@ -60,38 +60,23 @@ document.addEventListener('DOMContentLoaded', () => {
     return NaN;
   };
   function sortPaidDesc(paid, originalAll) {
-    // mapeia com índice original p/ desempate estável
-    const withIdx = paid.map((b, idxPaid) => {
+    const withIdx = paid.map((b) => {
       const idxInAll = originalAll.findIndex(x => x === b);
-      // hierarquia de datas:
       const ts =
         parseTs(b.paidAt) ??
         parseTs(b.dataVenda) ??
         parseTs(b.vendaAt) ??
         parseTs(b.createdAt) ??
         parseTs(b.created_at);
-
-      // se todas falharem, usamos -1 para cair no desempate por índice
-      const safeTs = Number.isNaN(ts) ? -1 : ts;
-      return { b, ts: safeTs, idxInAll: idxInAll, idxPaid };
+      return { b, ts: Number.isNaN(ts) ? -1 : ts, idxInAll };
     });
-
-    // ordena: ts desc, depois índice original desc (itens mais ao fim do array primeiro)
-    withIdx.sort((a, c) => {
-      if (a.ts !== c.ts) return c.ts - a.ts;
-      // se nenhum tem ts válido, usamos a posição original (quem foi adicionado por último fica primeiro)
-      return c.idxInAll - a.idxInAll;
-    });
-
+    withIdx.sort((a, c) => (c.ts - a.ts) || (c.idxInAll - a.idxInAll));
     return withIdx.map(x => x.b);
   }
-  // -----------------------------------------------------------
 
   function render(){
     const all  = loadAll();
-    // apenas pagos
     let paid = all.filter(b => b.paid === true);
-    // ordena pelos mais recentes
     paid = sortPaidDesc(paid, all);
 
     if (!paid.length){
@@ -105,12 +90,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const pax   = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
       const cancelable = !b.cancelledAt && mayCancel(s);
       const statusText = b.cancelledAt ? 'Cancelada' : 'Pago';
-
       const showPreview = previewId === String(b.id);
 
       const paidAmount = Number(b.price || 0);
       const fee  = +(paidAmount * 0.05).toFixed(2);
       const back = +(paidAmount - fee).toFixed(2);
+
+      // Link do bilhete já salvo no booking (preferência: Drive)
+      const bookingTicketUrl = b.driveUrl || b.pdfLocal || b.ticketUrl || null;
+      const bookingTicketNum = b.ticketNumber || b.numPassagem || null;
 
       return `
         <div class="schedule-card card-grid" data-id="${b.id}">
@@ -126,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <div><b>Poltronas:</b> ${seats || '—'}</div>
               ${pax.length ? `<div><b>Passageiros:</b> ${pax.join(', ')}</div>` : ''}
               <div><b>Status:</b> ${statusText}</div>
-              <div class="bilhete-num" style="margin-top:6px;"></div>
+              <div class="bilhete-num" style="margin-top:6px;">${bookingTicketNum ? `<b>Bilhete nº:</b> ${bookingTicketNum}` : ''}</div>
             </div>
 
             ${showPreview ? `
@@ -154,12 +142,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <div class="card-right">
             <div class="reserva-actions">
-              <!-- "Ver Bilhete" entra aqui via JS se houver -->
-              ${(!showPreview && !b.cancelledAt)
+              ${
+                (!showPreview && !b.cancelledAt)
                 ? `<button class="${cancelable ? 'btn btn-danger' : 'btn btn-danger'} btn-cancel"
                            ${cancelable ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}
                            data-id="${b.id}">Cancelar</button>`
-                : ''}
+                : ''
+              }
+              <!-- Botão "Ver Bilhete" entra aqui via script abaixo -->
+              ${
+                bookingTicketUrl && !showPreview
+                ? `<a class="btn btn-success" href="${bookingTicketUrl}" target="_blank" rel="noopener">Ver Bilhete</a>`
+                : ''
+              }
             </div>
           </div>
         </div>
@@ -193,30 +188,39 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // === Inserir "Ver Bilhete" + Bilhete nº (consome a fila) ===
-    const cards = listEl.querySelectorAll('.schedule-card');
-    cards.forEach(card => {
-      if (!ticketsQueue.length) return;
-      const actions = card.querySelector('.reserva-actions');
-      const numEl = card.querySelector('.bilhete-num');
-      const inPreview = card.querySelector('.calc-box') !== null;
-      if (inPreview) return;
+    // === Fila de "últimos bilhetes" (caso o booking ainda não tenha link salvo) ===
+    if (ticketsQueue.length) {
+      const cards = listEl.querySelectorAll('.schedule-card');
+      cards.forEach(card => {
+        if (!ticketsQueue.length) return;
+        const actions = card.querySelector('.reserva-actions');
+        const numEl = card.querySelector('.bilhete-num');
+        const inPreview = card.querySelector('.calc-box') !== null;
+        if (inPreview) return;
 
-      const ticket = ticketsQueue.shift();
-      if (!ticket) return;
+        // se o card já tem botão (porque o booking tinha driveUrl/pdfLocal), pula
+        if (actions.querySelector('.btn-success')) return;
 
-      const a = document.createElement('a');
-      a.className = 'btn btn-success';
-      a.textContent = 'Ver Bilhete';
-      a.href = ticket.pdf;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.title = `Bilhete nº ${ticket.numPassagem}`;
-      actions.prepend(a);
+        const ticket = ticketsQueue.shift();
+        if (!ticket) return;
 
-      // rótulo igual aos demais (negrito + mesmo tamanho)
-      if (numEl) numEl.innerHTML = `<b>Bilhete nº:</b> ${ticket.numPassagem}`;
-    });
+        const url = ticket.driveUrl || ticket.pdf || ticket.pdfLocal;
+        if (!url) return;
+
+        const a = document.createElement('a');
+        a.className = 'btn btn-success';
+        a.textContent = 'Ver Bilhete';
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.title = ticket.numPassagem ? `Bilhete nº ${ticket.numPassagem}` : 'Bilhete';
+        actions.prepend(a);
+
+        if (numEl && ticket.numPassagem) {
+          numEl.innerHTML = `<b>Bilhete nº:</b> ${ticket.numPassagem}`;
+        }
+      });
+    }
   }
 
   render();
