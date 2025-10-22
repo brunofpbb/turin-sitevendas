@@ -78,6 +78,28 @@
     window.addEventListener('beforeunload', () => hideIssuanceOverlay());
   </script>
 
+  <script>
+  function showIssuanceOverlay(msg){
+    const el = document.getElementById('issuance-overlay');
+    if(!el) return;
+    if(msg) el.querySelector('.io-title').textContent = msg;
+    el.style.display = 'flex';
+    // evita scroll/duplo clique
+    document.body.style.pointerEvents = 'none';
+    document.body.style.overflow = 'hidden';
+  }
+  function hideIssuanceOverlay(){
+    const el = document.getElementById('issuance-overlay');
+    if(!el) return;
+    el.style.display = 'none';
+    document.body.style.pointerEvents = '';
+    document.body.style.overflow = '';
+  }
+  // opção: se algo travar por muito tempo, solta o overlay (ex.: 90s)
+  window.addEventListener('beforeunload', () => hideIssuanceOverlay());
+</script>
+
+
   <!-- HEADER em GRID -->
 <header class="site-header">
   <div class="site-header-inner">
