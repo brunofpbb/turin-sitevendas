@@ -145,7 +145,7 @@ exports.generateTicketPdf = async (t, outDir) => {
   const label = (txt, x, yy) => doc.font('Helvetica').fontSize(9).fillColor('#555').text(txt, x, yy, { width: colW, lineBreak:false });
   const value = (txt, x, yy, bold=true) => {
     const val = (txt || '—');                  // <-- aqui corrige string vazia
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#111');
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(11).fillColor('#111');
     doc.text(fit(doc, val, colW), x, yy, { width: colW, lineBreak:false });
   };
   const cell = (x, lbl, val, row) => {
