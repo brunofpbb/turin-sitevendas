@@ -1,4 +1,46 @@
 // payment.js — Resumo + Bricks + PIX (QR + copia-e-cola + polling)
+
+// === helper: salva links do bilhete no booking/localStorage ===
+function mergeDriveLinksIntoBookings(arquivos) {
+  if (!Array.isArray(arquivos) || !arquivos.length) return;
+  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+  if (!all.length) return;
+  const last = all[all.length - 1];
+
+  last.paid = true;
+  last.paidAt = new Date().toISOString();
+  last.tickets = arquivos.map(a => ({
+    numPassagem: a.numPassagem || a.NumPassagem || null,
+    driveUrl: a.driveUrl || null,
+    pdfLocal: a.pdfLocal || null,
+    url: a.driveUrl || a.pdfLocal || null
+  }));
+
+  const first = last.tickets[0] || {};
+  last.ticketUrl = first.url || null;
+  last.driveUrl  = first.driveUrl || null;
+  last.pdfLocal  = first.pdfLocal || null;
+  last.ticketNumber = first.numPassagem || null;
+
+  localStorage.setItem('bookings', JSON.stringify(all));
+  localStorage.setItem('lastTickets', JSON.stringify(
+    arquivos.map(a => ({
+      numPassagem: a.numPassagem || a.NumPassagem || null,
+      driveUrl: a.driveUrl || null,
+      pdfLocal: a.pdfLocal || null
+    }))
+  ));
+}
+
+
+
+
+
+
+
+
+
+
 document.addEventListener('DOMContentLoaded', async () => {
   // ——— login obrigatório
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -98,7 +140,7 @@ function hideOverlayIfShown() {
         const st = String(data?.status || '').toLowerCase();
         const detail = String(data?.status_detail || '').toLowerCase();
 
-        if (st === 'approved') {
+       /* if (st === 'approved') {
           clearInterval(pixPollTimer);
          // setPixStatus('Pagamento aprovado! Emitindo bilhete…');
           showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
@@ -119,7 +161,40 @@ function hideOverlayIfShown() {
               alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
         }
           
-        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
+        } */
+
+
+        if (st === 'approved') {
+  clearInterval(pixPollTimer);
+  showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
+
+  try {
+    // emite/recupera venda pós-pagamento Pix
+    const venda = await venderPraxioApósAprovado(paymentId);
+
+    const arquivos = venda?.arquivos || venda?.Arquivos || [];
+    if (arquivos.length) {
+      // grava no booking + lastTickets (Drive e fallback local)
+      mergeDriveLinksIntoBookings(arquivos);
+
+      // segue para Minhas viagens
+      location.href = 'profile.html';
+      return;
+    }
+
+    hideOverlayIfShown();
+    alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
+  } catch (e) {
+    console.error('Erro ao emitir bilhete após aprovação:', e);
+    hideOverlayIfShown();
+    alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+  }
+}
+
+        
+        
+        
+        else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
           clearInterval(pixPollTimer);
           setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
         } else {
@@ -395,8 +470,45 @@ function hideOverlayIfShown() {
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
             // === CARTÃO APROVADO ===
-           
+
+// === CARTÃO APROVADO ===
 if (data.status === 'approved') {
+  showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
+
+  try {
+    // mantém o nome atual da sua função
+    const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+
+    const arquivos = venda?.arquivos || venda?.Arquivos || [];
+    if (arquivos.length) {
+      // grava no booking + lastTickets (Drive e fallback local)
+      mergeDriveLinksIntoBookings(arquivos);
+
+      // redireciona para Minhas viagens
+      location.href = 'profile.html';
+      return;
+    }
+
+    // se não veio arquivo, considera erro de emissão
+    hideOverlayIfShown();
+    alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
+  } catch (e) {
+    console.error('Falha na emissão pós-aprovação (cartão):', e);
+    hideOverlayIfShown();
+    alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
+  }
+
+  return;
+}
+
+
+
+
+            
+           
+/*
+            
+            if (data.status === 'approved') {
   showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
   try {
@@ -425,7 +537,7 @@ if (data.status === 'approved') {
 
   return;
 }
-
+*/
 
 
             // === PIX (gera QR, aprovação é posterior) ===
