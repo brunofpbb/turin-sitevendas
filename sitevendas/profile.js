@@ -141,21 +141,18 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
 
           <div class="card-right">
-            <div class="reserva-actions">
-              ${
-                (!showPreview && !b.cancelledAt)
-                ? `<button class="${cancelable ? 'btn btn-danger' : 'btn btn-danger'} btn-cancel"
-                           ${cancelable ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}
-                           data-id="${b.id}">Cancelar</button>`
-                : ''
-              }
-              <!-- Botão "Ver Bilhete" entra aqui via script abaixo -->
-              ${
-                bookingTicketUrl && !showPreview
-                ? `<a class="btn btn-success" href="${bookingTicketUrl}" target="_blank" rel="noopener">Ver Bilhete</a>`
-                : ''
-              }
-            </div>
+<div class="reserva-actions">
+  ${ bookingTicketUrl && !showPreview
+      ? `<a class="btn btn-success" href="${bookingTicketUrl}" target="_blank" rel="noopener">Ver Bilhete</a>`
+      : ''
+  }
+  ${
+    (!showPreview && !b.cancelledAt)
+      ? `<button class="btn btn-danger btn-cancel" data-id="${b.id}">Cancelar</button>`
+      : ''
+  }
+</div>
+
           </div>
         </div>
       `;
@@ -214,8 +211,16 @@ document.addEventListener('DOMContentLoaded', () => {
         a.target = '_blank';
         a.rel = 'noopener';
         a.title = ticket.numPassagem ? `Bilhete nº ${ticket.numPassagem}` : 'Bilhete';
-        actions.prepend(a);
+       // actions.prepend(a);
 
+
+        const cancelBtn = actions.querySelector('.btn-cancel');
+        if (cancelBtn) actions.insertBefore(a, cancelBtn);
+        else actions.appendChild(a);
+
+
+
+        
         if (numEl && ticket.numPassagem) {
           numEl.innerHTML = `<b>Bilhete nº:</b> ${ticket.numPassagem}`;
         }
