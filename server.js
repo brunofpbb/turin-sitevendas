@@ -654,8 +654,26 @@ const payloadWebhook = {
 
 
 
-  
+// 6) Webhook salvarBpe
+try {
+  const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payloadWebhook),
+  });
+  console.log('[Webhook salvarBpe] status:', hook.status);
+} catch (e) {
+  console.error('[Webhook salvarBpe] erro:', e?.message || e);
+}
 
+// 7) Retorno para o front (payment.js)
+return res.json({ ok: true, venda: vendaResult, arquivos });
+
+
+    
+
+  
+/*
       const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -669,11 +687,15 @@ const payloadWebhook = {
     // 7) Retorno para o front (payment.js)
     return res.json({ ok: true, venda: vendaResult, arquivos });
 
+  
+
   } catch (e) {
     console.error('praxio/vender error:', e);
     return res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
   }
 });
+
+*/
 
 
     
