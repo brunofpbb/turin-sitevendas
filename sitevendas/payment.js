@@ -1,46 +1,4 @@
 // payment.js — Resumo + Bricks + PIX (QR + copia-e-cola + polling)
-
-// === helper: salva links do bilhete no booking/localStorage ===
-function mergeDriveLinksIntoBookings(arquivos) {
-  if (!Array.isArray(arquivos) || !arquivos.length) return;
-  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
-  if (!all.length) return;
-  const last = all[all.length - 1];
-
-  last.paid = true;
-  last.paidAt = new Date().toISOString();
-  last.tickets = arquivos.map(a => ({
-    numPassagem: a.numPassagem || a.NumPassagem || null,
-    driveUrl: a.driveUrl || null,
-    pdfLocal: a.pdfLocal || null,
-    url: a.driveUrl || a.pdfLocal || null
-  }));
-
-  const first = last.tickets[0] || {};
-  last.ticketUrl = first.url || null;
-  last.driveUrl  = first.driveUrl || null;
-  last.pdfLocal  = first.pdfLocal || null;
-  last.ticketNumber = first.numPassagem || null;
-
-  localStorage.setItem('bookings', JSON.stringify(all));
-  localStorage.setItem('lastTickets', JSON.stringify(
-    arquivos.map(a => ({
-      numPassagem: a.numPassagem || a.NumPassagem || null,
-      driveUrl: a.driveUrl || null,
-      pdfLocal: a.pdfLocal || null
-    }))
-  ));
-}
-
-
-
-
-
-
-
-
-
-
 document.addEventListener('DOMContentLoaded', async () => {
   // ——— login obrigatório
   const user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -124,11 +82,42 @@ function hideOverlayIfShown() {
 }
 
 
-
-
-
-
+//////////////////////////////////////////////////
   
+// === helper: salva links do bilhete no booking/localStorage ===
+function mergeDriveLinksIntoBookings(arquivos) {
+  if (!Array.isArray(arquivos) || !arquivos.length) return;
+  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+  if (!all.length) return;
+  const last = all[all.length - 1];
+
+  last.paid = true;
+  last.paidAt = new Date().toISOString();
+  last.tickets = arquivos.map(a => ({
+    numPassagem: a.numPassagem || a.NumPassagem || null,
+    driveUrl: a.driveUrl || null,
+    pdfLocal: a.pdfLocal || null,
+    url: a.driveUrl || a.pdfLocal || null
+  }));
+
+  const first = last.tickets[0] || {};
+  last.ticketUrl = first.url || null;
+  last.driveUrl  = first.driveUrl || null;
+  last.pdfLocal  = first.pdfLocal || null;
+  last.ticketNumber = first.numPassagem || null;
+
+  localStorage.setItem('bookings', JSON.stringify(all));
+  localStorage.setItem('lastTickets', JSON.stringify(
+    arquivos.map(a => ({
+      numPassagem: a.numPassagem || a.NumPassagem || null,
+      driveUrl: a.driveUrl || null,
+      pdfLocal: a.pdfLocal || null
+    }))
+  ));
+}
+
+
+//////////////////////////////////////////////////  
   async function startPixPolling(paymentId) {
     clearInterval(pixPollTimer);
     const t0 = Date.now();
@@ -140,30 +129,7 @@ function hideOverlayIfShown() {
         const st = String(data?.status || '').toLowerCase();
         const detail = String(data?.status_detail || '').toLowerCase();
 
-       /* if (st === 'approved') {
-          clearInterval(pixPollTimer);
-         // setPixStatus('Pagamento aprovado! Emitindo bilhete…');
-          showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
-
-          try {
-            const venda = await venderPraxioApósAprovado(paymentId);
-            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-              const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
-                .map(b => ({ ...b, paid: true }));
-              localStorage.setItem('bookings', JSON.stringify(bookings));
-              localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
-              location.href = 'profile.html';
-              return;
-            }
-          } catch (e) {
-              console.error('Erro ao emitir bilhete após aprovação:', e);
-              hideOverlayIfShown();
-              alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
-        }
-          
-        } */
-
-
+  
         if (st === 'approved') {
   clearInterval(pixPollTimer);
   showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
@@ -500,45 +466,6 @@ if (data.status === 'approved') {
 
   return;
 }
-
-
-
-
-            
-           
-/*
-            
-            if (data.status === 'approved') {
-  showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
-
-  try {
-    const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-
-    if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-      const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
-        .map(b => ({ ...b, paid: true }));
-
-      localStorage.setItem('bookings', JSON.stringify(bookings));
-      localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
-
-      location.href = 'profile.html';
-      return;
-    }
-
-    // se não veio arquivo, considera erro de emissão
-    hideOverlayIfShown();
-    alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
-
-  } catch (e) {
-    console.error('Falha na emissão pós-aprovação (cartão):', e);
-    hideOverlayIfShown();
-    alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
-  }
-
-  return;
-}
-*/
-
 
             // === PIX (gera QR, aprovação é posterior) ===
             const pix = data?.point_of_interaction?.transaction_data;
