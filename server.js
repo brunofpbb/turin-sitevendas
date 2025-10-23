@@ -17,6 +17,67 @@ const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
+// ===== Google Sheets: buscar bilhetes por email
+const { google } = require('googleapis');
+
+async function sheetsAuth() {
+  const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
+  const auth = new google.auth.JWT(
+    key.client_email, null, key.private_key,
+    ['https://www.googleapis.com/auth/spreadsheets.readonly']
+  );
+  return google.sheets({ version: 'v4', auth });
+}
+
+app.get('/api/sheets/bpe-by-email', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ ok:false, error:'email é obrigatório' });
+
+    const sheets = await sheetsAuth();
+    const spreadsheetId = process.env.SHEETS_BPE_ID;
+    const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
+
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+    const rows = r.data.values || [];
+    if (!rows.length) return res.json({ ok:true, items:[] });
+
+    const header = rows[0].map(h => (h || '').toString().trim());
+    const col = name => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
+
+    const idxEmail   = col('Email');
+    const idxNum     = header.findIndex(h => h.toLowerCase().includes('bilhete'));
+    const idxDrive   = header.findIndex(h => h.toLowerCase().includes('drive'));
+    const idxOrigem  = header.findIndex(h => h.toLowerCase().includes('origem'));
+    const idxDestino = header.findIndex(h => h.toLowerCase().includes('destino'));
+    const idxData    = header.findIndex(h => h.toLowerCase().includes('data_viagem') || h.toLowerCase().includes('data viagem'));
+    const idxHora    = header.findIndex(h => h.toLowerCase().includes('hora') || h.toLowerCase().includes('saída') || h.toLowerCase().includes('saida'));
+
+    const items = rows.slice(1)
+      .filter(r => (r[idxEmail] || '').toString().toLowerCase().trim() === email)
+      .map(r => ({
+        email,
+        ticketNumber: r[idxNum] || '',
+        driveUrl: r[idxDrive] || '',
+        origin: r[idxOrigem] || '',
+        destination: r[idxDestino] || '',
+        date: r[idxData] || '',
+        departureTime: r[idxHora] || ''
+      }));
+
+    res.json({ ok:true, items });
+  } catch (e) {
+    console.error('[sheets] read error', e);
+    res.status(500).json({ ok:false, error:'sheets_read_failed' });
+  }
+});
+
+
+
+
+
+
+
 /* =================== CSP (Bricks) =================== */
 app.use((req, res, next) => {
   res.setHeader(
@@ -366,6 +427,9 @@ app.post('/api/praxio/vender', async (req, res) => {
       idEstabelecimentoVenda = '1',
       idEstabelecimentoTicket = '93',
       serieBloco = '93'
+      userEmail = '',
+      userPhone = '',
+      idaVolta = 'ida'
     } = req.body || {};
 
     // 1) Revalidar pagamento no MP
@@ -380,6 +444,37 @@ app.post('/api/praxio/vender', async (req, res) => {
     if (totalAmount && Math.abs(mpAmount - Number(totalAmount)) > 0.01) {
       return res.status(400).json({ ok:false, error:'Valor divergente do pagamento.' });
     }
+
+  // mapeia tipo/forma a partir do pagamento do MP
+const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
+const tipoPagamento = (mpType === 'pix') ? 0 : 3;
+const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
+
+
+
+    function fmtDateYMD(d){ // YYYY-MM-DD no fuso -3
+  const z = new Date(new Date(d).getTime() - 3*60*60*1000);
+  const yyyy = z.getUTCFullYear();
+  const mm = String(z.getUTCMonth()+1).padStart(2,'0');
+  const dd = String(z.getUTCDate()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+function nowYMDHM(){ // YYYY-MM-DD HH:mm no fuso -3
+  const z = new Date(new Date().getTime() - 3*60*60*1000);
+  const yyyy = z.getUTCFullYear();
+  const mm = String(z.getUTCMonth()+1).padStart(2,'0');
+  const dd = String(z.getUTCDate()).padStart(2,'0');
+  const hh = String(z.getUTCHours()).padStart(2,'0');
+  const mi = String(z.getUTCMinutes()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+}
+
+
+
+
+
+    
+    
 
     // 2) Login Praxio
     const IdSessaoOp = await praxioLogin();
@@ -467,7 +562,7 @@ app.post('/api/praxio/vender', async (req, res) => {
         driveFileId: drive?.id || null
       });
     }
-
+/*
     // 6) Disparar webhook (não bloqueante)
     try {
       const payloadWebhook = {
@@ -496,7 +591,66 @@ app.post('/api/praxio/vender', async (req, res) => {
           valor: p.ValorPgto
         })),
         arquivos
-      };
+      };*/
+
+// === montar payload do webhook com todos os campos ===
+const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');           // YYYY-MM-DD
+const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00'); // HH:mm
+
+const payloadWebhook = {
+  fonte: 'sitevendas',
+
+  userEmail,         // do body
+  userPhone,         // do body
+  idaVolta,          // 'ida' | 'volta' (do body)
+
+  tipoPagamento,     // 0 (PIX) | 3 (Cartão)
+  formaPagamento,    // 'PIX' | 'Cartão de Crédito'
+
+  // Data/Hora da viagem (não é "agora")
+  dataViagem: ymdViagem,                // YYYY-MM-DD
+  dataHora: joinDateTime(ymdViagem, hhmm), // YYYY-MM-DD HH:mm
+
+  mp: {
+    id: payment.id,
+    status: payment.status,
+    status_detail: payment.status_detail,
+    external_reference: payment.external_reference || null,
+    amount: payment.transaction_amount
+  },
+
+  viagem: {
+    idViagem: schedule.idViagem,
+    horaPartida: schedule.horaPartida,
+    idOrigem: schedule.idOrigem,
+    idDestino: schedule.idDestino
+  },
+
+  // Uma linha por bilhete, com datas também
+  bilhetes: (vendaResult.ListaPassagem || []).map(p => {
+    const ymd = toYMD(p.DataViagem || ymdViagem);
+    const hh = hhmm; // se Praxio não devolver hora individual, usamos a da viagem
+    return {
+      numPassagem: p.NumPassagem,
+      chaveBPe: p.ChaveBPe,
+      origem: p.Origem,
+      destino: p.Destino,
+      poltrona: p.Poltrona,
+      nomeCliente: p.NomeCliente,
+      docCliente: p.DocCliente,
+      valor: p.ValorPgto,
+      dataViagem: ymd,
+      dataHora: joinDateTime(ymd, hh) // por bilhete
+    };
+  }),
+
+  // Arquivos (Drive/local)
+  arquivos
+};
+
+
+
+  
 
       const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
         method: 'POST',
