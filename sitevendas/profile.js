@@ -11,6 +11,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const listEl = document.getElementById('trips-list');
+  if (!listEl) {
+    console.warn('[profile] #trips-list não encontrado.');
+    return;
+  }
+
+  // usado para abrir/fechar o preview de cancelamento
+  let previewId = null;
+
   const fmtBRL = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const pick = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '—';
 
