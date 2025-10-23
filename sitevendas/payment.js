@@ -81,43 +81,6 @@ function hideOverlayIfShown() {
   if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
 }
 
-
-//////////////////////////////////////////////////
-  
-// === helper: salva links do bilhete no booking/localStorage ===
-function mergeDriveLinksIntoBookings(arquivos) {
-  if (!Array.isArray(arquivos) || !arquivos.length) return;
-  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
-  if (!all.length) return;
-  const last = all[all.length - 1];
-
-  last.paid = true;
-  last.paidAt = new Date().toISOString();
-  last.tickets = arquivos.map(a => ({
-    numPassagem: a.numPassagem || a.NumPassagem || null,
-    driveUrl: a.driveUrl || null,
-    pdfLocal: a.pdfLocal || null,
-    url: a.driveUrl || a.pdfLocal || null
-  }));
-
-  const first = last.tickets[0] || {};
-  last.ticketUrl = first.url || null;
-  last.driveUrl  = first.driveUrl || null;
-  last.pdfLocal  = first.pdfLocal || null;
-  last.ticketNumber = first.numPassagem || null;
-
-  localStorage.setItem('bookings', JSON.stringify(all));
-  localStorage.setItem('lastTickets', JSON.stringify(
-    arquivos.map(a => ({
-      numPassagem: a.numPassagem || a.NumPassagem || null,
-      driveUrl: a.driveUrl || null,
-      pdfLocal: a.pdfLocal || null
-    }))
-  ));
-}
-
-
-//////////////////////////////////////////////////  
   async function startPixPolling(paymentId) {
     clearInterval(pixPollTimer);
     const t0 = Date.now();
