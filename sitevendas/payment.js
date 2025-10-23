@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   // ====== PIX polling
-  const POLL_MS = 5000;                 // 5s entre consultas
+  const POLL_MS = 5000;                   // 5s entre consultas
   const POLL_TIMEOUT_MS = 15 * 60 * 1000; // 15 min máximo
   let pixPollTimer = null;
 
@@ -47,94 +47,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (pixStatus) pixStatus.textContent = msg;
   }
 
-
-
-// Overlay: mostra só uma vez e esconde em caso de erro
-
+  // ===== Overlay (mostra uma vez durante a emissão)
   let overlayShown = false;
+  function showOverlayOnce(
+    title = 'Pagamento confirmado!',
+    subtitle = 'Emitindo bilhete, por favor aguarde!'
+  ) {
+    if (overlayShown) return;
+    overlayShown = true;
 
-function showOverlayOnce(
-  title = 'Pagamento confirmado!',
-  subtitle = 'Emitindo bilhete, por favor aguarde!'
-) {
-  if (overlayShown) return;
-  overlayShown = true;
-
-  if (typeof showIssuanceOverlay === 'function') {
-    // mostra o overlay já com o título
-    showIssuanceOverlay(title);
-    // preenche o subtítulo, se existir no DOM
-    const subEl = document.querySelector('#issuance-overlay .io-sub');
-    if (subEl) subEl.textContent = subtitle;
+    if (typeof showIssuanceOverlay === 'function') {
+      showIssuanceOverlay(title);
+      const subEl = document.querySelector('#issuance-overlay .io-sub');
+      if (subEl) subEl.textContent = subtitle;
+    }
   }
-}
+  function hideOverlayIfShown() {
+    if (!overlayShown) return;
+    overlayShown = false;
+    if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
+  }
 
-function hideOverlayIfShown() {
-  if (!overlayShown) return;
-  overlayShown = false;
-  if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
-}
+  // === helper: salva links do bilhete no booking/localStorage ===
+  function mergeDriveLinksIntoBookings(arquivos) {
+    if (!Array.isArray(arquivos) || !arquivos.length) return;
+    const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+    if (!all.length) return;
+    const last = all[all.length - 1];
 
-function hideOverlayIfShown() {
-  if (!overlayShown) return;
-  overlayShown = false;
-  if (typeof hideIssuanceOverlay === 'function') hideIssuanceOverlay();
-}
+    last.paid = true;
+    last.paidAt = new Date().toISOString();
+    last.tickets = arquivos.map(a => ({
+      numPassagem: a.numPassagem || a.NumPassagem || null,
+      driveUrl: a.driveUrl || null,
+      pdfLocal: a.pdfLocal || null,
+      url: a.driveUrl || a.pdfLocal || null
+    }));
 
+    const first = last.tickets[0] || {};
+    last.ticketUrl = first.url || null;
+    last.driveUrl  = first.driveUrl || null;
+    last.pdfLocal  = first.pdfLocal || null;
+    last.ticketNumber = first.numPassagem || null;
 
-
-
-
-
-  
-  async function startPixPolling(paymentId) {
-    clearInterval(pixPollTimer);
-    const t0 = Date.now();
-    setPixStatus('Aguardando pagamento…');
-
-    pixPollTimer = setInterval(async () => {
-      try {
-        const data = await fetchPaymentStatus(paymentId);
-        const st = String(data?.status || '').toLowerCase();
-        const detail = String(data?.status_detail || '').toLowerCase();
-
-        if (st === 'approved') {
-          clearInterval(pixPollTimer);
-         // setPixStatus('Pagamento aprovado! Emitindo bilhete…');
-          showOverlayOnce('Pagamento confirmado!', 'Gerando o DABP-e…');
-
-          try {
-            const venda = await venderPraxioApósAprovado(paymentId);
-            if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-              const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
-                .map(b => ({ ...b, paid: true }));
-              localStorage.setItem('bookings', JSON.stringify(bookings));
-              localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
-              location.href = 'profile.html';
-              return;
-            }
-          } catch (e) {
-              console.error('Erro ao emitir bilhete após aprovação:', e);
-              hideOverlayIfShown();
-              alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
-        }
-          
-        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
-          clearInterval(pixPollTimer);
-          setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
-        } else {
-          setPixStatus('Aguardando pagamento…');
-        }
-
-        if (Date.now() - t0 > POLL_TIMEOUT_MS) {
-          clearInterval(pixPollTimer);
-          setPixStatus('Tempo esgotado. Gere um novo Pix se necessário.');
-        }
-      } catch (e) {
-        console.warn('Falha no polling Pix:', e);
-        // continua tentando até timeout
-      }
-    }, POLL_MS);
+    localStorage.setItem('bookings', JSON.stringify(all));
+    localStorage.setItem('lastTickets', JSON.stringify(
+      arquivos.map(a => ({
+        numPassagem: a.numPassagem || a.NumPassagem || null,
+        driveUrl: a.driveUrl || null,
+        pdfLocal: a.pdfLocal || null
+      }))
+    ));
   }
 
   // ——— carrinho
@@ -211,7 +174,7 @@ function hideOverlayIfShown() {
       alert('Pagamento aprovado, mas falhou ao emitir bilhete. Nosso suporte foi notificado.');
       return null;
     }
-    return j;
+    return j; // esperado: { ok:true, venda:..., arquivos:[{driveUrl/pdfLocal/...}, ...] }
   }
 
   // ===== storage remove
@@ -318,12 +281,20 @@ function hideOverlayIfShown() {
     pixBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  function genIdem() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    // fallback simples
+    const a = Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
+    return `${a.slice(0,8)}-${a.slice(8,12)}-${a.slice(12,16)}-${a.slice(16,20)}-${a.slice(20)}`;
+  }
+
   async function mountBricks(amount) {
     try { await brickController?.unmount?.(); } catch(_) {}
     currentTotal = Number((amount || 0).toFixed(2));
+    if (currentTotal <= 0) currentTotal = 1.00; // evita rejeição em sandbox
 
     brickController = await bricks.create('payment', brickContainerId, {
-      initialization: { amount: currentTotal, payer: { email: /*user.email*/'teste@teste.com' || '' } },                        // EMAIL TESTE
+      initialization: { amount: currentTotal, payer: { email: user.email || '' } },
       customization: {
         paymentMethods: {
           creditCard: 'all',
@@ -337,40 +308,25 @@ function hideOverlayIfShown() {
         onReady: () => console.log('[MP] Brick pronto'),
         onError: (e) => { console.error('[MP] Brick error:', e); alert('Erro ao iniciar o pagamento.'); },
         onSubmit: async ({ selectedPaymentMethod, formData }) => {
-
-
-
-           function genIdem() {
- if (window.crypto?.randomUUID) return window.crypto.randomUUID();
- // fallback simples
- const a = Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('');
-  return `${a.slice(0,8)}-${a.slice(8,12)}-${a.slice(12,16)}-${a.slice(16,20)}-${a.slice(20)}`;
-}
-
-
-
-
-
-
-
-          
           try {
             const method = String(selectedPaymentMethod || '').toLowerCase();
             const isPix = method === 'bank_transfer' ||
                           String(formData?.payment_method_id || '').toLowerCase() === 'pix';
 
-  const idem = genIdem();
+            const idem = genIdem();
 
             const body = {
-              transaction_amount: currentTotal,
+              transaction_amount: Number(currentTotal.toFixed(2)),
               description: 'Compra Turin Transportes',
               external_reference: idem,
               payer: {
-                email: /*user.email*/'teste@teste.com' || '',                                //EMAIL TESTE
+                email: user.email || '',
                 identification: formData?.payer?.identification ? {
                   type: formData.payer.identification.type || 'CPF',
                   number: String(formData.payer.identification.number || '').replace(/\D/g, '')
-                } : undefined
+                } : undefined,
+                entity_type: (formData?.payer?.identification?.type || 'CPF').toUpperCase() === 'CNPJ'
+                  ? 'association' : 'individual'
               }
             };
 
@@ -388,47 +344,36 @@ function hideOverlayIfShown() {
             if (body.payer && body.payer.identification === undefined) delete body.payer.identification;
 
             const resp = await fetch('/api/mp/pay', {
-              method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': idem },
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': idem },
               body: JSON.stringify(body)
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data?.message || 'Falha ao processar pagamento');
 
             // === CARTÃO APROVADO ===
-           
-if (data.status === 'approved') {
-  showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
+            if (data.status === 'approved') {
+              showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
-  try {
-    const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+              try {
+                const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+                const arquivos = venda?.arquivos || venda?.Arquivos || [];
+                if (arquivos.length) {
+                  mergeDriveLinksIntoBookings(arquivos);
+                  location.href = 'profile.html';
+                  return;
+                }
+                hideOverlayIfShown();
+                alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
+              } catch (e) {
+                console.error('Falha na emissão pós-aprovação (cartão):', e);
+                hideOverlayIfShown();
+                alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
+              }
+              return;
+            }
 
-    if (venda && Array.isArray(venda.arquivos) && venda.arquivos.length) {
-      const bookings = (JSON.parse(localStorage.getItem('bookings') || '[]') || [])
-        .map(b => ({ ...b, paid: true }));
-
-      localStorage.setItem('bookings', JSON.stringify(bookings));
-      localStorage.setItem('lastTickets', JSON.stringify(venda.arquivos));
-
-      location.href = 'profile.html';
-      return;
-    }
-
-    // se não veio arquivo, considera erro de emissão
-    hideOverlayIfShown();
-    alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
-
-  } catch (e) {
-    console.error('Falha na emissão pós-aprovação (cartão):', e);
-    hideOverlayIfShown();
-    alert('Pagamento aprovado, mas houve um problema ao emitir o bilhete. Tente novamente ou fale com o suporte.');
-  }
-
-  return;
-}
-
-
-
-            // === PIX (gera QR, aprovação é posterior) ===
+            // === PIX (gera QR; aprovação é posterior) ===
             const pix = data?.point_of_interaction?.transaction_data;
             if (pix?.qr_code || pix?.qr_code_base64) {
               showPixBox({ qr_b64: pix.qr_code_base64, qr_text: pix.qr_code });
@@ -451,6 +396,55 @@ if (data.status === 'approved') {
         }
       }
     });
+  }
+
+  // === Polling do PIX (aprovado -> emitir e salvar links)
+  async function startPixPolling(paymentId) {
+    clearInterval(pixPollTimer);
+    const t0 = Date.now();
+    setPixStatus('Aguardando pagamento…');
+
+    pixPollTimer = setInterval(async () => {
+      try {
+        const data = await fetchPaymentStatus(paymentId);
+        const st = String(data?.status || '').toLowerCase();
+        const detail = String(data?.status_detail || '').toLowerCase();
+
+        if (st === 'approved') {
+          clearInterval(pixPollTimer);
+          showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
+
+          try {
+            const venda = await venderPraxioApósAprovado(paymentId);
+            const arquivos = venda?.arquivos || venda?.Arquivos || [];
+            if (arquivos.length) {
+              mergeDriveLinksIntoBookings(arquivos);
+              location.href = 'profile.html';
+              return;
+            }
+            hideOverlayIfShown();
+            alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
+          } catch (e) {
+            console.error('Erro ao emitir bilhete após aprovação:', e);
+            hideOverlayIfShown();
+            alert('Pagamento aprovado, mas houve erro ao emitir o bilhete. Suporte notificado.');
+          }
+        } else if (st === 'rejected' || st === 'cancelled' || st === 'refunded' || detail.includes('expired')) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Pagamento não confirmado (expirado/cancelado). Gere um novo Pix.');
+        } else {
+          setPixStatus('Aguardando pagamento…');
+        }
+
+        if (Date.now() - t0 > POLL_TIMEOUT_MS) {
+          clearInterval(pixPollTimer);
+          setPixStatus('Tempo esgotado. Gere um novo Pix se necessário.');
+        }
+      } catch (e) {
+        console.warn('Falha no polling Pix:', e);
+        // continua tentando até timeout
+      }
+    }, POLL_MS);
   }
 
   async function awaitMountBricks(total) {
