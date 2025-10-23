@@ -110,6 +110,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   let order = readCart();
 
+  // tenta inferir ida/volta a partir dos dois primeiros trechos
+  function inferTripTypeForOrder(order) {
+    if (!Array.isArray(order) || order.length === 0) return 'ida';
+
+    // respeito a marcação explícita, se já existir
+    if (order.some(it => it.isReturn === true || it.tripType === 'volta')) return 'volta';
+
+    if (order.length >= 2) {
+      const getIds = (it) => {
+        const s = it?.schedule || {};
+        return {
+          o: s.originId || s.idOrigem || s.CodigoOrigem || s.origemId || s.origem,
+          d: s.destinationId || s.idDestino || s.CodigoDestino || s.destinoId || s.destino,
+          date: s.date || s.dataViagem,
+        };
+      };
+      const a = getIds(order[0]);
+      const b = getIds(order[1]);
+      const swapped = a.o && a.d && b.o && b.d && (a.o === b.d && a.d === b.o);
+      const sameDate = a.date && b.date ? String(a.date) === String(b.date) : true;
+      if (swapped && sameDate) return 'volta';
+    }
+    return 'ida';
+  }
+
+
+
+
+
+  
+
   // ===== valores
   const itemSubtotal = (it) => {
     const s = it.schedule || {};
@@ -126,7 +157,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       horaPartida: s.horaPartida || s.departureTime,
       idOrigem: s.idOrigem || s.IdOrigem || s.originId || s.CodigoOrigem,
       idDestino: s.idDestino || s.IdDestino || s.destinationId || s.CodigoDestino,
-      agencia: s.agencia || s.IdEstabelecimento || s.IdEstabelecimentoVenda || '93'
+      agencia: s.agencia || s.IdEstabelecimento || s.IdEstabelecimentoVenda || '93',
+      date: toYMD(s.date || s.dataViagem || s.DataViagem || s.data || '')
     };
   }
   function getPassengersFromItem(it) {
@@ -148,12 +180,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     return pax;
   }
-  async function venderPraxioApósAprovado(paymentId) {
+    async function venderPraxioApósAprovado(paymentId) {
     const first = order[0];
     const schedule = getScheduleFromItem(first);
+
     let passengers = [];
     order.forEach(it => { passengers = passengers.concat(getPassengersFromItem(it)); });
     const totalAmount = cartTotal();
+
+    // >>> NOVO: contato e ida/volta
+    const idaVolta   = inferTripTypeForOrder(order);                 // 'ida' | 'volta'
+    const userEmail  = (user.email || '').toString();
+    const userPhone  = (user.phone || user.telefone || '').toString();
 
     const r = await fetch('/api/praxio/vender', {
       method: 'POST',
@@ -165,7 +203,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         totalAmount,
         idEstabelecimentoVenda: '1',
         idEstabelecimentoTicket: schedule.agencia || '93',
-        serieBloco: '93'
+        serieBloco: '93',
+
+        // >>> NOVOS CAMPOS usados no webhook/planilha
+        userEmail,
+        userPhone,
+        idaVolta
       })
     });
     const j = await r.json();
@@ -174,8 +217,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       alert('Pagamento aprovado, mas falhou ao emitir bilhete. Nosso suporte foi notificado.');
       return null;
     }
-    return j; // esperado: { ok:true, venda:..., arquivos:[{driveUrl/pdfLocal/...}, ...] }
+    return j; // { ok:true, venda, arquivos:[...] }
   }
+
 
   // ===== storage remove
   function removeFromStorageByOpenIndex(openIdx) {
