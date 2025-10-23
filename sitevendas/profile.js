@@ -1,4 +1,4 @@
-// profile.js — Minhas viagens (com link do Drive)
+// profile.js — Minhas viagens (link do Drive + regra de cancelamento 12h + dedup)
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
 
@@ -6,40 +6,64 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!user) {
     alert('Você precisa estar logado para ver suas viagens.');
     localStorage.setItem('postLoginRedirect', 'profile.html');
-    return location.replace('login.html');
+    location.replace('login.html');
+    return;
   }
 
   const listEl = document.getElementById('trips-list');
-  const fmtBRL = (n)=> (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const pick   = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '—';
+  const fmtBRL = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const pick = (...vals) => vals.find(v => v !== undefined && v !== null && v !== '') ?? '—';
 
-  // fila de bilhetes recém-gerados (salva pelo payment.js: venda.arquivos)
-  // pode conter: { numPassagem, driveUrl, pdfLocal, pdf }
-  const lastTickets = JSON.parse(localStorage.getItem('lastTickets') || '[]');
-  const ticketsQueue = Array.isArray(lastTickets) ? lastTickets.slice() : [];
+  // ===== Helpers de data/hora (fuso −03:00) =====
+  const TZ_OFFSET_MIN = 180; // -03:00
+  const MS_12H = 12 * 60 * 60 * 1000;
 
-  let previewId = null;
-
-  const CAN_HOURS = 12;
-  const ms12h = CAN_HOURS * 60 * 60 * 1000;
-
-  function parseDeparture(schedule){
-    const date = pick(schedule.date);
-    const time = pick(schedule.departureTime, schedule.horaPartida, '00:00');
-    const s = `${date}T${String(time).padStart(5,'0')}:00-03:00`; // UTC−3
-    const t = Date.parse(s);
+  function parseISOorBR(dateStr) {
+    if (!dateStr) return null;
+    // "YYYY-MM-DD"
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+    }
+    // "DD/MM/YYYY"
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      const [d, m, y] = dateStr.split('/').map(Number);
+      return new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+    }
+    const t = Date.parse(dateStr);
     return Number.isFinite(t) ? new Date(t) : null;
   }
-  function mayCancel(schedule){
-    const dep = parseDeparture(schedule);
-    if (!dep) return false;
-    return (dep.getTime() - Date.now()) >= ms12h;
+
+  function parseTimeHHMM(hhmm) {
+    if (!hhmm) return { h: 0, m: 0 };
+    const m = String(hhmm).match(/^(\d{1,2}):(\d{2})$/);
+    return m ? { h: +m[1], m: +m[2] } : { h: 0, m: 0 };
   }
 
-  const loadAll = ()=> JSON.parse(localStorage.getItem('bookings') || '[]');
-  const saveAll = (arr)=> localStorage.setItem('bookings', JSON.stringify(arr));
+  /** Date de partida no fuso −03:00 */
+  function getDepartureDate(s) {
+    const d = parseISOorBR(s?.date || s?.dataViagem);
+    const { h, m } = parseTimeHHMM(s?.departureTime || s?.horaPartida);
+    if (!d) return null;
+    const depUTC = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, 0);
+    // aplica o offset -03:00
+    return new Date(depUTC + TZ_OFFSET_MIN * -60 * 1000);
+  }
 
-  function flagCancelled(id){
+  /** Pode cancelar apenas se faltarem >= 12 horas para a partida */
+  function mayCancel(schedule) {
+    const dep = getDepartureDate(schedule);
+    if (!dep) return false; // sem data/hora válidas => não permite
+    const msUntil = dep.getTime() - Date.now();
+    return msUntil >= MS_12H;
+  }
+
+  // ===== Storage helpers =====
+  const loadAll = () => JSON.parse(localStorage.getItem('bookings') || '[]');
+  const saveAll = (arr) => localStorage.setItem('bookings', JSON.stringify(arr));
+
+  // marcar cancelado localmente
+  function flagCancelled(id) {
     const all = loadAll();
     const i = all.findIndex(b => String(b.id) === String(id));
     if (i >= 0) {
@@ -48,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ordena pagos do mais recente para o mais antigo
+  // ===== Ordenação (mais recente primeiro) =====
   const parseTs = (v) => {
     if (!v) return NaN;
     if (v instanceof Date) return v.getTime();
@@ -59,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return NaN;
   };
+
   function sortPaidDesc(paid, originalAll) {
     const withIdx = paid.map((b) => {
       const idxInAll = originalAll.findIndex(x => x === b);
@@ -74,31 +99,59 @@ document.addEventListener('DOMContentLoaded', () => {
     return withIdx.map(x => x.b);
   }
 
-  function render(){
-    const all  = loadAll();
+  // ===== Deduplicação básica (por ticketNumber ou chave composta) =====
+  function uniqBy(arr, keyFn) {
+    const seen = new Set();
+    return arr.filter(x => {
+      const k = keyFn(x);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  function render() {
+    let all = loadAll();
+
+    // mantém apenas pagos
     let paid = all.filter(b => b.paid === true);
+
+    // dedup tenta usar ticketNumber; se não tiver, usa chave composta
+    paid = uniqBy(paid, b => {
+      const s = b.schedule || {};
+      const seats = (b.seats || []).join(',');
+      return String(b.ticketNumber || `${s.date}|${s.originId || s.idOrigem}|${s.destinationId || s.idDestino}|${seats}|${b.price}`);
+    });
+
     paid = sortPaidDesc(paid, all);
 
-    if (!paid.length){
+    if (!paid.length) {
       listEl.innerHTML = '<p class="mute">Nenhuma compra finalizada encontrada.</p>';
       return;
     }
 
-    listEl.innerHTML = paid.map(b=>{
+    listEl.innerHTML = paid.map(b => {
       const s = b.schedule || {};
       const seats = (b.seats || []).join(', ');
-      const pax   = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
+      const pax = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
       const cancelable = !b.cancelledAt && mayCancel(s);
       const statusText = b.cancelledAt ? 'Cancelada' : 'Pago';
       const showPreview = previewId === String(b.id);
 
       const paidAmount = Number(b.price || 0);
-      const fee  = +(paidAmount * 0.05).toFixed(2);
+      const fee = +(paidAmount * 0.05).toFixed(2);
       const back = +(paidAmount - fee).toFixed(2);
 
-      // Link do bilhete já salvo no booking (preferência: Drive)
+      // Link do bilhete salvo no booking (preferência: Drive)
       const bookingTicketUrl = b.driveUrl || b.pdfLocal || b.ticketUrl || null;
       const bookingTicketNum = b.ticketNumber || b.numPassagem || null;
+
+      const cancelBtnHtml = `
+        <button class="btn btn-danger btn-cancel"
+                data-id="${b.id}"
+                ${cancelable ? '' : 'disabled aria-disabled="true" style="opacity:.5;cursor:not-allowed"'}
+        >Cancelar</button>
+      `;
 
       return `
         <div class="schedule-card card-grid" data-id="${b.id}">
@@ -141,41 +194,40 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
 
           <div class="card-right">
-<div class="reserva-actions">
-  ${ bookingTicketUrl && !showPreview
-      ? `<a class="btn btn-success" href="${bookingTicketUrl}" target="_blank" rel="noopener">Ver Bilhete</a>`
-      : ''
-  }
-  ${
-    (!showPreview && !b.cancelledAt)
-      ? `<button class="btn btn-danger btn-cancel" data-id="${b.id}">Cancelar</button>`
-      : ''
-  }
-</div>
-
+            <div class="reserva-actions">
+              ${ bookingTicketUrl && !showPreview
+                  ? `<a class="btn btn-success" href="${bookingTicketUrl}" target="_blank" rel="noopener">Ver Bilhete</a>`
+                  : ''
+              }
+              ${ !showPreview ? cancelBtnHtml : '' }
+            </div>
           </div>
         </div>
       `;
     }).join('');
 
-    // Handlers
-    listEl.querySelectorAll('.btn-cancel').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+    // ===== Handlers =====
+    // Cancelar (mostra preview) — ignora se desabilitado
+    listEl.querySelectorAll('.btn-cancel').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.hasAttribute('disabled')) return;
         const id = btn.getAttribute('data-id');
         previewId = id;
         render();
       });
     });
 
-    listEl.querySelectorAll('[data-act="close-preview"]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+    // Fechar preview
+    listEl.querySelectorAll('[data-act="close-preview"]').forEach(btn => {
+      btn.addEventListener('click', () => {
         previewId = null;
         render();
       });
     });
 
-    listEl.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+    // Confirmar cancelamento (efeito local)
+    listEl.querySelectorAll('[data-act="do-cancel"]').forEach(btn => {
+      btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
         if (!confirm('Confirmar cancelamento desta viagem?')) return;
         flagCancelled(id);
@@ -184,8 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Cancelamento realizado com sucesso. O reembolso será processado conforme as regras.');
       });
     });
-
-
   }
 
   render();
