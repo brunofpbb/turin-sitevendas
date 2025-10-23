@@ -416,6 +416,7 @@ app.post('/api/mp/webhook', async (req, res) => {
     console.error('[MP webhook] erro:', err?.message || err);
   }
 });
+
 /* =================== Venda Praxio + PDF + Webhook salvarBpe =================== */
 app.post('/api/praxio/vender', async (req, res) => {
   try {
@@ -426,7 +427,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       totalAmount,                 // valor total cobrado
       idEstabelecimentoVenda = '1',
       idEstabelecimentoTicket = '93',
-      serieBloco = '93'
+      serieBloco = '93',
       userEmail = '',
       userPhone = '',
       idaVolta = 'ida'
@@ -451,6 +452,38 @@ const tipoPagamento = (mpType === 'pix') ? 0 : 3;
 const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
 
 
+// Constrói 'YYYY-MM-DD' a partir de uma string "YYYY-MM-DD" ou "DD/MM/YYYY"
+function toYMD(dateStr) {
+  if (!dateStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    const [d,m,y] = dateStr.split('/');
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  // fallback
+  const t = Date.parse(dateStr);
+  if (Number.isFinite(t)) {
+    const z = new Date(t);
+    const yyyy = z.getFullYear();
+    const mm = String(z.getMonth()+1).padStart(2,'0');
+    const dd = String(z.getDate()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+}
+
+// Une data 'YYYY-MM-DD' e hora 'HH:mm' em 'YYYY-MM-DD HH:mm' (sem timezone)
+function joinDateTime(ymd, hhmm) {
+  const hh = (hhmm || '').split(':')[0] || '00';
+  const mi = (hhmm || '').split(':')[1] || '00';
+  return `${ymd} ${String(hh).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
+}
+
+
+
+
+
+  
 
     function fmtDateYMD(d){ // YYYY-MM-DD no fuso -3
   const z = new Date(new Date(d).getTime() - 3*60*60*1000);
@@ -562,36 +595,7 @@ function nowYMDHM(){ // YYYY-MM-DD HH:mm no fuso -3
         driveFileId: drive?.id || null
       });
     }
-/*
-    // 6) Disparar webhook (não bloqueante)
-    try {
-      const payloadWebhook = {
-        fonte: 'sitevendas',
-        mp: {
-          id: payment.id,
-          status: payment.status,
-          status_detail: payment.status_detail,
-          external_reference: payment.external_reference || null,
-          amount: payment.transaction_amount
-        },
-        viagem: {
-          idViagem: schedule.idViagem,
-          horaPartida: schedule.horaPartida,
-          idOrigem: schedule.idOrigem,
-          idDestino: schedule.idDestino
-        },
-        bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
-          numPassagem: p.NumPassagem,
-          chaveBPe: p.ChaveBPe,
-          origem: p.Origem,
-          destino: p.Destino,
-          poltrona: p.Poltrona,
-          nomeCliente: p.NomeCliente,
-          docCliente: p.DocCliente,
-          valor: p.ValorPgto
-        })),
-        arquivos
-      };*/
+
 
 // === montar payload do webhook com todos os campos ===
 const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');           // YYYY-MM-DD
