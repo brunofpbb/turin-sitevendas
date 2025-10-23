@@ -446,68 +446,34 @@ app.post('/api/praxio/vender', async (req, res) => {
       return res.status(400).json({ ok:false, error:'Valor divergente do pagamento.' });
     }
 
-  // mapeia tipo/forma a partir do pagamento do MP
-const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
-const tipoPagamento = (mpType === 'pix') ? 0 : 3;
-const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
+    // tipo/forma de pagamento (para o webhook)
+    const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
+    const tipoPagamento  = (mpType === 'pix') ? 0   : 3;
+    const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
 
-
-// Constrói 'YYYY-MM-DD' a partir de uma string "YYYY-MM-DD" ou "DD/MM/YYYY"
-function toYMD(dateStr) {
-  if (!dateStr) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-    const [d,m,y] = dateStr.split('/');
-    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-  }
-  // fallback
-  const t = Date.parse(dateStr);
-  if (Number.isFinite(t)) {
-    const z = new Date(t);
-    const yyyy = z.getFullYear();
-    const mm = String(z.getMonth()+1).padStart(2,'0');
-    const dd = String(z.getDate()).padStart(2,'0');
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return '';
-}
-
-// Une data 'YYYY-MM-DD' e hora 'HH:mm' em 'YYYY-MM-DD HH:mm' (sem timezone)
-function joinDateTime(ymd, hhmm) {
-  const hh = (hhmm || '').split(':')[0] || '00';
-  const mi = (hhmm || '').split(':')[1] || '00';
-  return `${ymd} ${String(hh).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
-}
-
-
-
-
-
-  
-
-    function fmtDateYMD(d){ // YYYY-MM-DD no fuso -3
-  const z = new Date(new Date(d).getTime() - 3*60*60*1000);
-  const yyyy = z.getUTCFullYear();
-  const mm = String(z.getUTCMonth()+1).padStart(2,'0');
-  const dd = String(z.getUTCDate()).padStart(2,'0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-function nowYMDHM(){ // YYYY-MM-DD HH:mm no fuso -3
-  const z = new Date(new Date().getTime() - 3*60*60*1000);
-  const yyyy = z.getUTCFullYear();
-  const mm = String(z.getUTCMonth()+1).padStart(2,'0');
-  const dd = String(z.getUTCDate()).padStart(2,'0');
-  const hh = String(z.getUTCHours()).padStart(2,'0');
-  const mi = String(z.getUTCMinutes()).padStart(2,'0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-}
-
-
-
-
-
-    
-    
+    // helpers de data para a VIAGEM
+    function toYMD(dateStr) {
+      if (!dateStr) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+        const [d,m,y] = dateStr.split('/');
+        return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+      }
+      const t = Date.parse(dateStr);
+      if (Number.isFinite(t)) {
+        const z = new Date(t);
+        const yyyy = z.getFullYear();
+        const mm = String(z.getMonth()+1).padStart(2,'0');
+        const dd = String(z.getDate()).padStart(2,'0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      return '';
+    }
+    function joinDateTime(ymd, hhmm) {
+      const hh = (hhmm || '').split(':')[0] || '00';
+      const mi = (hhmm || '').split(':')[1] || '00';
+      return `${ymd} ${String(hh).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
+    }
 
     // 2) Login Praxio
     const IdSessaoOp = await praxioLogin();
@@ -596,84 +562,52 @@ function nowYMDHM(){ // YYYY-MM-DD HH:mm no fuso -3
       });
     }
 
+    // 6) Webhook salvarBpe (payload completo)
+    const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
+    const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00');
 
-// === montar payload do webhook com todos os campos ===
-const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');           // YYYY-MM-DD
-const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00'); // HH:mm
-
-const payloadWebhook = {
-  fonte: 'sitevendas',
-
-  userEmail,         // do body
-  userPhone,         // do body
-  idaVolta,          // 'ida' | 'volta' (do body)
-
-  tipoPagamento,     // 0 (PIX) | 3 (Cartão)
-  formaPagamento,    // 'PIX' | 'Cartão de Crédito'
-
-  // Data/Hora da viagem (não é "agora")
-  dataViagem: ymdViagem,                // YYYY-MM-DD
-  dataHora: joinDateTime(ymdViagem, hhmm), // YYYY-MM-DD HH:mm
-
-  mp: {
-    id: payment.id,
-    status: payment.status,
-    status_detail: payment.status_detail,
-    external_reference: payment.external_reference || null,
-    amount: payment.transaction_amount
-  },
-
-  viagem: {
-    idViagem: schedule.idViagem,
-    horaPartida: schedule.horaPartida,
-    idOrigem: schedule.idOrigem,
-    idDestino: schedule.idDestino
-  },
-
-  // Uma linha por bilhete, com datas também
-  bilhetes: (vendaResult.ListaPassagem || []).map(p => {
-    const ymd = toYMD(p.DataViagem || ymdViagem);
-    const hh = hhmm; // se Praxio não devolver hora individual, usamos a da viagem
-    return {
-      numPassagem: p.NumPassagem,
-      chaveBPe: p.ChaveBPe,
-      origem: p.Origem,
-      destino: p.Destino,
-      poltrona: p.Poltrona,
-      nomeCliente: p.NomeCliente,
-      docCliente: p.DocCliente,
-      valor: p.ValorPgto,
-      dataViagem: ymd,
-      dataHora: joinDateTime(ymd, hh) // por bilhete
+    const payloadWebhook = {
+      fonte: 'sitevendas',
+      userEmail,
+      userPhone,
+      idaVolta,
+      tipoPagamento,
+      formaPagamento,
+      dataViagem: ymdViagem,                   // YYYY-MM-DD
+      dataHora: joinDateTime(ymdViagem, hhmm), // YYYY-MM-DD HH:mm
+      mp: {
+        id: payment.id,
+        status: payment.status,
+        status_detail: payment.status_detail,
+        external_reference: payment.external_reference || null,
+        amount: payment.transaction_amount
+      },
+      viagem: {
+        idViagem: schedule.idViagem,
+        horaPartida: schedule.horaPartida,
+        idOrigem: schedule.idOrigem,
+        idDestino: schedule.idDestino
+      },
+      bilhetes: (vendaResult.ListaPassagem || []).map(p => {
+        const ymd = toYMD(p.DataViagem || ymdViagem);
+        const hh = hhmm; // se não houver hora por bilhete, reuse a da viagem
+        return {
+          numPassagem: p.NumPassagem,
+          chaveBPe: p.ChaveBPe,
+          origem: p.Origem,
+          destino: p.Destino,
+          poltrona: p.Poltrona,
+          nomeCliente: p.NomeCliente,
+          docCliente: p.DocCliente,
+          valor: p.ValorPgto,
+          dataViagem: ymd,
+          dataHora: joinDateTime(ymd, hh)
+        };
+      }),
+      arquivos
     };
-  }),
 
-  // Arquivos (Drive/local)
-  arquivos
-};
-
-
-
-// 6) Webhook salvarBpe
-try {
-  const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payloadWebhook),
-  });
-  console.log('[Webhook salvarBpe] status:', hook.status);
-} catch (e) {
-  console.error('[Webhook salvarBpe] erro:', e?.message || e);
-}
-
-// 7) Retorno para o front (payment.js)
-return res.json({ ok: true, venda: vendaResult, arquivos });
-
-
-    
-
-  
-/*
+    try {
       const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -687,15 +621,13 @@ return res.json({ ok: true, venda: vendaResult, arquivos });
     // 7) Retorno para o front (payment.js)
     return res.json({ ok: true, venda: vendaResult, arquivos });
 
-  
-
   } catch (e) {
     console.error('praxio/vender error:', e);
     return res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
   }
 });
 
-*/
+
 
 
     
