@@ -31,6 +31,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
   };
 
+    // normaliza "DD/MM/YYYY" -> "YYYY-MM-DD" (ou mantém se já vier ISO)
+  function toYMD(dateStr) {
+    if (!dateStr) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+    const m = String(dateStr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    const t = Date.parse(dateStr);
+    if (!Number.isNaN(t)) {
+      const z = new Date(t);
+      const yyyy = z.getFullYear();
+      const mm = String(z.getMonth()+1).padStart(2,'0');
+      const dd = String(z.getDate()).padStart(2,'0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return '';
+  }
+
+
   // ====== PIX polling
   const POLL_MS = 5000;                   // 5s entre consultas
   const POLL_TIMEOUT_MS = 15 * 60 * 1000; // 15 min máximo
