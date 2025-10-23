@@ -152,6 +152,24 @@
     return false;
   }
 
+  // Normaliza "DD/MM/YYYY" -> "YYYY-MM-DD" (mantém se já vier ISO)
+function toYMD(dateStr) {
+  if (!dateStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const m = String(dateStr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const t = Date.parse(dateStr);
+  if (!Number.isNaN(t)) {
+    const z = new Date(t);
+    const yyyy = z.getFullYear();
+    const mm = String(z.getMonth()+1).padStart(2,'0');
+    const dd = String(z.getDate()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+}
+
+
   // ===== snapshot ida (para volta) =====
   function saveOutboundSnapshot(passengers) {
     localStorage.setItem('outboundPassengers', JSON.stringify(passengers));
@@ -274,6 +292,8 @@
     };
 
     await ensureSeatMap(schedule);
+    // garante data ISO usada no pagamento/webhook
+    state.schedule.date = toYMD(state.schedule.date || state.schedule.dataViagem || '');
 
     // cria Map por número
     const seatMap = new Map();
@@ -413,8 +433,36 @@
       const passengers = state.seats.map(n => ({ seatNumber:n, ...(state.pax[n]||{}) }));
       if (!isReturn) saveOutboundSnapshot(passengers);
 
+
+      // ===== (3) Persistir telefone (e nome) no perfil local =====
+      // Usa o primeiro passageiro como fonte do contato do comprador
+      try {
+        const u  = JSON.parse(localStorage.getItem('user') || '{}');
+        const p0 = passengers[0] || {};
+        const phoneDigits = String(p0.phone || '').replace(/\D/g,'');
+        if (phoneDigits) u.phone = phoneDigits;   // lido depois pelo payment.js -> webhook
+        if (!u.name && p0.name) u.name = p0.name;
+        localStorage.setItem('user', JSON.stringify(u));
+      } catch (_) {}
+
+      // ===== (4) Marcar ida/volta explicitamente no leg =====
+      // Mantém compatibilidade: além do `type` existente, enviamos `isReturn`/`tripType`
+      const legType = isReturn ? 'volta' : 'ida';
+
+      
+
+      
+
       container.dispatchEvent(new CustomEvent('seats:confirm', {
-        detail: { seats: state.seats.slice(), passengers, schedule: state.schedule, type: state.type }
+           detail: {
+          seats: state.seats.slice(),
+          passengers,
+          schedule: state.schedule,
+          type: state.type,
+          // extras para o carrinho/pagamento:
+          isReturn: isReturn,
+          tripType: legType
+        }
       }));
     });
 
