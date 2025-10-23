@@ -185,47 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // === Fila de "últimos bilhetes" (caso o booking ainda não tenha link salvo) ===
-    if (ticketsQueue.length) {
-      const cards = listEl.querySelectorAll('.schedule-card');
-      cards.forEach(card => {
-        if (!ticketsQueue.length) return;
-        const actions = card.querySelector('.reserva-actions');
-        const numEl = card.querySelector('.bilhete-num');
-        const inPreview = card.querySelector('.calc-box') !== null;
-        if (inPreview) return;
 
-        // se o card já tem botão (porque o booking tinha driveUrl/pdfLocal), pula
-        if (actions.querySelector('.btn-success')) return;
-
-        const ticket = ticketsQueue.shift();
-        if (!ticket) return;
-
-        const url = ticket.driveUrl || ticket.pdf || ticket.pdfLocal;
-        if (!url) return;
-
-        const a = document.createElement('a');
-        a.className = 'btn btn-success';
-        a.textContent = 'Ver Bilhete';
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.title = ticket.numPassagem ? `Bilhete nº ${ticket.numPassagem}` : 'Bilhete';
-       // actions.prepend(a);
-
-
-        const cancelBtn = actions.querySelector('.btn-cancel');
-        if (cancelBtn) actions.insertBefore(a, cancelBtn);
-        else actions.appendChild(a);
-
-
-
-        
-        if (numEl && ticket.numPassagem) {
-          numEl.innerHTML = `<b>Bilhete nº:</b> ${ticket.numPassagem}`;
-        }
-      });
-    }
   }
 
   render();
