@@ -198,16 +198,68 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     return pax;
   }
-    async function venderPraxioApósAprovado(paymentId) {
-    const first = order[0];
-    const schedule = getScheduleFromItem(first);
 
-    let passengers = [];
-    order.forEach(it => { passengers = passengers.concat(getPassengersFromItem(it)); });
-    const totalAmount = cartTotal();
 
-    // >>> NOVO: contato e ida/volta
-    const idaVolta   = inferTripTypeForOrder(order);                 // 'ida' | 'volta'
+  // helper: tenta inferir ida/volta do item
+function inferLegType(it, idx, order) {
+  if (it.isReturn === true || it.tripType === 'volta') return 'volta';
+  if (it.tripType === 'ida') return 'ida';
+
+  // fallback: se houver 2 trechos invertidos, o 2º é volta
+  if (order.length >= 2 && idx === 1) {
+    const getIds = (x) => {
+      const s = x?.schedule || {};
+      return {
+        o: s.originId || s.idOrigem || s.CodigoOrigem,
+        d: s.destinationId || s.idDestino || s.CodigoDestino
+      };
+    };
+    const a = getIds(order[0]);
+    const b = getIds(order[1]);
+    if (a.o && a.d && b.o && b.d && a.o === b.d && a.d === b.o) return 'volta';
+  }
+  return 'ida';
+}
+
+// atualiza UM booking (por índice) com os arquivos gerados
+function mergeFilesIntoBookingAtIndex(openIdx, arquivos) {
+  if (!Array.isArray(arquivos) || !arquivos.length) return;
+  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+  const paid = all.filter(b => b.paid === true);
+  const open = all.filter(b => b.paid !== true);
+
+  if (openIdx < 0 || openIdx >= open.length) return;
+
+  const bk = open[openIdx];
+  bk.paid = true;
+  bk.paidAt = new Date().toISOString();
+  bk.tickets = arquivos.map(a => ({
+    numPassagem: a.numPassagem || a.NumPassagem || null,
+    driveUrl: a.driveUrl || null,
+    pdfLocal: a.pdfLocal || null,
+    url: a.driveUrl || a.pdfLocal || null
+  }));
+  const first = bk.tickets[0] || {};
+  bk.ticketUrl = first.url || null;
+  bk.driveUrl  = first.driveUrl || null;
+  bk.pdfLocal  = first.pdfLocal || null;
+  bk.ticketNumber = first.numPassagem || null;
+
+  // regrava mantendo a ordem original: [paid..., open...]
+  localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
+}
+
+// === emite UMA venda por item ===
+async function venderPraxioApósAprovado(paymentId) {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const results = [];
+  for (let i = 0; i < order.length; i++) {
+    const it = order[i];
+    const schedule   = getScheduleFromItem(it);
+    const passengers = getPassengersFromItem(it);
+    const totalAmount = itemSubtotal(it);                 // valor só daquele trecho
+    const idaVolta   = inferLegType(it, i, order);        // 'ida' | 'volta'
     const userEmail  = (user.email || '').toString();
     const userPhone  = (user.phone || user.telefone || '').toString();
 
@@ -222,21 +274,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         idEstabelecimentoVenda: '1',
         idEstabelecimentoTicket: schedule.agencia || '93',
         serieBloco: '93',
-
-        // >>> NOVOS CAMPOS usados no webhook/planilha
         userEmail,
         userPhone,
         idaVolta
       })
     });
     const j = await r.json();
-    if (!j.ok) {
-      console.error('Venda Praxio falhou:', j);
-      alert('Pagamento aprovado, mas falhou ao emitir bilhete. Nosso suporte foi notificado.');
-      return null;
-    }
-    return j; // { ok:true, venda, arquivos:[...] }
+    if (!j.ok) throw new Error(j.error || 'Falha ao emitir bilhete (item)');
+
+    const arquivos = j.arquivos || j.Arquivos || [];
+    mergeFilesIntoBookingAtIndex(i, arquivos);            // marca ESTE item como pago
+    results.push(j);
   }
+
+  // monta um agregado para o restante do fluxo
+  const arquivosAll = results.flatMap(x => x.arquivos || x.Arquivos || []);
+  const vendasAll   = results.map(x => x.venda || x.Venda);
+  localStorage.setItem('lastTickets', JSON.stringify(
+    arquivosAll.map(a => ({
+      numPassagem: a.numPassagem || a.NumPassagem || null,
+      driveUrl: a.driveUrl || null,
+      pdfLocal: a.pdfLocal || null
+    }))
+  ));
+
+  return { ok: true, vendas: vendasAll, arquivos: arquivosAll };
+}
+
 
 
   // ===== storage remove
@@ -524,7 +588,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   await awaitMountBricks(firstTotal);
 
   // ===== Botões
-  cancelBtn?.addEventListener('click', () => {
+
+cancelBtn?.addEventListener('click', () => {
+  const ok = confirm('Cancelar este pedido? Os itens do carrinho serão removidos.');
+  if (!ok) return;
+  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+  const paid = all.filter(b => b.paid === true);
+  localStorage.setItem('bookings', JSON.stringify(paid));
+  // volta para a tela anterior (ou ajuste para sua página de busca):
+  history.length > 1 ? history.back() : (location.href = 'index.html');
+});
+
+  
+/*  cancelBtn?.addEventListener('click', () => {
     const ok = confirm('Cancelar este pedido? Os itens do carrinho serão removidos.');
     if (!ok) return;
     const all = JSON.parse(localStorage.getItem('bookings') || '[]');
