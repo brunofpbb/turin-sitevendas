@@ -526,6 +526,7 @@ app.post('/api/praxio/vender', async (req, res) => {
 
     const arquivos = [];
     for (const p of (vendaResult.ListaPassagem || [])) {
+      if (!p || !p.NumPassagem) continue;
       const ticket = mapVendaToTicket({
         ListaPassagem: [p],
         mp: {
@@ -588,22 +589,30 @@ app.post('/api/praxio/vender', async (req, res) => {
         idOrigem: schedule.idOrigem,
         idDestino: schedule.idDestino
       },
-      bilhetes: (vendaResult.ListaPassagem || []).map(p => {
-        const ymd = toYMD(p.DataViagem || ymdViagem);
-        const hh = hhmm; // se não houver hora por bilhete, reuse a da viagem
-        return {
-          numPassagem: p.NumPassagem,
-          chaveBPe: p.ChaveBPe,
-          origem: p.Origem,
-          destino: p.Destino,
-          poltrona: p.Poltrona,
-          nomeCliente: p.NomeCliente,
-          docCliente: p.DocCliente,
-          valor: p.ValorPgto,
-          dataViagem: ymd,
-          dataHora: joinDateTime(ymd, hh)
-        };
-      }),
+
+
+bilhetes: (vendaResult.ListaPassagem || [])
+  .filter(p => p && p.NumPassagem) // <<< filtro
+  .map(p => {
+    const ymd = toYMD(p.DataViagem || ymdViagem);
+    const hh = hhmm;
+    return {
+      numPassagem: p.NumPassagem,
+      chaveBPe: p.ChaveBPe,
+      origem: p.Origem,
+      destino: p.Destino,
+      poltrona: p.Poltrona,
+      nomeCliente: p.NomeCliente,
+      docCliente: p.DocCliente,
+      valor: p.ValorPgto,
+      dataViagem: ymd,
+      dataHora: joinDateTime(ymd, hh),
+      idaVolta                                // <<< NOVO
+    };
+  }),
+
+
+      
       arquivos
     };
 
