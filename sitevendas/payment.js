@@ -126,7 +126,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const p = JSON.parse(localStorage.getItem('pendingPurchase') || 'null');
     return p && Array.isArray(p.legs) ? p.legs : [];
   }
-  let order = readCart();
+
+// explode um booking em N itens (um por poltrona) e guarda ponteiros do item original
+function expandCartItems(raw) {
+  const out = [];
+  (raw || []).forEach((it, openIdx) => {
+    const seats = Array.isArray(it.seats) ? it.seats : [];
+    const pax   = Array.isArray(it.passengers) ? it.passengers : [];
+    // se já está unitário, só garante ponteiros
+    if (seats.length <= 1) {
+      out.push({ ...it, _srcOpenIdx: openIdx, _seat: seats[0] ?? null });
+      return;
+    }
+    seats.forEach(seat => {
+      const p = pax.find(x => Number(x.seatNumber || x.poltrona) === Number(seat));
+      out.push({
+        ...it,
+        seats: [seat],
+        passengers: p ? [{ ...p, seatNumber: seat }] : [],
+        _srcOpenIdx: openIdx,
+        _seat: seat
+      });
+    });
+  });
+  return out;
+}
+
+
+// let order = readCart();
+let order = expandCartItems(readCart());
+
 
   // tenta inferir ida/volta a partir dos dois primeiros trechos
   function inferTripTypeForOrder(order) {
@@ -304,13 +333,39 @@ async function venderPraxioApósAprovado(paymentId) {
 
 
   // ===== storage remove
-  function removeFromStorageByOpenIndex(openIdx) {
-    const all = JSON.parse(localStorage.getItem('bookings') || '[]');
-    const paid = all.filter(b => b.paid === true);
-    const open = all.filter(b => b.paid !== true);
-    if (openIdx >= 0 && openIdx < open.length) open.splice(openIdx, 1);
+// remove uma poltrona específica do booking "aberto" original
+function removeFromStorageBySeatPointer(srcOpenIdx, seatNumber) {
+  const all  = JSON.parse(localStorage.getItem('bookings') || '[]');
+  const paid = all.filter(b => b.paid === true);
+  const open = all.filter(b => b.paid !== true);
+
+  // nada a fazer
+  if (srcOpenIdx < 0 || srcOpenIdx >= open.length) {
     localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
+    return;
   }
+
+  const it = open[srcOpenIdx];
+
+  // tira do array seats
+  if (Array.isArray(it.seats)) {
+    it.seats = it.seats.filter(n => Number(n) !== Number(seatNumber));
+  }
+  // tira do array passengers
+  if (Array.isArray(it.passengers)) {
+    it.passengers = it.passengers.filter(p =>
+      Number(p.seatNumber || p.poltrona) !== Number(seatNumber)
+    );
+  }
+
+  // se esvaziou, remove o booking aberto por completo
+  if (!it.seats?.length) {
+    open.splice(srcOpenIdx, 1);
+  }
+
+  localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
+}
+
 
   // ===== resumo
   function renderSummary() {
@@ -353,17 +408,27 @@ async function venderPraxioApósAprovado(paymentId) {
 
     const container = summaryBodyEl || legacySummaryEl;
     if (container) {
-      container.querySelectorAll('.order-item .item-remove').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const wrap = btn.closest('.order-item');
-          const openIdx = Number(wrap.getAttribute('data-open-index'));
-          order.splice(openIdx, 1);
-          removeFromStorageByOpenIndex(openIdx);
-          const newTotal = cartTotal();
-          renderSummary();
-          await awaitMountBricks(newTotal);
-        });
-      });
+container.querySelectorAll('.order-item .item-remove').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const wrap = btn.closest('.order-item');
+    const openIdx = Number(wrap.getAttribute('data-open-index'));
+
+    // pega os ponteiros do item expandido
+    const item = order[openIdx];
+    const srcIdx = Number(item?._srcOpenIdx ?? -1);
+    const seat   = item?._seat;
+
+    // remove no storage (apenas aquela poltrona do booking original)
+    removeFromStorageBySeatPointer(srcIdx, seat);
+
+    // remove do array expandido atual e re-renderiza
+    order.splice(openIdx, 1);
+    const newTotal = cartTotal();
+    renderSummary();
+    await awaitMountBricks(newTotal);
+  });
+});
+
     }
     return total;
   }
@@ -595,8 +660,9 @@ cancelBtn?.addEventListener('click', () => {
   const all = JSON.parse(localStorage.getItem('bookings') || '[]');
   const paid = all.filter(b => b.paid === true);
   localStorage.setItem('bookings', JSON.stringify(paid));
-  // volta para a tela anterior (ou ajuste para sua página de busca):
+  // volta para a tela anterior (ou para a busca, se não houver histórico)
   history.length > 1 ? history.back() : (location.href = 'index.html');
 });
+
 });
 
