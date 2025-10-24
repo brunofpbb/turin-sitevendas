@@ -598,16 +598,3 @@ cancelBtn?.addEventListener('click', () => {
   // volta para a tela anterior (ou ajuste para sua página de busca):
   history.length > 1 ? history.back() : (location.href = 'index.html');
 });
-
-  
-/*  cancelBtn?.addEventListener('click', () => {
-    const ok = confirm('Cancelar este pedido? Os itens do carrinho serão removidos.');
-    if (!ok) return;
-    const all = JSON.parse(localStorage.getItem('bookings') || '[]');
-    const paid = all.filter(b => b.paid === true);
-    localStorage.setItem('bookings', JSON.stringify(paid));
-    order = [];
-    renderSummary();
-    awaitMountBricks(0);
-  });
-});
