@@ -598,3 +598,5 @@ cancelBtn?.addEventListener('click', () => {
   // volta para a tela anterior (ou ajuste para sua página de busca):
   history.length > 1 ? history.back() : (location.href = 'index.html');
 });
+});
+
