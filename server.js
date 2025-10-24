@@ -441,10 +441,13 @@ app.post('/api/praxio/vender', async (req, res) => {
     if (!r.ok || !['approved','accredited'].includes(payment?.status)) {
       return res.status(400).json({ ok:false, error:'Pagamento não está aprovado.' });
     }
+
     const mpAmount = Number(payment.transaction_amount || 0);
-    if (totalAmount && Math.abs(mpAmount - Number(totalAmount)) > 0.01) {
-      return res.status(400).json({ ok:false, error:'Valor divergente do pagamento.' });
-    }
+      // Aceita emissão por item: apenas impede item com valor acima do total pago.
+      // (se quiser, pode somar itens no back e garantir que a soma <= mpAmount)
+        if (totalAmount && Number(totalAmount) > mpAmount + 0.01) {
+          return res.status(400).json({ ok:false, error:'Valor do item maior que o total pago.' });
+        }
 
     // tipo/forma de pagamento (para o webhook)
     const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
