@@ -450,7 +450,7 @@ app.post('/api/praxio/vender', async (req, res) => {
         }
 
     // tipo/forma de pagamento (para o webhook)
-    const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
+    const mpType = String(payment?.payment_type_id || '').toLowerCase(); 
     const tipoPagamento  = (mpType === 'pix') ? 0   : 3;
     const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
 
