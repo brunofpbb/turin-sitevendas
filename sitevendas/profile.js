@@ -118,18 +118,89 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ---- Normaliza "paid" em cartões unitários (1 bilhete por card) ----
+  function explodePaidIntoTickets(paid) {
+    const out = [];
+
+    for (const b of paid) {
+      const s = b.schedule || {};
+      const seats = Array.isArray(b.seats) ? b.seats : [];
+      const pax   = Array.isArray(b.passengers) ? b.passengers : [];
+      const tickets = Array.isArray(b.tickets) ? b.tickets : [];
+
+      // 1) Quando já temos tickets (drive/pdf) – usar 1 por card
+      if (tickets.length) {
+        // tentar achar preço unitário
+        const unit = seats.length > 1 ? Number(b.price || 0) / seats.length : Number(b.price || 0);
+
+        tickets.forEach((t, idx) => {
+          const seatNumber = (seats[idx] ?? pax[idx]?.seatNumber ?? null);
+          const passenger  = pax[idx] || null;
+
+          out.push({
+            ...b,
+            // sobrescreve por-bilhete
+            seats: seatNumber ? [seatNumber] : [],
+            passengers: passenger ? [passenger] : [],
+            price: Number.isFinite(unit) ? +unit.toFixed(2) : (b.price || 0),
+
+            // “fixa” o link/numero nesse card
+            ticketNumber: t.numPassagem || t.NumPassagem || b.ticketNumber || null,
+            driveUrl: t.driveUrl || b.driveUrl || null,
+            pdfLocal: t.pdfLocal || b.pdfLocal || null,
+
+            // só para o template saber que veio de “explosão”
+            _ticket: t
+          });
+        });
+        continue;
+      }
+
+      // 2) Sem tickets ainda: abrir 1 card por poltrona
+      if (seats.length > 1) {
+        const unit = Number(b.price || 0) / seats.length;
+
+        seats.forEach((seat, idx) => {
+          const passenger = pax[idx] || null;
+          out.push({
+            ...b,
+            seats: [seat],
+            passengers: passenger ? [passenger] : [],
+            price: Number.isFinite(unit) ? +unit.toFixed(2) : (b.price || 0),
+            _ticket: null,
+          });
+        });
+        continue;
+      }
+
+      // 3) Caso normal (já é unitário)
+      out.push(b);
+    }
+
+    return out;
+  }
+
+
+
+
+
+  
   function render() {
-    let all = loadAll();
+        let all = loadAll();
 
     // mantém apenas pagos
     let paid = all.filter(b => b.paid === true);
 
-    // dedup tenta usar ticketNumber; se não tiver, usa chave composta
+    // explode em itens unitários (1 bilhete / 1 poltrona por card)
+    paid = explodePaidIntoTickets(paid);
+
+    // dedup tenta usar ticketNumber; se não tiver, usa chave composta “unitária”
     paid = uniqBy(paid, b => {
       const s = b.schedule || {};
-      const seats = (b.seats || []).join(',');
-      return String(b.ticketNumber || `${s.date}|${s.originId || s.idOrigem}|${s.destinationId || s.idDestino}|${seats}|${b.price}`);
+      const seat = (b.seats || [])[0] || '';
+      return String(b.ticketNumber || `${s.date}|${s.originId || s.idOrigem}|${s.destinationId || s.idDestino}|${seat}|${b.price}`);
     });
+
 
     paid = sortPaidDesc(paid, all);
 
@@ -152,7 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Link do bilhete salvo no booking (preferência: Drive)
       const bookingTicketUrl = b.driveUrl || b.pdfLocal || b.ticketUrl || null;
-      const bookingTicketNum = b.ticketNumber || b.numPassagem || null;
+      const bookingTicketNum = b.ticketNumber || b.numPassagem || (b._ticket?.numPassagem) || null;
 
       const cancelBtnHtml = `
         <button class="btn btn-danger btn-cancel"
