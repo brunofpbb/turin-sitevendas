@@ -488,6 +488,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       Poltrona: String(p.seatNumber),
       NomeCli: String(p.name || ''),
       IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
+      TelefoneCli: String((p.phone || userPhone || '')).replace(/\D/g,''),
     }));
 
     const horaPad = normalizeHoraPartida(schedule?.horaPartida);
@@ -501,6 +502,7 @@ app.post('/api/praxio/vender', async (req, res) => {
         IdEstabelecimentoVenda: String(idEstabelecimentoVenda),
         IdViagem: String(schedule.idViagem),
         HoraPartida: horaPad, // ex.: "1048"
+        DataPartida: String(schedule.date || ''),
         IdOrigem: String(schedule.idOrigem),
         IdDestino: String(schedule.idDestino),
         Embarque: "S", Seguro: "N", Excesso: "N",
