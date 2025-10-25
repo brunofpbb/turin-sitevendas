@@ -508,13 +508,18 @@ app.post('/api/praxio/vender', async (req, res) => {
         Embarque: "S", Seguro: "N", Excesso: "N",
         BPe: 1,
         passagemXml,
-        pagamentoXml: [{
-          DataPagamento: nowWithTZOffsetISO(-180), // UTC-3
-          TipoPagamento: "0",
-          TipoCartao: "0",
-          QtdParcelas: Number(payment.installments || 1),
-          ValorPagamento: Number(totalAmount || mpAmount)
-        }]
+// mapeia o tipo de pagamento do MP para o código da Praxio:
+// Praxio: "3" = Cartão de Crédito, "8" = PIX  (os demais ficam como "0" Dinheiro)
+const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
+const praxioTipoPagamento = (mpType === 'pix') ? '8' : '3';
+
+pagamentoXml: [{
+DataPagamento: nowWithTZOffsetISO(-180),            // ISO com -03:00
+TipoPagamento: praxioTipoPagamento,                 // '8' (PIX) ou '3' (Crédito)
+TipoCartao: (mpType === 'credit_card') ? '1' : '0', // 1 = cartão presente/credit; 0 = sem cartão (PIX)
+QtdParcelas: Number(payment.installments || 1),
+ValorPagamento: Number(totalAmount || mpAmount)
+}]
       }]
     };
 
