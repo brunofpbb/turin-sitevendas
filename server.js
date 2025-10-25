@@ -454,6 +454,8 @@ app.post('/api/praxio/vender', async (req, res) => {
     const tipoPagamento  = (mpType === 'pix') ? 0   : 3;
     const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
 
+
+
     // helpers de data para a VIAGEM
     function toYMD(dateStr) {
       if (!dateStr) return '';
@@ -480,6 +482,8 @@ app.post('/api/praxio/vender', async (req, res) => {
 
     // 2) Login Praxio
     const IdSessaoOp = await praxioLogin();
+
+    
 
     // 3) Montar body da venda
     const passagemXml = (passengers || []).map(p => ({
@@ -508,11 +512,6 @@ app.post('/api/praxio/vender', async (req, res) => {
         Embarque: "S", Seguro: "N", Excesso: "N",
         BPe: 1,
         passagemXml,
-// mapeia o tipo de pagamento do MP para o código da Praxio:
-// Praxio: "3" = Cartão de Crédito, "8" = PIX  (os demais ficam como "0" Dinheiro)
-const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
-const praxioTipoPagamento = (mpType === 'pix') ? '8' : '3';
-
 pagamentoXml: [{
 DataPagamento: nowWithTZOffsetISO(-180),            // ISO com -03:00
 TipoPagamento: praxioTipoPagamento,                 // '8' (PIX) ou '3' (Crédito)
