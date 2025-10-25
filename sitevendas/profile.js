@@ -58,6 +58,23 @@ document.addEventListener('DOMContentLoaded', () => {
     return new Date(depUTC + TZ_OFFSET_MIN * -60 * 1000);
   }
 
+  // ===== utils extras (usar onde renderiza a lista) =====
+function seatFromTicket(t) {
+  // aceita t.Poltrona / t.poltrona / t.seatNumber
+  return Number(t?.Poltrona ?? t?.poltrona ?? t?.seatNumber ?? 0) || 0;
+}
+function ticketNumberOf(t) {
+  return t?.numPassagem ?? t?.NumPassagem ?? t?.numero ?? null;
+}
+function driveUrlOf(t) {
+  return t?.driveUrl ?? t?.url ?? t?.pdfLocal ?? null;
+}
+function samePlace(a, b) {
+  if (!a || !b) return false;
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
+
+
   /** Pode cancelar apenas se faltarem >= 12 horas para a partida */
   function mayCancel(schedule) {
     const dep = getDepartureDate(schedule);
@@ -180,116 +197,106 @@ document.addEventListener('DOMContentLoaded', () => {
     return out;
   }
 
+// ===== Render: 1 card por BILHETE =====
+async function renderReservations() {
+  const container = document.getElementById('reservas-list') 
+                 || document.querySelector('#reservas .list')
+                 || document.querySelector('#reservas'); // último fallback
+
+  if (!container) return;
+
+  // 1) Carrega compras locais (apenas pagos) — o que o payment grava
+  const all = JSON.parse(localStorage.getItem('bookings') || '[]');
+  const paid = all.filter(b => b.paid === true);
+
+  // 2) Explode cada compra em tickets individuais
+  //    (se ainda não tiver tickets salvos, cria um “ticket” vazio para manter compatível)
+  const localTickets = [];
+  for (const bk of paid) {
+    const s = bk.schedule || {};
+    const paxArr = Array.isArray(bk.passengers) ? bk.passengers : [];
+    const tArr  = Array.isArray(bk.tickets) ? bk.tickets : [{ /* vazio */ }];
+
+    for (const t of tArr) {
+      const seat = seatFromTicket(t) ||
+                   (paxArr.find(p => (p?.seatNumber ?? p?.poltrona) != null)?.seatNumber ?? null);
+      const pax  = paxArr.find(p => Number(p.seatNumber ?? p.poltrona) === seat) || paxArr[0] || {};
+      localTickets.push({
+        origem:  s.originName || s.origin || s.origem || '',
+        destino: s.destinationName || s.destination || s.destino || '',
+        data:    s.date || s.dataViagem || s.DataViagem || '',
+        hora:    s.departureTime || s.horaPartida || '',
+        seat,
+        passageiro: pax.name || pax.nome || '',
+        status: 'Pago',
+        ticketNumber: ticketNumberOf(t),
+        url: driveUrlOf(t),
+        idaVolta: bk.tripType || bk.idaVolta || null, // pode vir do fluxo novo
+      });
+    }
+  }
+
+  // 3) (Opcional) Consultar o Sheets também e mesclar aqui se quiser.
+  //    Se já estiver buscando do Sheets em outro ponto, mantenha seu fetch
+  //    e converta cada linha do Sheets para este mesmo shape e concatene em `localTickets`.
+
+  // 4) Heurística simples para marcar ida/volta quando vier nulo
+  localTickets.forEach((tk, i) => {
+    if (tk.idaVolta) return;
+    // se existir outro ticket com origem/destino invertidos no mesmo dia, marca como 'volta'
+    const inv = localTickets.find(o =>
+      o !== tk &&
+      tk.data && samePlace(o.data, tk.data) &&
+      samePlace(o.origem, tk.destino) &&
+      samePlace(o.destino, tk.origem)
+    );
+    tk.idaVolta = inv ? 'volta' : 'ida';
+  });
+
+  // 5) Ordenação: por data/hora
+  const toKey = (d, h) => `${String(d||'').replaceAll('/','-')} ${h||''}`;
+  localTickets.sort((a,b) => toKey(a.data,a.hora).localeCompare(toKey(b.data,b.hora)));
+
+  // 6) Monta HTML de cada TICKET (um card por bilhete)
+  const lines = localTickets.map(tk => {
+    const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
+    const btnBilhete = tk.url
+      ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
+      : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
+
+    // rótulo ida/volta apenas informativo
+    const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
+
+    return `
+      <div class="reserva">
+        <div><b>${tk.origem}</b> → <b>${tk.destino}</b>  <span class="badge">${way}</span></div>
+        <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>R$ ${Number( (6.6).toFixed(2) ).toLocaleString('pt-BR', {minimumFractionDigits:2})}</b></div>
+        <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
+        <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
+        <div class="actions" style="margin-top:8px; display:flex; gap:10px">
+          ${btnBilhete}
+          <button class="btn btn-danger" data-action="cancel" data-seat="${tk.seat}">Cancelar</button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
+
+  // 7) (Opcional) wire de “Cancelar”
+  container.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      alert('Cancelar por bilhete ainda não implementado aqui.'); 
+      // Se você já tem a lógica, chame-a passando o seat/ticket.
+    });
+  });
+}
 
 
 
 
   
-  function render() {
-        let all = loadAll();
-
-    // mantém apenas pagos
-    let paid = all.filter(b => b.paid === true);
-
-    // explode em itens unitários (1 bilhete / 1 poltrona por card)
-    paid = explodePaidIntoTickets(paid);
-
-    // dedup tenta usar ticketNumber; se não tiver, usa chave composta “unitária”
-    paid = uniqBy(paid, b => {
-      const s = b.schedule || {};
-      const seat = (b.seats || [])[0] || '';
-      return String(b.ticketNumber || `${s.date}|${s.originId || s.idOrigem}|${s.destinationId || s.idDestino}|${seat}|${b.price}`);
-    });
-
-
-    paid = sortPaidDesc(paid, all);
-
-    if (!paid.length) {
-      listEl.innerHTML = '<p class="mute">Nenhuma compra finalizada encontrada.</p>';
-      return;
-    }
-
-    listEl.innerHTML = paid.map(b => {
-      const s = b.schedule || {};
-      //const seats = (b.seats || []).join(', ');
-      //const pax = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
-
-        const seat = Array.isArray(it.seats) ? it.seats[0] : (it.seat || it.poltrona || '—');
-        const pax  = Array.isArray(it.passengers) && it.passengers.length ? it.passengers[0] : null;
-
-      
-      const cancelable = !b.cancelledAt && mayCancel(s);
-      const statusText = b.cancelledAt ? 'Cancelada' : 'Pago';
-      const showPreview = previewId === String(b.id);
-
-      const paidAmount = Number(b.price || 0);
-      const fee = +(paidAmount * 0.05).toFixed(2);
-      const back = +(paidAmount - fee).toFixed(2);
-
-      // Link do bilhete salvo no booking (preferência: Drive)
-      const bookingTicketUrl = b.driveUrl || b.pdfLocal || b.ticketUrl || null;
-      const bookingTicketNum = b.ticketNumber || b.numPassagem || (b._ticket?.numPassagem) || null;
-
-      const cancelBtnHtml = `
-        <button class="btn btn-danger btn-cancel"
-                data-id="${b.id}"
-                ${cancelable ? '' : 'disabled aria-disabled="true" style="opacity:.5;cursor:not-allowed"'}
-        >Cancelar</button>
-      `;
-
-      return `
-        <div class="schedule-card card-grid" data-id="${b.id}">
-          <div class="card-left">
-            <div class="schedule-header">
-              <div><b>${pick(s.originName, s.origin, s.origem)}</b> → <b>${pick(s.destinationName, s.destination, s.destino)}</b></div>
-              <div><b>Data:</b> ${pick(s.date)}</div>
-              <div><b>Saída:</b> ${pick(s.departureTime, s.horaPartida)}</div>
-              <div><b>Total:</b> ${fmtBRL(b.price || 0)}</div>
-            </div>
-
-            <div class="schedule-body" ${showPreview ? 'style="display:none"' : ''}>
-              <div><b>Poltronas:</b> ${seats || '—'}</div>
-              ${pax.length ? `<div><b>Passageiros:</b> ${pax.join(', ')}</div>` : ''}
-              <div><b>Status:</b> ${statusText}</div>
-              <div class="bilhete-num" style="margin-top:6px;">${bookingTicketNum ? `<b>Bilhete nº:</b> ${bookingTicketNum}` : ''}</div>
-            </div>
-
-            ${showPreview ? `
-              <div class="calc-box">
-                <div class="calc-cols">
-                  <div class="calc-left">
-                    <div class="calc-row"><span>Origem:</span><b>${pick(s.originName, s.origin, s.origem)}</b></div>
-                    <div class="calc-row"><span>Destino:</span><b>${pick(s.destinationName, s.destination, s.destino)}</b></div>
-                    <div class="calc-row"><span>Data:</span><b>${pick(s.date)}</b></div>
-                    <div class="calc-row"><span>Saída:</span><b>${pick(s.departureTime, s.horaPartida)}</b></div>
-                  </div>
-                  <div class="calc-right">
-                    <div class="calc-row"><span>Valor pago:</span><b>${fmtBRL(paidAmount)}</b></div>
-                    <div class="calc-row"><span>Multa (5%):</span><b>${fmtBRL(fee)}</b></div>
-                    <div class="calc-row total"><span>Valor a reembolsar:</span><b>${fmtBRL(back)}</b></div>
-                  </div>
-                </div>
-                <div class="actions" style="margin-top:10px">
-                  <button class="btn btn-primary" data-act="do-cancel" data-id="${b.id}">Realizar cancelamento</button>
-                  <button class="btn btn-ghost" data-act="close-preview">Voltar</button>
-                </div>
-              </div>
-            ` : ''}
-          </div>
-
-          <div class="card-right">
-            <div class="reserva-actions">
-              ${ bookingTicketUrl && !showPreview
-                  ? `<a class="btn btn-success" href="${bookingTicketUrl}" target="_blank" rel="noopener">Ver Bilhete</a>`
-                  : ''
-              }
-              ${ !showPreview ? cancelBtnHtml : '' }
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
+  
     // ===== Handlers =====
     // Cancelar (mostra preview) — ignora se desabilitado
     listEl.querySelectorAll('.btn-cancel').forEach(btn => {
