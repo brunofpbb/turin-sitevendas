@@ -211,8 +211,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     listEl.innerHTML = paid.map(b => {
       const s = b.schedule || {};
-      const seats = (b.seats || []).join(', ');
-      const pax = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
+      //const seats = (b.seats || []).join(', ');
+      //const pax = Array.isArray(b.passengers) ? b.passengers.map(p => `Pol ${p.seatNumber}: ${p.name}`) : [];
+
+        const seat = Array.isArray(it.seats) ? it.seats[0] : (it.seat || it.poltrona || '—');
+        const pax  = Array.isArray(it.passengers) && it.passengers.length ? it.passengers[0] : null;
+
+      
       const cancelable = !b.cancelledAt && mayCancel(s);
       const statusText = b.cancelledAt ? 'Cancelada' : 'Pago';
       const showPreview = previewId === String(b.id);
