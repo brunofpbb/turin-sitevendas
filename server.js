@@ -450,9 +450,10 @@ app.post('/api/praxio/vender', async (req, res) => {
         }
 
     // tipo/forma de pagamento (para o webhook)
-    const mpType = String(payment?.payment_type_id || '').toLowerCase(); 
-    const tipoPagamento  = (mpType === 'pix') ? 0   : 3;
-    const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
+const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
+const tipoPagamento = (mpType === 'pix') ? "0" : "3";  // 0 = PIX | 3 = Cartão (Praxio)
+const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
+
 
 
 
@@ -514,7 +515,7 @@ app.post('/api/praxio/vender', async (req, res) => {
         passagemXml,
 pagamentoXml: [{
 DataPagamento: nowWithTZOffsetISO(-180),            // ISO com -03:00
-TipoPagamento: praxioTipoPagamento,                 // '8' (PIX) ou '3' (Crédito)
+TipoPagamento: tipoPagamento,                 // '8' (PIX) ou '3' (Crédito)
 TipoCartao: (mpType === 'credit_card') ? '1' : '0', // 1 = cartão presente/credit; 0 = sem cartão (PIX)
 QtdParcelas: Number(payment.installments || 1),
 ValorPagamento: Number(totalAmount || mpAmount)
