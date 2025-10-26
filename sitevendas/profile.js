@@ -300,5 +300,11 @@ for (const t of tArr) {
 }
 
   // inicializa a tela
-  await renderReservations();
+(async () => {
+   try {
+     await renderReservations();
+   } catch (e) {
+     console.error('[profile] renderReservations falhou:', e);
+   }
+ })();
 });
