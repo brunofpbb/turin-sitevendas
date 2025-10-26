@@ -10,11 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  const listEl = document.getElementById('trips-list');
-  if (!listEl) {
-    console.warn('[profile] #trips-list não encontrado.');
-    return;
-  }
+const listEl = document.getElementById('trips-list'); // opcional; não bloquear se não existir
+
 
   // usado para abrir/fechar o preview de cancelamento
   let previewId = null;
@@ -243,9 +240,35 @@ for (const t of tArr) {
 
   }
 
-  // 3) (Opcional) Consultar o Sheets também e mesclar aqui se quiser.
-  //    Se já estiver buscando do Sheets em outro ponto, mantenha seu fetch
-  //    e converta cada linha do Sheets para este mesmo shape e concatene em `localTickets`.
+// 3) Buscar no Google Sheets por e-mail logado e mesclar
+try {
+  const email = (user?.email || '').trim();
+  if (email) {
+    const r = await fetch(`/api/sheets/bpe-by-email?email=${encodeURIComponent(email)}`);
+    const j = await r.json();
+
+    if (j.ok && Array.isArray(j.items)) {
+      for (const s of j.items) {
+        localTickets.push({
+          origem:  s.origin || s.origem || '',
+          destino: s.destination || s.destino || '',
+          data:    s.date || '',
+          hora:    s.departureTime || '',
+          seat:    s.seatNumber || s.poltrona || '',  // Sheets pode não ter
+          passageiro: '',                              // Sheets não traz passageiro
+          status: 'Pago',
+          ticketNumber: s.ticketNumber || '',
+          url: s.driveUrl || '',
+          idaVolta: null,                              // deixamos a heurística decidir
+          price: 0                                     // sem preço no Sheets
+        });
+      }
+    }
+  }
+} catch (e) {
+  console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
+}
+
 
   // 4) Heurística simples para marcar ida/volta quando vier nulo
   localTickets.forEach((tk, i) => {
