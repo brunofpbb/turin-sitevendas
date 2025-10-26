@@ -450,9 +450,15 @@ app.post('/api/praxio/vender', async (req, res) => {
         }
 
     // tipo/forma de pagamento (para o webhook)
-const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'pix' | ...
-const tipoPagamento = (mpType === 'pix') ? "0" : "3";  // 0 = PIX | 3 = Cartão (Praxio)
-const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
+ const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'debit_card' | 'pix' | ...
+ const tipoPagamento = (mpType === 'pix') ? '8' : '3';                // 8 = PIX | 3 = Cartão
+ const tipoCartao    = (mpType === 'credit_card') ? '1'
+                    : (mpType === 'debit_card')  ? '2'
+                    : '0';                                           // 0 = sem cartão (PIX)
+ const formaPagamento = (mpType === 'pix') ? 'PIX'
+                      : (mpType === 'debit_card') ? 'Cartão de Débito'
+                      : 'Cartão de Crédito';
+ const parcelas = Number(payment?.installments || 1);
 
 
 
@@ -487,14 +493,15 @@ const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
     
 
     // 3) Montar body da venda
-    const passagemXml = (passengers || []).map(p => ({
-      IdEstabelecimento: String(idEstabelecimentoTicket),
-      SerieBloco: String(serieBloco),
-      Poltrona: String(p.seatNumber),
-      NomeCli: String(p.name || ''),
-      IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
-      TelefoneCli: String((p.phone || userPhone || '')).replace(/\D/g,''),
-    }));
+ const passagemXml = (passengers || []).map(p => ({
+   IdEstabelecimento: String(idEstabelecimentoTicket),
+   SerieBloco: String(serieBloco),
+   IdViagem: String(schedule?.idViagem || ''),      // <- redundante, mas previne "Viagem 0"
+   Poltrona: String(p.seatNumber || ''),            // <- garante string numérica
+   NomeCli: String(p.name || ''),
+   IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
+   TelefoneCli: String((p.phone || userPhone || '')).replace(/\D/g,''),
+ }));
 
     const horaPad = normalizeHoraPartida(schedule?.horaPartida);
     if (!schedule?.idViagem || !horaPad || !schedule?.idOrigem || !schedule?.idDestino || !passagemXml.length) {
@@ -507,18 +514,17 @@ const formaPagamento = (mpType === 'pix') ? 'PIX' : 'Cartão de Crédito';
         IdEstabelecimentoVenda: String(idEstabelecimentoVenda),
         IdViagem: String(schedule.idViagem),
         HoraPartida: horaPad, // ex.: "1048"
-        DataPartida: String(schedule.date || ''),
         IdOrigem: String(schedule.idOrigem),
         IdDestino: String(schedule.idDestino),
         Embarque: "S", Seguro: "N", Excesso: "N",
         BPe: 1,
         passagemXml,
 pagamentoXml: [{
-DataPagamento: nowWithTZOffsetISO(-180),            // ISO com -03:00
-TipoPagamento: tipoPagamento,                 // '8' (PIX) ou '3' (Crédito)
-TipoCartao: (mpType === 'credit_card') ? '1' : '0', // 1 = cartão presente/credit; 0 = sem cartão (PIX)
-QtdParcelas: Number(payment.installments || 1),
-ValorPagamento: Number(totalAmount || mpAmount)
+       DataPagamento: nowWithTZOffsetISO(-180),     // ISO -03:00
+       TipoPagamento: tipoPagamento,                // '8' PIX | '3' Cartão
+       TipoCartao: tipoCartao,                      // '1' crédito | '2' débito | '0' PIX
+       QtdParcelas: parcelas,
+       ValorPagamento: Number(totalAmount || mpAmount)
 }]
       }]
     };
