@@ -217,23 +217,30 @@ async function renderReservations() {
     const paxArr = Array.isArray(bk.passengers) ? bk.passengers : [];
     const tArr  = Array.isArray(bk.tickets) ? bk.tickets : [{ /* vazio */ }];
 
-    for (const t of tArr) {
-      const seat = seatFromTicket(t) ||
-                   (paxArr.find(p => (p?.seatNumber ?? p?.poltrona) != null)?.seatNumber ?? null);
-      const pax  = paxArr.find(p => Number(p.seatNumber ?? p.poltrona) === seat) || paxArr[0] || {};
-      localTickets.push({
-        origem:  s.originName || s.origin || s.origem || '',
-        destino: s.destinationName || s.destination || s.destino || '',
-        data:    s.date || s.dataViagem || s.DataViagem || '',
-        hora:    s.departureTime || s.horaPartida || '',
-        seat,
-        passageiro: pax.name || pax.nome || '',
-        status: 'Pago',
-        ticketNumber: ticketNumberOf(t),
-        url: driveUrlOf(t),
-        idaVolta: bk.tripType || bk.idaVolta || null, // pode vir do fluxo novo
-      });
-    }
+for (const t of tArr) {
+  const seat = seatFromTicket(t) ||
+               (paxArr.find(p => (p?.seatNumber ?? p?.poltrona) != null)?.seatNumber ?? null);
+  const pax  = paxArr.find(p => Number(p.seatNumber ?? p.poltrona) === seat) || paxArr[0] || {};
+
+  // preço unitário (se b.price for total do trecho com várias poltronas)
+  const seatsCount = Array.isArray(bk.seats) ? bk.seats.length : 1;
+  const unit = seatsCount > 0 ? (Number(bk.price || 0) / seatsCount) : 0;
+
+  localTickets.push({
+    origem:  s.originName || s.origin || s.origem || '',
+    destino: s.destinationName || s.destination || s.destino || '',
+    data:    s.date || s.dataViagem || s.DataViagem || '',
+    hora:    s.departureTime || s.horaPartida || '',
+    seat,
+    passageiro: pax.name || pax.nome || '',
+    status: 'Pago',
+    ticketNumber: ticketNumberOf(t),
+    url: driveUrlOf(t),
+    idaVolta: bk.tripType || bk.idaVolta || null, // pode vir do fluxo novo
+    price: Number.isFinite(unit) ? +unit.toFixed(2) : 0
+  });
+}
+
   }
 
   // 3) (Opcional) Consultar o Sheets também e mesclar aqui se quiser.
@@ -270,7 +277,7 @@ async function renderReservations() {
     return `
       <div class="reserva">
         <div><b>${tk.origem}</b> → <b>${tk.destino}</b>  <span class="badge">${way}</span></div>
-        <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>R$ ${Number( (6.6).toFixed(2) ).toLocaleString('pt-BR', {minimumFractionDigits:2})}</b></div>
+        <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(tk.price || 0)}</b></div>
         <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
         <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
         <div class="actions" style="margin-top:8px; display:flex; gap:10px">
@@ -292,42 +299,6 @@ async function renderReservations() {
   });
 }
 
-
-
-
-  
-  
-    // ===== Handlers =====
-    // Cancelar (mostra preview) — ignora se desabilitado
-    listEl.querySelectorAll('.btn-cancel').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.hasAttribute('disabled')) return;
-        const id = btn.getAttribute('data-id');
-        previewId = id;
-        render();
-      });
-    });
-
-    // Fechar preview
-    listEl.querySelectorAll('[data-act="close-preview"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        previewId = null;
-        render();
-      });
-    });
-
-    // Confirmar cancelamento (efeito local)
-    listEl.querySelectorAll('[data-act="do-cancel"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        if (!confirm('Confirmar cancelamento desta viagem?')) return;
-        flagCancelled(id);
-        previewId = null;
-        render();
-        alert('Cancelamento realizado com sucesso. O reembolso será processado conforme as regras.');
-      });
-    });
-  }
-
-  render();
+  // inicializa a tela
+  await renderReservations();
 });
