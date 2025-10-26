@@ -196,9 +196,13 @@ function samePlace(a, b) {
 
 // ===== Render: 1 card por BILHETE =====
 async function renderReservations() {
-  const container = document.getElementById('reservas-list') 
-                 || document.querySelector('#reservas .list')
-                 || document.querySelector('#reservas'); // último fallback
+const container =
+  document.getElementById('reservas-list') ||
+  document.querySelector('#reservas .list') ||
+  document.getElementById('trips-list') ||   // << fallback antigo da sua página
+  document.querySelector('#reservas') ||
+  document.querySelector('.reservas');       // << último fallback visual
+
 
   if (!container) return;
 
