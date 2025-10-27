@@ -516,8 +516,10 @@ container.querySelectorAll('[data-act="confirm-cancel"]').forEach(btn=>{
       // Se você já tem a lógica, chame-a passando o seat/ticket.
     });
   });
+
+  */
 }
-*/
+
   // inicializa a tela
 (async () => {
    try {
