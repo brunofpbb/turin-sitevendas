@@ -347,6 +347,108 @@ localTickets.sort((a, b) => {
 
 
 
+// ===== Utilitários já existentes =====
+// let previewId = null;  // garanta que isso continue declarado no topo
+const fmtBRL = (n) => (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+// 6) Monta HTML de cada TICKET (um card por bilhete) + preview de cancelamento
+const lines = localTickets.map(tk => {
+  const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
+  const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
+  const idCard = String(tk.ticketNumber || `${tk.origem}-${tk.destino}-${tk.data}-${tk.hora}-${tk.seat}`);
+  const showPreview = (previewId === idCard);
+
+  const valor = Number(tk.price || 0);
+  const multa = +(valor * 0.05).toFixed(2);
+  const reembolso = +(valor - multa).toFixed(2);
+
+  // regra de poder cancelar (12h antes) — usa seus helpers já presentes
+  const podeCancelar = mayCancel({ date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora });
+
+  // botão Ver Bilhete (só se tiver url)
+  const btnBilhete = tk.url
+    ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
+    : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
+
+  return `
+    <div class="reserva" data-id="${idCard}">
+      <div><b>${tk.origem}</b> → <b>${tk.destino}</b> <span class="badge">${way}</span></div>
+      <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(valor)}</b></div>
+      <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
+      <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
+
+      ${showPreview ? `
+        <div class="calc-box">
+          <div class="calc-cols">
+            <div class="calc-left">
+              <div class="calc-row"><span>Origem:</span><b>${tk.origem}</b></div>
+              <div class="calc-row"><span>Destino:</span><b>${tk.destino}</b></div>
+              <div class="calc-row"><span>Data:</span><b>${dataBR}</b></div>
+              <div class="calc-row"><span>Saída:</span><b>${tk.hora || '—'}</b></div>
+            </div>
+            <div class="calc-right">
+              <div class="calc-row"><span>Valor pago:</span><b>${fmtBRL(valor)}</b></div>
+              <div class="calc-row"><span>Multa (5%):</span><b>${fmtBRL(multa)}</b></div>
+              <div class="calc-row total"><span>Valor a reembolsar:</span><b>${fmtBRL(reembolso)}</b></div>
+            </div>
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn btn-primary" data-act="do-cancel" data-id="${idCard}">Realizar cancelamento</button>
+            <button class="btn btn-ghost" data-act="close-preview">Voltar</button>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="actions">
+        ${!showPreview ? btnBilhete : ''}
+        ${!showPreview ? `
+          <button class="btn ${podeCancelar ? 'btn-danger' : 'btn-disabled'} btn-cancel"
+                  data-id="${idCard}" ${podeCancelar ? '' : 'disabled title="Só é permitido até 12h antes da partida"'}>
+            Cancelar
+          </button>` : ''}
+      </div>
+    </div>
+  `;
+});
+
+container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
+
+// 7) Handlers do preview e cancelamento
+container.querySelectorAll('.btn-cancel').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    previewId = btn.getAttribute('data-id');
+    renderReservations();
+  });
+});
+container.querySelectorAll('[data-act="close-preview"]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    previewId = null;
+    renderReservations();
+  });
+});
+container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const id = btn.getAttribute('data-id');
+    if (!confirm('Confirmar cancelamento desta viagem?')) return;
+    // marque localmente como cancelado se quiser (você já tem flagCancelled(id); caso deseje reusar):
+    if (typeof flagCancelled === 'function') flagCancelled(id);
+    previewId = null;
+    renderReservations();
+    alert('Cancelamento solicitado com sucesso. O reembolso será processado conforme as regras.');
+  });
+});
+
+
+
+
+
+
+
+
+
+  
+/*
+
   // 6) Monta HTML de cada TICKET (um card por bilhete) — com preview de cancelamento
 const lines = localTickets.map((tk, idx) => {
   const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
@@ -438,7 +540,7 @@ container.querySelectorAll('.do-cancel').forEach(btn=>{
     renderReservations();
   });
 });
-
+*/
 
 
 
