@@ -101,8 +101,6 @@ function hydrateUrlsByTicketNumber(localTickets) {
   });
 }
 
-
-
   /** Pode cancelar apenas se faltarem >= 12 horas para a partida */
   function mayCancel(schedule) {
     const dep = getDepartureDate(schedule);
@@ -344,9 +342,6 @@ localTickets.sort((a, b) => {
 });
 
 
-
-
-
 // ===== Utilitários já existentes =====
 // let previewId = null;  // garanta que isso continue declarado no topo
 const fmtBRL = (n) => (Number(n)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -437,189 +432,6 @@ container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
     alert('Cancelamento solicitado com sucesso. O reembolso será processado conforme as regras.');
   });
 });
-
-
-
-
-
-
-
-
-
-  
-/*
-
-  // 6) Monta HTML de cada TICKET (um card por bilhete) — com preview de cancelamento
-const lines = localTickets.map((tk, idx) => {
-  const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
-  const btnBilhete = tk.url
-    ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
-    : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
-
-  // rótulo ida/volta apenas informativo
-  const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
-
-  // regra de cancelamento
-  const schedule = { date: tk.data, departureTime: tk.hora };
-  const cancelable = mayCancel(schedule);
-
-  // cálculo da “multa” (5%) sobre o preço unitário (quando houver)
-  const paidAmount = Number(tk.price || 0);
-  const fee  = +(paidAmount * 0.05).toFixed(2);
-  const back = +(paidAmount - fee).toFixed(2);
-
-  const showPreview = (window.__previewId === String(idx));
-
-  return `
-    <div class="reserva" data-idx="${idx}">
-      <!-- conteúdo normal -->
-      <div class="reserva-head" ${showPreview ? 'style="display:none"' : ''}>
-        <div><b>${tk.origem}</b> → <b>${tk.destino}</b> <span class="badge">${way}</span></div>
-        <div>Data: <b>${dataBR || '—'}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(tk.price || 0)}</b></div>
-        <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
-        <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
-        <div class="actions">
-          ${btnBilhete}
-          <button class="btn btn-danger btn-cancel"
-                  ${cancelable ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}
-                  data-idx="${idx}">Cancelar</button>
-        </div>
-      </div>
-
-      <!-- preview de cancelamento -->
-      ${showPreview ? `
-        <div class="calc-box">
-          <div class="calc-cols" style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:start;">
-            <div class="calc-left">
-              <div class="calc-row"><span><b>Origem:</b></span> ${tk.origem || '—'}</div>
-              <div class="calc-row"><span><b>Destino:</b></span> ${tk.destino || '—'}</div>
-              <div class="calc-row"><span><b>Data:</b></span> ${dataBR || '—'}</div>
-              <div class="calc-row"><span><b>Saída:</b></span> ${tk.hora || '—'}</div>
-            </div>
-            <div class="calc-right" style="text-align:right; min-width:220px">
-              <div class="calc-row"><span>Valor pago:</span> <b>${fmtBRL(paidAmount)}</b></div>
-              <div class="calc-row"><span>Multa (5%):</span> <b>${fmtBRL(fee)}</b></div>
-              <div class="calc-row total" style="margin-top:6px"><span>Valor a reembolsar:</span> <b>${fmtBRL(back)}</b></div>
-            </div>
-          </div>
-          <div class="actions" style="margin-top:10px; display:flex; gap:10px">
-            <button class="btn btn-primary do-cancel" data-idx="${idx}" ${cancelable ? '' : 'disabled'}>Realizar cancelamento</button>
-            <button class="btn btn-ghost close-preview" data-idx="${idx}">Voltar</button>
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-});
-
-container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
-
-// 7) Handlers de Cancelar / Voltar / Confirmar
-container.querySelectorAll('.btn-cancel').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const idx = btn.getAttribute('data-idx');
-    window.__previewId = String(idx);
-    // re-render rápido
-    renderReservations();
-  });
-});
-container.querySelectorAll('.close-preview').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    window.__previewId = null;
-    renderReservations();
-  });
-});
-container.querySelectorAll('.do-cancel').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const idx = btn.getAttribute('data-idx');
-    // Aqui você pode chamar sua rotina real de cancelamento (API),
-    // e/ou marcar localmente como cancelado:
-    // flagCancelled( ... )  <-- se você tiver um id de booking
-    alert('Cancelamento solicitado. O reembolso será processado conforme as regras.');
-    window.__previewId = null;
-    renderReservations();
-  });
-});
-*/
-
-
-
-
-
-  
-
-
-/*
-const lines = localTickets.map(tk => {
-  const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
-  const btnBilhete = tk.url
-    ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
-    : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
-  const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
-
-  return `
-    <div class="reserva card-grid">
-      <div class="card-left">
-        <div><b>${tk.origem}</b> → <b>${tk.destino}</b>  <span class="badge">${way}</span></div>
-        <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(tk.price || 0)}</b></div>
-        <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
-        <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
-      </div>
-      <div class="card-right">
-        <div class="actions">
-          ${btnBilhete}
-          <button class="btn btn-danger" data-action="cancel" data-seat="${tk.seat}">Cancelar</button>
-        </div>
-      </div>
-    </div>
-  `;
-});
-
-
-
-  container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
-
-  // abrir link do bilhete
-container.querySelectorAll('[data-act="open-ticket"]').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const i = Number(btn.getAttribute('data-idx'));
-    const tk = localTickets[i];
-    if (tk?.url) window.open(tk.url, '_blank', 'noopener');
-  });
-});
-
-// abre/fecha preview
-container.querySelectorAll('[data-act="toggle-cancel"]').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    const i = btn.getAttribute('data-idx');
-    const box = container.querySelector(`[data-calc="${i}"]`);
-    if (box) box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
-  });
-});
-
-// confirma cancelamento (efeito local – igual ao que você já fazia)
-container.querySelectorAll('[data-act="confirm-cancel"]').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    // aqui você pode chamar sua rotina real de cancelamento;
-    // por enquanto, só mostra um alerta e fecha o preview.
-    alert('Cancelamento realizado (exemplo). Integre aqui sua chamada real.');
-    const i = btn.getAttribute('data-idx');
-    const box = container.querySelector(`[data-calc="${i}"]`);
-    if (box) box.style.display = 'none';
-  });
-});
-
-
-
-  // 7) (Opcional) wire de “Cancelar”
-  container.querySelectorAll('[data-action="cancel"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      alert('Cancelar por bilhete ainda não implementado aqui.'); 
-      // Se você já tem a lógica, chame-a passando o seat/ticket.
-    });
-  });
-
-  */
 }
 
   // inicializa a tela
