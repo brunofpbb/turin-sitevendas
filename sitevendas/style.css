@@ -242,11 +242,17 @@ footer{
   margin: 10px auto;    /* centraliza o bloco dentro do card */
 }
 
+/* Bloco dos botões dentro do resumo de cancelamento */
 .calc-box .actions{
-  display: flex;
-  justify-content: center;  /* centraliza os dois botões */
-  gap: 10px;
+  display:flex;
+  justify-content:flex-start;   /* alinha à esquerda */
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;               /* quebra bem no mobile */
+  margin-top:10px;
+  padding:0;                    /* sem padding extra */
 }
+
 
 /* Mantém o conteúdo em duas colunas, mas o bloco todo fica centralizado */
 .calc-cols{
@@ -1287,3 +1293,18 @@ footer { text-align: center; }
 
 
 
+
+
+/* resultados de busca (cards de horários) */
+.schedule-card{transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease}
+.schedule-card:hover{border-color:#9fb3c8; box-shadow:0 6px 16px rgba(0,0,0,.08); transform:translateY(-1px)}
+
+/* minhas viagens (cards de reservas) */
+.reservas .reserva{
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.reservas .reserva:hover{
+  border-color:#d5e7db;
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+  transform: translateY(-1px);
+}
