@@ -1136,3 +1136,66 @@ footer { text-align: center; }
   .site-title h1{ font-size:1.35rem; }
 }
 
+
+
+
+
+
+
+/* Container dos cards */
+#reservas .reserva,
+.reservas .reserva,
+.schedule-card {
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+/* Layout duas colunas, como a tela antiga */
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Coluna de ações sempre à direita */
+.card-right .actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Botões */
+.btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-success { background: #2e7d32; color: #fff; }
+.btn-danger  { background: #c62828; color: #fff; }
+.btn-secondary { background: #bdbdbd; color: #fff; }
+
+/* Badge simples "Ida/Volta" */
+.badge {
+  display: inline-block;
+  background: #eee;
+  color: #333;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+/* Pequenos ajustes de tipografia */
+#reservas .reserva b {
+  font-weight: 700;
+}
+#reservas .reserva div + div {
+  margin-top: 4px;
+}
