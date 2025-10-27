@@ -266,7 +266,8 @@ async function renderReservations() {
         ticketNumber: ticketNumberOf(t),
         url: driveUrlOf(t),
         idaVolta: bk.tripType || bk.idaVolta || null,
-        price: Number.isFinite(unit) ? +unit.toFixed(2) : 0
+        price: Number.isFinite(unit) ? +unit.toFixed(2) : 0,
+        _paidAt: bk.paidAt || bk.dataVenda || bk.vendaAt || bk.createdAt || null
       });
     }
   }
@@ -291,7 +292,8 @@ async function renderReservations() {
             ticketNumber: s.ticketNumber || '',
             url: s.driveUrl || '',
             idaVolta: null,
-            price: 0
+            price: 0,
+            _paidAt: null
           });
         }
       }
@@ -315,10 +317,66 @@ async function renderReservations() {
     tk.idaVolta = inv ? 'volta' : 'ida';
   });
 
-  // 5) Ordenação: por data/hora
-  const toKey = (d, h) => `${String(d||'').replaceAll('/','-')} ${h||''}`;
-  localTickets.sort((a,b) => toKey(a.data,a.hora).localeCompare(toKey(b.data,b.hora)));
+// 5) Ordenação: mais recente primeiro
+function parseTs(v) {
+  if (!v) return NaN;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? NaN : t;
+}
+function toNumTicket(tk) {
+  return parseInt(String(tk.ticketNumber || '').replace(/\D/g, ''), 10) || 0;
+}
 
+// regra:
+// 1) usa _paidAt (quando veio do localStorage, temos isso)
+// 2) se empatar/ausente, tenta ordenar por data/hora da viagem
+// 3) por fim, usa número do bilhete desc
+localTickets.sort((a, b) => {
+  const ta = parseTs(a._paidAt);
+  const tb = parseTs(b._paidAt);
+  if (!Number.isNaN(ta) || !Number.isNaN(tb)) return (tb || 0) - (ta || 0);
+
+  const ka = `${String(a.data||'').replaceAll('/', '-') } ${a.hora||''}`;
+  const kb = `${String(b.data||'').replaceAll('/', '-') } ${b.hora||''}`;
+  if (ka !== kb) return kb.localeCompare(ka);
+
+  return toNumTicket(b) - toNumTicket(a);
+});
+
+
+
+
+const lines = localTickets.map(tk => {
+  const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
+  const btnBilhete = tk.url
+    ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
+    : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
+  const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
+
+  return `
+    <div class="reserva card-grid">
+      <div class="card-left">
+        <div><b>${tk.origem}</b> → <b>${tk.destino}</b>  <span class="badge">${way}</span></div>
+        <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(tk.price || 0)}</b></div>
+        <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
+        <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
+      </div>
+      <div class="card-right">
+        <div class="actions">
+          ${btnBilhete}
+          <button class="btn btn-danger" data-action="cancel" data-seat="${tk.seat}">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  `;
+});
+
+
+
+
+  
+
+/*
 // 6) Monta HTML de cada TICKET (um card por bilhete)
 const lines = localTickets.map((tk, idx) => {
   const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
@@ -360,7 +418,7 @@ const lines = localTickets.map((tk, idx) => {
     </div>
   `;
 });
-
+*/
 
   container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
 
