@@ -1199,3 +1199,66 @@ footer { text-align: center; }
 #reservas .reserva div + div {
   margin-top: 4px;
 }
+
+
+
+
+/* ====== Minhas Viagens – cards no estilo antigo ====== */
+#reservas { max-width: 980px; margin: 0 auto; }
+
+.reserva {
+  position: relative;               /* para posicionar as ações à direita */
+  background: #fff;
+  border: 1px solid #e5e7eb;        /* separação visual entre cards */
+  border-radius: 10px;
+  padding: 14px 16px 16px 16px;
+  margin: 12px 0;                   /* espaço entre cards */
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  line-height: 1.35;
+}
+
+/* título (origem → destino + badge) */
+.reserva > div:first-child { 
+  font-weight: 600; 
+  margin-bottom: 6px;
+}
+.reserva .badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 9999px;
+  background: #eef2ff;
+  color: #1d4ed8;
+  margin-left: 6px;
+}
+
+/* linhas de metadados */
+.reserva > div:nth-child(2),
+.reserva > div:nth-child(3),
+.reserva > div:nth-child(4) {
+  margin-top: 3px;
+}
+
+/* bloco de ações alinhado à direita (desktop) */
+.reserva .actions {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 10px;
+}
+
+/* mobile: ações abaixo do conteúdo */
+@media (max-width: 640px) {
+  .reserva { padding-right: 16px; }
+  .reserva .actions {
+    position: static;
+    transform: none;
+    margin-top: 10px;
+    justify-content: flex-start;
+  }
+}
+
+/* opcional: “Poltronas:”, “Passageiros:”, “Status:” em leve destaque */
+.reserva b { font-weight: 700; }
