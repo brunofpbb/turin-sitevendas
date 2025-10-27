@@ -30,6 +30,7 @@ async function sheetsAuth() {
     key.client_email, null, key.private_key,
     ['https://www.googleapis.com/auth/spreadsheets.readonly']
   );
+  console.log(key.client_email)
   return google.sheets({ version: 'v4', auth });
 }
 
