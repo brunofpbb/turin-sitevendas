@@ -71,6 +71,37 @@ function samePlace(a, b) {
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 }
 
+// <<< COLE AQUI
+function hydrateUrlsByTicketNumber(localTickets) {
+  const byNum = {};
+
+  try {
+    const last = JSON.parse(localStorage.getItem('lastTickets') || '[]');
+    last.forEach(t => {
+      const n = t.numPassagem || t.NumPassagem;
+      if (n && (t.driveUrl || t.pdfLocal)) byNum[n] = t.driveUrl || t.pdfLocal;
+    });
+  } catch {}
+
+  try {
+    const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+    bookings.forEach(bk => {
+      (bk.tickets || []).forEach(t => {
+        const n = t.numPassagem || t.NumPassagem;
+        const url = t.driveUrl || t.pdfLocal || t.url;
+        if (n && url) byNum[n] = url;
+      });
+    });
+  } catch {}
+
+  localTickets.forEach(tk => {
+    if (!tk.url && tk.ticketNumber && byNum[tk.ticketNumber]) {
+      tk.url = byNum[tk.ticketNumber];
+    }
+  });
+}
+
+
 
   /** Pode cancelar apenas se faltarem >= 12 horas para a partida */
   function mayCancel(schedule) {
@@ -196,88 +227,85 @@ function samePlace(a, b) {
 
 // ===== Render: 1 card por BILHETE =====
 async function renderReservations() {
-const container =
-  document.getElementById('reservas-list') ||
-  document.querySelector('#reservas .list') ||
-  document.getElementById('trips-list') ||   // << fallback antigo da sua página
-  document.querySelector('#reservas') ||
-  document.querySelector('.reservas');       // << último fallback visual
-
+  const container =
+    document.getElementById('reservas-list') ||
+    document.querySelector('#reservas .list') ||
+    document.getElementById('trips-list') ||
+    document.querySelector('#reservas') ||
+    document.querySelector('.reservas');
 
   if (!container) return;
 
-  // 1) Carrega compras locais (apenas pagos) — o que o payment grava
+  // 1) Carrega compras locais (apenas pagos)
   const all = JSON.parse(localStorage.getItem('bookings') || '[]');
   const paid = all.filter(b => b.paid === true);
 
   // 2) Explode cada compra em tickets individuais
-  //    (se ainda não tiver tickets salvos, cria um “ticket” vazio para manter compatível)
   const localTickets = [];
   for (const bk of paid) {
     const s = bk.schedule || {};
     const paxArr = Array.isArray(bk.passengers) ? bk.passengers : [];
     const tArr  = Array.isArray(bk.tickets) ? bk.tickets : [{ /* vazio */ }];
 
-for (const t of tArr) {
-  const seat = seatFromTicket(t) ||
-               (paxArr.find(p => (p?.seatNumber ?? p?.poltrona) != null)?.seatNumber ?? null);
-  const pax  = paxArr.find(p => Number(p.seatNumber ?? p.poltrona) === seat) || paxArr[0] || {};
+    for (const t of tArr) {
+      const seat = seatFromTicket(t) ||
+                   (paxArr.find(p => (p?.seatNumber ?? p?.poltrona) != null)?.seatNumber ?? null);
+      const pax  = paxArr.find(p => Number(p.seatNumber ?? p.poltrona) === seat) || paxArr[0] || {};
 
-  // preço unitário (se b.price for total do trecho com várias poltronas)
-  const seatsCount = Array.isArray(bk.seats) ? bk.seats.length : 1;
-  const unit = seatsCount > 0 ? (Number(bk.price || 0) / seatsCount) : 0;
+      const seatsCount = Array.isArray(bk.seats) ? bk.seats.length : 1;
+      const unit = seatsCount > 0 ? (Number(bk.price || 0) / seatsCount) : 0;
 
-  localTickets.push({
-    origem:  s.originName || s.origin || s.origem || '',
-    destino: s.destinationName || s.destination || s.destino || '',
-    data:    s.date || s.dataViagem || s.DataViagem || '',
-    hora:    s.departureTime || s.horaPartida || '',
-    seat,
-    passageiro: pax.name || pax.nome || '',
-    status: 'Pago',
-    ticketNumber: ticketNumberOf(t),
-    url: driveUrlOf(t),
-    idaVolta: bk.tripType || bk.idaVolta || null, // pode vir do fluxo novo
-    price: Number.isFinite(unit) ? +unit.toFixed(2) : 0
-  });
-}
-
-  }
-
-// 3) Buscar no Google Sheets por e-mail logado e mesclar
-try {
-  const email = (user?.email || '').trim();
-  if (email) {
-    const r = await fetch(`/api/sheets/bpe-by-email?email=${encodeURIComponent(email)}`);
-    const j = await r.json();
-
-    if (j.ok && Array.isArray(j.items)) {
-      for (const s of j.items) {
-        localTickets.push({
-          origem:  s.origin || s.origem || '',
-          destino: s.destination || s.destino || '',
-          data:    s.date || '',
-          hora:    s.departureTime || '',
-          seat:    s.seatNumber || s.poltrona || '',  // Sheets pode não ter
-          passageiro: '',                              // Sheets não traz passageiro
-          status: 'Pago',
-          ticketNumber: s.ticketNumber || '',
-          url: s.driveUrl || '',
-          idaVolta: null,                              // deixamos a heurística decidir
-          price: 0                                     // sem preço no Sheets
-        });
-      }
+      localTickets.push({
+        origem:  s.originName || s.origin || s.origem || '',
+        destino: s.destinationName || s.destination || s.destino || '',
+        data:    s.date || s.dataViagem || s.DataViagem || '',
+        hora:    s.departureTime || s.horaPartida || '',
+        seat,
+        passageiro: pax.name || pax.nome || '',
+        status: 'Pago',
+        ticketNumber: ticketNumberOf(t),
+        url: driveUrlOf(t),
+        idaVolta: bk.tripType || bk.idaVolta || null,
+        price: Number.isFinite(unit) ? +unit.toFixed(2) : 0
+      });
     }
   }
-} catch (e) {
-  console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
-}
 
+  // 3) Buscar no Google Sheets por e-mail logado e mesclar
+  try {
+    const email = (user?.email || '').trim();
+    if (email) {
+      const r = await fetch(`/api/sheets/bpe-by-email?email=${encodeURIComponent(email)}`);
+      const j = await r.json();
+
+      if (j.ok && Array.isArray(j.items)) {
+        for (const s of j.items) {
+          localTickets.push({
+            origem:  s.origin || s.origem || '',
+            destino: s.destination || s.destino || '',
+            data:    s.date || '',
+            hora:    s.departureTime || '',
+            seat:    s.seatNumber || s.poltrona || '',
+            passageiro: '',
+            status: 'Pago',
+            ticketNumber: s.ticketNumber || '',
+            url: s.driveUrl || '',
+            idaVolta: null,
+            price: 0
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
+  }
+
+  // 3.5) Preenche links de bilhete usando dados salvos no localStorage
+  hydrateUrlsByTicketNumber(localTickets);
 
   // 4) Heurística simples para marcar ida/volta quando vier nulo
-  localTickets.forEach((tk, i) => {
+  localTickets.forEach((tk) => {
     if (tk.idaVolta) return;
-    // se existir outro ticket com origem/destino invertidos no mesmo dia, marca como 'volta'
     const inv = localTickets.find(o =>
       o !== tk &&
       tk.data && samePlace(o.data, tk.data) &&
@@ -298,7 +326,6 @@ try {
       ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
       : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
 
-    // rótulo ida/volta apenas informativo
     const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
 
     return `
@@ -307,7 +334,7 @@ try {
         <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(tk.price || 0)}</b></div>
         <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
         <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
-        <div class="actions" style="margin-top:8px; display:flex; gap:10px">
+        <div class="actions" style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-start">
           ${btnBilhete}
           <button class="btn btn-danger" data-action="cancel" data-seat="${tk.seat}">Cancelar</button>
         </div>
@@ -316,6 +343,7 @@ try {
   });
 
   container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
+}
 
   // 7) (Opcional) wire de “Cancelar”
   container.querySelectorAll('[data-action="cancel"]').forEach(btn => {
