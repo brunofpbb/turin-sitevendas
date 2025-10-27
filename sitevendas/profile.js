@@ -49,10 +49,10 @@ const listEl = document.getElementById('trips-list'); // opcional; não bloquear
   function getDepartureDate(s) {
     const d = parseISOorBR(s?.date || s?.dataViagem);
     const { h, m } = parseTimeHHMM(s?.departureTime || s?.horaPartida);
-    if (!d) return null;
+    if (!d) ull;
     const depUTC = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, 0);
     // aplica o offset -03:00
-    return new Date(depUTC + TZ_OFFSET_MIN * -60 * 1000);
+    return new Date(depUTC + TZ_OFFSET_MIN * 60 * 1000);
   }
 
   // ===== utils extras (usar onde renderiza a lista) =====
@@ -303,17 +303,45 @@ async function renderReservations() {
   // 3.5) Preenche links de bilhete usando dados salvos no localStorage
   hydrateUrlsByTicketNumber(localTickets);
 
-  // 4) Heurística simples para marcar ida/volta quando vier nulo
-  localTickets.forEach((tk) => {
-    if (tk.idaVolta) return;
-    const inv = localTickets.find(o =>
+
+
+  
+
+// 4) Heurística para marcar ida/volta quando vier nulo
+localTickets.forEach((tk) => {
+  if (tk.idaVolta) return;
+
+  // procura par com origem/destino invertidos (em qualquer data)
+  const pair = localTickets
+    .filter(o =>
       o !== tk &&
-      tk.data && samePlace(o.data, tk.data) &&
       samePlace(o.origem, tk.destino) &&
       samePlace(o.destino, tk.origem)
-    );
-    tk.idaVolta = inv ? 'volta' : 'ida';
-  });
+    )
+    // escolhe o mais próximo em tempo
+    .sort((a, b) => (Date.parse(a.data || '') || 0) - (Date.parse(b.data || '') || 0))[0];
+
+  if (!pair) {
+    tk.idaVolta = 'ida';
+    return;
+  }
+
+  const tTk   = Date.parse(tk.data || '')   || 0;
+  const tPair = Date.parse(pair.data || '') || 0;
+
+  // a viagem que ocorre depois é "Volta", a outra é "Ida"
+  if (tTk > tPair) {
+    tk.idaVolta = 'volta';
+  } else {
+    tk.idaVolta = 'ida';
+  }
+});
+
+
+
+
+
+  
 
 // 5) Ordenação: mais recente primeiro
 function parseTs(v) {
