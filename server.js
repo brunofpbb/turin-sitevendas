@@ -17,6 +17,85 @@ const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
+
+// ===== Google Sheets (via gviz) — buscar bilhetes por e-mail =====
+app.get('/api/sheets/bpe-by-email', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ ok: false, error: 'email é obrigatório' });
+
+    const spreadsheetId = process.env.SHEETS_BPE_ID;         // ex.: 1q3Jj7QvN1q4h...
+    const sheetName     = process.env.SHEETS_BPE_SHEET || 'BPE';
+
+    // Seleciona A..AF (igual seu n8n) – se precisar, aumente/diminua.
+    const cols = 'A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,AA,AB,AC,AD,AE,AF';
+    const tq   = `select ${cols}`; // a gente filtra pelo e-mail no Node para evitar “qual é a coluna do e-mail?” aqui
+
+    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tq=${encodeURIComponent(tq)}&sheet=${encodeURIComponent(sheetName)}`;
+
+    const resp = await fetch(url);
+    const text = await resp.text();
+
+    // Converte "google.visualization.Query.setResponse(...)" em JSON
+    const json = JSON.parse(
+      text
+        .replace(/^[\s\S]*setResponse\(/, '')
+        .replace(/\);?\s*$/, '')
+    );
+
+    const table   = json.table || {};
+    const headers = (table.cols || []).map(c => (c.label || '').trim());
+
+    // helper para achar coluna por nome, tolerando variações
+    const findCol = (...names) => {
+      const idx = headers.findIndex(h =>
+        !!h && names.some(n => h.toLowerCase() === n.toLowerCase())
+      );
+      return idx >= 0 ? idx : -1;
+    };
+
+    const idxEmail   = findCol('Email', 'E-mail', 'email');
+    const idxNum     = findCol('Bilhete', 'NumPassagem', 'Bilhete nº');
+    const idxDrive   = findCol('Drive', 'Link', 'DriveUrl', 'driveUrl');
+    const idxOrigem  = findCol('Origem');
+    const idxDestino = findCol('Destino');
+    const idxData    = findCol('Data_Viagem', 'Data Viagem', 'Data');
+    const idxHora    = findCol('Hora', 'Saída', 'Saida');
+
+    const getCell = (row, i) => {
+      if (i < 0) return '';
+      const c = row.c?.[i];
+      // gviz usa {v: valor, f: formatado}; preferimos 'v' e caímos pra 'f'
+      return (c && (c.v ?? c.f)) ?? '';
+    };
+
+    const rows = (table.rows || []).map(r => ({
+      email:        String(getCell(r, idxEmail)).trim(),
+      ticketNumber: getCell(r, idxNum),
+      driveUrl:     getCell(r, idxDrive),
+      origin:       getCell(r, idxOrigem),
+      destination:  getCell(r, idxDestino),
+      date:         getCell(r, idxData),
+      departureTime:getCell(r, idxHora),
+    }));
+
+    // filtra por e-mail (case-insensitive)
+    const items = rows.filter(r => r.email.toLowerCase() === email);
+
+    return res.json({ ok: true, items });
+  } catch (e) {
+    console.error('[sheets/gviz] error:', e?.message || e);
+    return res.status(500).json({ ok: false, error: 'gviz_fetch_failed' });
+  }
+});
+
+
+
+
+
+
+
+/*
 // ===== Google Sheets: buscar bilhetes por email
 const { google } = require('googleapis');
 
@@ -71,7 +150,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     res.status(500).json({ ok:false, error:'sheets_read_failed' });
   }
 });
-
+*/
 
 
 
