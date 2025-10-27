@@ -65,7 +65,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
   try {
     // Ajuste a LETTER da coluna de e-mail se necessário. No seu n8n, “W” era o CorrelationId;
     // aqui assumo que “Email” está na coluna **E** (exemplo). Troque se for outro.
-    const EMAIL_COL = process.env.SHEETS_EMAIL_COL || 'E';
+    const EMAIL_COL = process.env.SHEETS_EMAIL_COL || 'D';
     const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq` +
       `?sheet=BPE&tq=${encodeURIComponent(`select * where lower(${EMAIL_COL})='${email}'`)}`;
 
