@@ -1,3 +1,6 @@
+PROFILE ATUAL 27102025 15:59
+
+
 // profile.js — Minhas viagens (link do Drive + regra de cancelamento 12h + dedup)
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof updateUserNav === 'function') updateUserNav();
