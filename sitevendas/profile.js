@@ -343,7 +343,7 @@ async function renderReservations() {
   });
 
   container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
-}
+
 
   // 7) (Opcional) wire de “Cancelar”
   container.querySelectorAll('[data-action="cancel"]').forEach(btn => {
