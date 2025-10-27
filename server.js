@@ -20,72 +20,83 @@ const PORT = process.env.PORT || 8080;
 
 // ===== Google Sheets (via gviz) — buscar bilhetes por e-mail =====
 app.get('/api/sheets/bpe-by-email', async (req, res) => {
+  const email = String(req.query.email || '').toLowerCase().trim();
+  if (!email) return res.status(400).json({ ok:false, error:'email é obrigatório' });
+
+  const spreadsheetId = process.env.SHEETS_BPE_ID;
+  const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
+
+  // 1) tenta via service account (oficial)
   try {
-    const email = String(req.query.email || '').toLowerCase().trim();
-    if (!email) return res.status(400).json({ ok: false, error: 'email é obrigatório' });
+    const sheets = await sheetsAuth(); // sua função existente
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+    const rows = r.data.values || [];
+    if (!rows.length) return res.json({ ok:true, items:[] });
 
-    const spreadsheetId = process.env.SHEETS_BPE_ID;         // ex.: 1q3Jj7QvN1q4h...
-    const sheetName     = process.env.SHEETS_BPE_SHEET || 'BPE';
+    const header = rows[0].map(h => (h || '').toString().trim());
+    const at = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
 
-    // Seleciona A..AF (igual seu n8n) – se precisar, aumente/diminua.
-    const cols = 'A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,AA,AB,AC,AD,AE,AF';
-    const tq   = `select ${cols}`; // a gente filtra pelo e-mail no Node para evitar “qual é a coluna do e-mail?” aqui
+    const idxEmail   = at('email');
+    const idxNum     = header.findIndex(h => h.toLowerCase().includes('bilhete'));
+    const idxDrive   = header.findIndex(h => h.toLowerCase().includes('drive'));
+    const idxOrigem  = header.findIndex(h => h.toLowerCase().includes('origem'));
+    const idxDestino = header.findIndex(h => h.toLowerCase().includes('destino'));
+    const idxData    = header.findIndex(h => h.toLowerCase().includes('data_viagem') || h.toLowerCase().includes('data viagem'));
+    const idxHora    = header.findIndex(h => h.toLowerCase().includes('hora') || h.toLowerCase().includes('saída') || h.toLowerCase().includes('saida'));
 
-    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tq=${encodeURIComponent(tq)}&sheet=${encodeURIComponent(sheetName)}`;
+    const items = rows.slice(1)
+      .filter(r => (r[idxEmail] || '').toString().toLowerCase().trim() === email)
+      .map(r => ({
+        email,
+        ticketNumber: r[idxNum] || '',
+        driveUrl: r[idxDrive] || '',
+        origin: r[idxOrigem] || '',
+        destination: r[idxDestino] || '',
+        date: r[idxData] || '',
+        departureTime: r[idxHora] || ''
+      }));
 
-    const resp = await fetch(url);
-    const text = await resp.text();
+    return res.json({ ok:true, items });
+  } catch (e) {
+    console.warn('[sheets] SA falhou, usando gviz:', e?.message || e);
+  }
 
-    // Converte "google.visualization.Query.setResponse(...)" em JSON
-    const json = JSON.parse(
-      text
-        .replace(/^[\s\S]*setResponse\(/, '')
-        .replace(/\);?\s*$/, '')
-    );
+  // 2) fallback gviz público (precisa que a planilha esteja "Qualquer pessoa com o link – Leitura")
+  try {
+    // Ajuste a LETTER da coluna de e-mail se necessário. No seu n8n, “W” era o CorrelationId;
+    // aqui assumo que “Email” está na coluna **E** (exemplo). Troque se for outro.
+    const EMAIL_COL = process.env.SHEETS_EMAIL_COL || 'E';
+    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq` +
+      `?sheet=BPE&tq=${encodeURIComponent(`select * where lower(${EMAIL_COL})='${email}'`)}`;
 
-    const table   = json.table || {};
-    const headers = (table.cols || []).map(c => (c.label || '').trim());
+    const r = await fetch(url);
+    const txt = await r.text();
+    // gviz vem como "google.visualization.Query.setResponse({...})"
+    const jsonStr = txt.replace(/^[\s\S]*setResponse\(/, '').replace(/\);\s*$/, '');
+    const data = JSON.parse(jsonStr);
 
-    // helper para achar coluna por nome, tolerando variações
-    const findCol = (...names) => {
-      const idx = headers.findIndex(h =>
-        !!h && names.some(n => h.toLowerCase() === n.toLowerCase())
-      );
-      return idx >= 0 ? idx : -1;
-    };
-
-    const idxEmail   = findCol('Email', 'E-mail', 'email');
-    const idxNum     = findCol('Bilhete', 'NumPassagem', 'Bilhete nº');
-    const idxDrive   = findCol('Drive', 'Link', 'DriveUrl', 'driveUrl');
-    const idxOrigem  = findCol('Origem');
-    const idxDestino = findCol('Destino');
-    const idxData    = findCol('Data_Viagem', 'Data Viagem', 'Data');
-    const idxHora    = findCol('Hora', 'Saída', 'Saida');
-
-    const getCell = (row, i) => {
+    const cols = (data.table.cols || []).map(c => c.label || c.id);
+    const get = (row, label) => {
+      const i = cols.findIndex(h => (h || '').toLowerCase() === label.toLowerCase());
       if (i < 0) return '';
-      const c = row.c?.[i];
-      // gviz usa {v: valor, f: formatado}; preferimos 'v' e caímos pra 'f'
-      return (c && (c.v ?? c.f)) ?? '';
+      const cell = row.c[i];
+      return cell ? (cell.v ?? cell.f ?? '') : '';
     };
 
-    const rows = (table.rows || []).map(r => ({
-      email:        String(getCell(r, idxEmail)).trim(),
-      ticketNumber: getCell(r, idxNum),
-      driveUrl:     getCell(r, idxDrive),
-      origin:       getCell(r, idxOrigem),
-      destination:  getCell(r, idxDestino),
-      date:         getCell(r, idxData),
-      departureTime:getCell(r, idxHora),
+    const items = (data.table.rows || []).map(row => ({
+      email,
+      ticketNumber: get(row, 'Bilhete') || get(row, 'NumPassagem'),
+      driveUrl: get(row, 'Drive') || get(row, 'Link') || '',
+      origin: get(row, 'Origem'),
+      destination: get(row, 'Destino'),
+      date: get(row, 'Data_Viagem') || get(row, 'Data Viagem'),
+      departureTime: get(row, 'Hora') || get(row, 'Saída') || get(row, 'Saida')
     }));
 
-    // filtra por e-mail (case-insensitive)
-    const items = rows.filter(r => r.email.toLowerCase() === email);
-
-    return res.json({ ok: true, items });
+    return res.json({ ok:true, items });
   } catch (e) {
-    console.error('[sheets/gviz] error:', e?.message || e);
-    return res.status(500).json({ ok: false, error: 'gviz_fetch_failed' });
+    console.error('[sheets] gviz erro:', e);
+    return res.status(500).json({ ok:false, error:'sheets_read_failed' });
   }
 });
 
