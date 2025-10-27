@@ -319,23 +319,31 @@ async function renderReservations() {
   const toKey = (d, h) => `${String(d||'').replaceAll('/','-')} ${h||''}`;
   localTickets.sort((a,b) => toKey(a.data,a.hora).localeCompare(toKey(b.data,b.hora)));
 
-  // 6) Monta HTML de cada TICKET (um card por bilhete)
-  const lines = localTickets.map(tk => {
-    const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
-    const btnBilhete = tk.url
-      ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
-      : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
+// 6) Monta HTML de cada TICKET (um card por bilhete)
+const lines = localTickets.map((tk, idx) => {
+  const dataBR = (typeof formatDateBR === 'function') ? formatDateBR(tk.data) : tk.data;
 
-    const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
+  // botão "Ver Bilhete"
+  const btnBilhete = tk.url
+    ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank','noopener')">Ver Bilhete</button>`
+    : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
 
-    return `
-<div class="reserva" data-idx="${idx}">
+  // rótulo ida/volta
+  const way = tk.idaVolta === 'volta' ? 'Volta' : 'Ida';
+
+  // valores do preview de cancelamento
+  const canPrice = Number(tk.price || 0);
+  const fee = +(canPrice * 0.05).toFixed(2);
+  const back = +(canPrice - fee).toFixed(2);
+
+  return `
+    <div class="reserva" data-idx="${idx}">
       <div><b>${tk.origem}</b> → <b>${tk.destino}</b>  <span class="badge">${way}</span></div>
       <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(tk.price || 0)}</b></div>
       <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
       <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
 
-      <div class="actions" style="margin-top:8px">
+      <div class="actions" style="margin-top:8px; display:flex; gap:10px">
         ${btnBilhete}
         <button class="btn btn-danger" data-act="toggle-cancel" data-idx="${idx}">Cancelar</button>
       </div>
@@ -344,14 +352,15 @@ async function renderReservations() {
         <div class="calc-row"><span>Valor pago:</span><b>${fmtBRL(canPrice)}</b></div>
         <div class="calc-row"><span>Multa (5%):</span><b>${fmtBRL(fee)}</b></div>
         <div class="calc-row total"><span>Valor a reembolsar:</span><b>${fmtBRL(back)}</b></div>
-        <div class="actions" style="margin-top:6px">
+        <div class="actions" style="margin-top:6px; display:flex; gap:10px">
           <button class="btn btn-primary" data-act="confirm-cancel" data-idx="${idx}">Realizar cancelamento</button>
           <button class="btn btn-ghost" data-act="toggle-cancel" data-idx="${idx}">Voltar</button>
         </div>
       </div>
     </div>
-    `;
-  });
+  `;
+});
+
 
   container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
 
