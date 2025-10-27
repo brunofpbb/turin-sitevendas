@@ -267,7 +267,7 @@ async function renderReservations() {
         url: driveUrlOf(t),
         idaVolta: bk.tripType || bk.idaVolta || null,
         price: Number.isFinite(unit) ? +unit.toFixed(2) : 0,
-        _paidAt: bk.paidAt || bk.dataVenda || bk.vendaAt || bk.createdAt || null
+        _paidAt: bk.paidAt || bk.dataVenda || bk.vendaAt || bk.createdAt || null,
       });
     }
   }
@@ -293,7 +293,7 @@ async function renderReservations() {
             url: s.driveUrl || '',
             idaVolta: null,
             price: 0,
-            _paidAt: null
+            _paidAt: null,
           });
         }
       }
