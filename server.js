@@ -18,95 +18,9 @@ const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
 
-// ===== Google Sheets (via gviz) — buscar bilhetes por e-mail =====
-app.get('/api/sheets/bpe-by-email', async (req, res) => {
-  const email = String(req.query.email || '').toLowerCase().trim();
-  if (!email) return res.status(400).json({ ok:false, error:'email é obrigatório' });
-
-  const spreadsheetId = process.env.SHEETS_BPE_ID;
-  const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
-
-  // 1) tenta via service account (oficial)
-  try {
-    const sheets = await sheetsAuth(); // sua função existente
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-    const rows = r.data.values || [];
-    if (!rows.length) return res.json({ ok:true, items:[] });
-
-    const header = rows[0].map(h => (h || '').toString().trim());
-    const at = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
-
-    const idxEmail   = at('email');
-    const idxNum     = header.findIndex(h => h.toLowerCase().includes('bilhete'));
-    const idxDrive   = header.findIndex(h => h.toLowerCase().includes('drive'));
-    const idxOrigem  = header.findIndex(h => h.toLowerCase().includes('origem'));
-    const idxDestino = header.findIndex(h => h.toLowerCase().includes('destino'));
-    const idxData    = header.findIndex(h => h.toLowerCase().includes('data_viagem') || h.toLowerCase().includes('data viagem'));
-    const idxHora    = header.findIndex(h => h.toLowerCase().includes('hora') || h.toLowerCase().includes('saída') || h.toLowerCase().includes('saida'));
-
-    const items = rows.slice(1)
-      .filter(r => (r[idxEmail] || '').toString().toLowerCase().trim() === email)
-      .map(r => ({
-        email,
-        ticketNumber: r[idxNum] || '',
-        driveUrl: r[idxDrive] || '',
-        origin: r[idxOrigem] || '',
-        destination: r[idxDestino] || '',
-        date: r[idxData] || '',
-        departureTime: r[idxHora] || ''
-      }));
-
-    return res.json({ ok:true, items });
-  } catch (e) {
-    console.warn('[sheets] SA falhou, usando gviz:', e?.message || e);
-  }
-
-  // 2) fallback gviz público (precisa que a planilha esteja "Qualquer pessoa com o link – Leitura")
-  try {
-    // Ajuste a LETTER da coluna de e-mail se necessário. No seu n8n, “W” era o CorrelationId;
-    // aqui assumo que “Email” está na coluna **E** (exemplo). Troque se for outro.
-    const EMAIL_COL = process.env.SHEETS_EMAIL_COL || 'D';
-    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq` +
-      `?sheet=BPE&tq=${encodeURIComponent(`select * where lower(${EMAIL_COL})='${email}'`)}`;
-
-    const r = await fetch(url);
-    const txt = await r.text();
-    // gviz vem como "google.visualization.Query.setResponse({...})"
-    const jsonStr = txt.replace(/^[\s\S]*setResponse\(/, '').replace(/\);\s*$/, '');
-    const data = JSON.parse(jsonStr);
-
-    const cols = (data.table.cols || []).map(c => c.label || c.id);
-    const get = (row, label) => {
-      const i = cols.findIndex(h => (h || '').toLowerCase() === label.toLowerCase());
-      if (i < 0) return '';
-      const cell = row.c[i];
-      return cell ? (cell.v ?? cell.f ?? '') : '';
-    };
-
-    const items = (data.table.rows || []).map(row => ({
-      email,
-      ticketNumber: get(row, 'Bilhete') || get(row, 'NumPassagem'),
-      driveUrl: get(row, 'Drive') || get(row, 'Link') || '',
-      origin: get(row, 'Origem'),
-      destination: get(row, 'Destino'),
-      date: get(row, 'Data_Viagem') || get(row, 'Data Viagem'),
-      departureTime: get(row, 'Hora') || get(row, 'Saída') || get(row, 'Saida')
-    }));
-
-    return res.json({ ok:true, items });
-  } catch (e) {
-    console.error('[sheets] gviz erro:', e);
-    return res.status(500).json({ ok:false, error:'sheets_read_failed' });
-  }
-});
 
 
 
-
-
-
-
-/*
 // ===== Google Sheets: buscar bilhetes por email
 const { google } = require('googleapis');
 
@@ -161,7 +75,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     res.status(500).json({ ok:false, error:'sheets_read_failed' });
   }
 });
-*/
+
 
 
 
