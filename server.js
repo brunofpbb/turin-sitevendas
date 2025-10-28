@@ -81,7 +81,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
 
 
 
-
+/*
 
 // ===== Google Sheets: buscar bilhetes por email
 const { google } = require('googleapis');
@@ -155,6 +155,116 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
   }
 });
 
+*/
+
+
+
+
+// ===== Google Sheets: buscar bilhetes por email
+const { google } = require('googleapis');
+
+async function sheetsAuth() {
+  const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
+  const auth = new google.auth.JWT(
+    key.client_email, null, key.private_key,
+    ['https://www.googleapis.com/auth/spreadsheets.readonly']
+  );
+  return google.sheets({ version: 'v4', auth });
+}
+
+// normaliza texto: minúsculo, sem acento e sem sinais
+const norm = s => String(s || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+app.get('/api/sheets/bpe-by-email', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ ok:false, error:'email é obrigatório' });
+
+    const sheets = await sheetsAuth();
+    const spreadsheetId = process.env.SHEETS_BPE_ID;
+    const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
+
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+    const rows = r.data.values || [];
+    if (!rows.length) return res.json({ ok:true, items:[] });
+
+    const headerRaw = rows[0].map(h => (h || '').toString().trim());
+    const header = headerRaw.map(norm);
+
+    const idxOf = (...names) => {
+      const want = names.map(norm);
+      return header.findIndex(h => want.includes(h));
+    };
+    const get = (row, idx) => (idx >= 0 && row[idx] != null) ? String(row[idx]).trim() : '';
+
+    // índices pelas colunas que você listou
+    const idxEmail      = idxOf('email', 'e-mail');
+    const idxNum        = idxOf('numpassagem', 'bilhete');
+    const idxSerie      = idxOf('seriepassagem');
+    const idxStatusPay  = idxOf('statuspagamento');
+    const idxStatus     = idxOf('status');
+    const idxValor      = idxOf('valor');
+    const idxValorConv  = idxOf('valorconveniencia');
+    const idxValorDev   = idxOf('valordevolucao');
+    const idxDataPgto   = idxOf('datahorapagamento', 'datahora_pagamento');
+    const idxDataViagem = idxOf('dataviagem', 'data_viagem');
+    const idxDataHora   = idxOf('datahora', 'data_hora'); // ex: 2025-11-03 10:48
+    const idxOrigem     = idxOf('origem');
+    const idxDestino    = idxOf('destino');
+    const idxSentido    = idxOf('sentido');              // “ida” / “volta”
+    const idxCpf        = idxOf('cpf');
+    const idxNumTrans   = idxOf('idtransacao', 'id_transacao', 'idtransação', 'id_transação');
+    const idxTipoPgto   = idxOf('tipopagamento');
+    const idxRef        = idxOf('referencia');
+    const idxIdUser     = idxOf('iduser');
+    const idxLinkBPE    = idxOf('linkbpe');
+    const idxIdUrl      = idxOf('idurl');                // se existir
+
+    if (idxEmail < 0) return res.json({ ok:true, items:[] });
+
+    const items = rows.slice(1)
+      .filter(r => get(r, idxEmail).toLowerCase() === email)
+      .map(r => {
+        const dataHora = get(r, idxDataHora); // “YYYY-MM-DD HH:MM” (se vier)
+        const departureTime = dataHora.includes(' ')
+          ? dataHora.split(' ')[1]
+          : '';
+
+        const price = get(r, idxValor).replace(',', '.');
+
+        return {
+          email,
+          ticketNumber: get(r, idxNum),
+          serie:        get(r, idxSerie),
+          statusPagamento: get(r, idxStatusPay),
+          status:       get(r, idxStatus),
+          price:        price ? Number(price) : 0,
+          valorConveniencia: get(r, idxValorConv),
+          valorDevolucao:    get(r, idxValorDev),
+          paidAt:       get(r, idxDataPgto),       // ISO ou string
+          origin:       get(r, idxOrigem),
+          destination:  get(r, idxDestino),
+          date:         get(r, idxDataViagem),
+          dateTime:     dataHora,
+          departureTime,
+          sentido:      get(r, idxSentido),        // ida/volta
+          cpf:          get(r, idxCpf),
+          transactionId:get(r, idxNumTrans),
+          paymentType:  get(r, idxTipoPgto),
+          referencia:   get(r, idxRef),
+          idUser:       get(r, idxIdUser),
+          driveUrl:     get(r, idxLinkBPE) || get(r, idxIdUrl)
+        };
+      });
+
+    res.json({ ok:true, items });
+  } catch (e) {
+    console.error('[sheets] read error', e);
+    res.status(500).json({ ok:false, error:'sheets_read_failed' });
+  }
+});
 
 
 
