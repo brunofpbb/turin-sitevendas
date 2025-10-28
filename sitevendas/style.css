@@ -1349,25 +1349,43 @@ footer { text-align: center; }
 
 
 
-/* ===== Linha de botões do PREVIEW (logo após a calc-box) */
-#trips-list .reserva .calc-box + .actions{
+
+
+
+
+/* ===== Preview de cancelamento (dentro do card .reserva) */
+#trips-list .reserva .calc-box{
+  display:block;
+  max-width: 680px;
+  margin: 10px 0 12px 0;
+  float:none;            /* neutraliza floats herdados */
+  position:static;       /* neutraliza posições absolutas */
+}
+
+#trips-list .reserva .actions{
   position:static !important;
   float:none !important;
   display:flex !important;
-  justify-content:center !important;     /* centralizado */
+  justify-content:flex-start !important;
   align-items:center;
   gap:12px;
   flex-wrap:wrap;
-  margin: 10px 0 2px 0;
+  margin: 0 0 4px 0;
   padding:0;
 }
 
-/* evita que algum estilo genérico estoure os botões */
+/* garante que os botões não fiquem “sobre” a caixa */
 #trips-list .reserva .actions .btn{
   white-space: nowrap;
 }
 
-
-
+/* ===== Card "reserva" – caixa do preview */
+#trips-list .reserva .calc-box{
+  display:block;
+  max-width: 720px;
+  margin: 8px 0 10px 0;
+  float:none;
+  position:static;
+}
 
 
