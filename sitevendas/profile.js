@@ -273,7 +273,7 @@ async function renderReservations() {
   }
 
 
-
+/*
 // 3) Buscar no Google Sheets por e-mail logado e mesclar
 try {
   const email = (user?.email || '').trim();
@@ -304,6 +304,53 @@ try {
   console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
 }
 
+*/
+
+
+
+  // 3) Buscar no Google Sheets por e-mail logado e mesclar
+try {
+  const email = (user?.email || '').trim();
+  if (email) {
+    const r = await fetch(`/api/sheets/bpe-by-email?email=${encodeURIComponent(email)}`);
+    const j = await r.json();
+
+    if (j.ok && Array.isArray(j.items)) {
+      for (const s of j.items) {
+        // hora preferencialmente da coluna Data_Hora; se não vier, usa departureTime
+        const horaFromDateTime = (s.dateTime && s.dateTime.includes(' '))
+          ? s.dateTime.split(' ')[1]
+          : '';
+
+        // status “Pago” quando statusPagamento = approved ou status = Emitido
+        const st = (String(s.statusPagamento || '').toLowerCase() === 'approved' ||
+                    String(s.status || '').toLowerCase() === 'emitido')
+                    ? 'Pago' : (s.status || '—');
+
+        localTickets.push({
+          origem:      s.origin || s.origem || '',
+          destino:     s.destination || s.destino || '',
+          data:        s.date || s.data || '',
+          hora:        horaFromDateTime || s.departureTime || s.hora || '',
+          seat:        s.seatNumber || s.poltrona || '',     // não existe no Sheets; fica vazio
+          passageiro:  s.nome || '',                         // se um dia você retornar “Nome”
+          status:      st,
+          ticketNumber:s.ticketNumber || s.numpassagem || '',
+          url:         s.driveUrl || s.url || '',
+          idaVolta:    (s.sentido || '').toLowerCase() || null, // “ida”/“volta”
+          price:       Number(s.price || 0),
+          _paidAt:     s.paidAt || null,                     // usado para ordenar quando existir
+          // extras que você pode exibir depois se quiser:
+          serie:       s.serie || '',
+          paymentType: s.paymentType || '',
+          referencia:  s.referencia || '',
+        });
+      }
+    }
+  }
+} catch (e) {
+  console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
+}
 
 
 
