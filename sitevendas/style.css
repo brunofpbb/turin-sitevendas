@@ -1346,3 +1346,28 @@ footer { text-align: center; }
   margin-top:10px;
 }
 
+
+
+
+/* ===== Linha de botões do PREVIEW (logo após a calc-box) */
+#trips-list .reserva .calc-box + .actions{
+  position:static !important;
+  float:none !important;
+  display:flex !important;
+  justify-content:center !important;     /* centralizado */
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin: 10px 0 2px 0;
+  padding:0;
+}
+
+/* evita que algum estilo genérico estoure os botões */
+#trips-list .reserva .actions .btn{
+  white-space: nowrap;
+}
+
+
+
+
+
