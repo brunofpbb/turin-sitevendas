@@ -1394,18 +1394,7 @@ footer { text-align: center; }
   position:static !important;
 }
 
-/* 2) Botões do TOPO do card (Ver Bilhete / Cancelar): À DIREITA */
-#trips-list .reserva > .actions{
-  display:flex !important;
-  justify-content:flex-end !important;
-  align-items:center;
-  gap:12px;
-  flex-wrap:wrap;
-  margin-top:6px;
-  padding:0;
-  float:none !important;
-  position:static !important;
-}
+
 
 
 
@@ -1417,19 +1406,6 @@ footer { text-align: center; }
   position: relative;
 }
 
-/* ✅ Botões do TOPO do card (Ver Bilhete / Cancelar) — fixos no topo-direita */
-#trips-list .reserva > .actions{
-  position: absolute !important;
-  top: 14px;                  /* ajuste fino da altura */
-  right: 16px;                /* distância da borda direita */
-  display: flex !important;
-  justify-content: flex-end !important;
-  align-items: center;
-  gap: 12px;
-  margin: 0;                  /* zera margens para não “descer” o bloco */
-  padding: 0;
-  float: none !important;
-}
 
 /* Em telas médias/grandes, reserva espaço à direita p/ não colidir com o texto */
 @media (min-width: 720px){
