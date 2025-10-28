@@ -1427,8 +1427,8 @@ footer { text-align: center; }
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 12px;           /* espaço entre os textos e os botões */
-  padding-top: 4px;           /* micro respiro extra */
+  margin-top: 32px;           /* era 12, espaço entre os textos e os botões */
+  padding-top: 12px;           /* era 4, micro respiro extra */
   position: static !important;
   float: none !important;
 }
