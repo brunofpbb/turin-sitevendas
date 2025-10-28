@@ -1406,3 +1406,64 @@ footer { text-align: center; }
   float:none !important;
   position:static !important;
 }
+
+
+
+
+
+
+/* ⬆️ Garante que o card permita posicionamento absoluto dos botões do topo */
+#trips-list .reserva{
+  position: relative;
+}
+
+/* ✅ Botões do TOPO do card (Ver Bilhete / Cancelar) — fixos no topo-direita */
+#trips-list .reserva > .actions{
+  position: absolute !important;
+  top: 14px;                  /* ajuste fino da altura */
+  right: 16px;                /* distância da borda direita */
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center;
+  gap: 12px;
+  margin: 0;                  /* zera margens para não “descer” o bloco */
+  padding: 0;
+  float: none !important;
+}
+
+/* Em telas médias/grandes, reserva espaço à direita p/ não colidir com o texto */
+@media (min-width: 720px){
+  #trips-list .reserva{ padding-right: 220px; }
+}
+
+/* 🎯 Caixinha do PREVIEW centralizada dentro do card */
+#trips-list .reserva .calc-box{
+  max-width: 720px;
+  margin: 12px auto;          /* centraliza e dá respiro em cima/baixo */
+  float: none;
+  position: static;
+}
+
+/* ✨ Botões do PREVIEW centralizados e com respiro do texto acima */
+#trips-list .reserva .calc-box > .actions{
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;           /* espaço entre os textos e os botões */
+  padding-top: 4px;           /* micro respiro extra */
+  position: static !important;
+  float: none !important;
+}
+
+/* Evita quebra estranha/estouro dos botões */
+#trips-list .reserva .actions .btn{
+  white-space: nowrap;
+}
+
+
+
+
+
+
