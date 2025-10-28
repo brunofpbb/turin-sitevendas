@@ -35,6 +35,43 @@ const localities = [
   const retInput    = $('#return-date');
   const content     = $('#content-root');
 
+  // ======== Botão Limpar
+  const btnClear = document.getElementById('btnClear');
+if (btnClear) {
+  btnClear.addEventListener('click', () => {
+    originInput.value = '';
+    destInput.value   = '';
+    dateInput.value   = '';
+    retInput.value    = '';
+    // esconde painéis do autocomplete
+    const acOrigin = document.querySelector('#ac-origin');
+    const acDest   = document.querySelector('#ac-destination');
+    if (acOrigin) acOrigin.hidden = true;
+    if (acDest)   acDest.hidden   = true;
+    originInput.focus();
+  });
+}
+
+
+// ======== Enter para escolher
+
+  originInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const first = document.querySelector('#ac-origin .ac-item');
+    if (first) { first.dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
+  }
+});
+destInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const first = document.querySelector('#ac-destination .ac-item');
+    if (first) { first.dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
+  }
+});
+
+
+
+  
+
   // ===== Central começa vazio
   content.innerHTML = '';
 
@@ -57,7 +94,9 @@ const localities = [
     });
     return wrap;
   }
-  function attachAutocomplete(input, panel, source){
+  
+ /* 
+ function attachAutocomplete(input, panel, source){
     function close(){ panel.innerHTML = ''; panel.hidden = true; }
     function openWith(list){
       panel.innerHTML = '';
@@ -75,6 +114,50 @@ const localities = [
     input.addEventListener('focus', filterNow);
     input.addEventListener('blur', ()=> setTimeout(close, 100));
   }
+  */
+
+
+function attachAutocomplete(input, panel, source){
+  const norm = s => (s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  function close(){ panel.innerHTML = ''; panel.hidden = true; }
+
+  function openWith(list){
+    panel.innerHTML = '';
+    panel.appendChild(buildList(list, (it)=>{ 
+      input.value = it.descricao; 
+      close(); 
+    }));
+    panel.hidden = false;
+  }
+
+  function filterNow(){
+    const s = input.value; // mantém o que o usuário digita
+    const q = norm(s);
+    const list = q
+      ? source.filter(l => norm(l.descricao).includes(q)) // substring, sem acento/caixa
+      : source.slice();                                    // <<< mostra TODAS quando vazio
+    list.length ? openWith(list) : close();
+  }
+
+  // abrir/filtrar
+  input.addEventListener('input', filterNow);
+  input.addEventListener('focus', filterNow);
+  // garante abrir também no clique (sem digitar)
+  input.addEventListener('mousedown', filterNow);
+
+  // fecha depois do blur (mantém seu comportamento)
+  input.addEventListener('blur', ()=> setTimeout(close, 100));
+}
+
+
+
+
+
+  
+  
   attachAutocomplete(originInput, acOrigin, localities);
   attachAutocomplete(destInput,   acDest,   localities);
 
@@ -223,7 +306,7 @@ const localities = [
         const idTipoVeiculo = linha.IdTipoVeiculo || linha.TipoVeiculo || linha.IdTipoOnibus || 0;
         const disponiveis   = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
         const tipoHorario   = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
-        const icons         = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️📶♿' : '';
+        const icons         = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️🛜🚻' : '';
 
         const card = document.createElement('div'); card.className='schedule-card';
         const header = document.createElement('div'); header.className='schedule-header';
