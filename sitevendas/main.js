@@ -5,7 +5,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
-
+/*
 const localities = [
   { id: 23, descricao: 'Antonio Pereira' },
   { id: 26, descricao: 'Barão de Cocais' },
@@ -77,6 +77,122 @@ const localities = [
   attachAutocomplete(originInput, acOrigin, localities);
   attachAutocomplete(destInput,   acDest,   localities);
 
+*/
+
+
+
+// === Localidades (ajuste a lista se precisar) ===
+const LOCALITIES = [
+  'Antonio Pereira',
+  'Barão de Cocais',
+  'Catas Altas',
+  'Cocais',
+  'Coronel Fabriciano',
+  'Ipatinga',
+  'Itatiaia',
+  'João Monlevade',
+  'Mariana',
+  'Mina Alegria',
+  'Nova Era',
+  'Ouro Branco',
+  'Ouro Preto',
+  'Santa Bárbara',
+  'São Gonçalo do Rio Abaixo'
+];
+
+// Normaliza para comparação sem acentos/caixa
+const norm = s => (s || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
+// Renderiza a lista no painel
+function renderList(panel, items, onPick) {
+  panel.innerHTML = '';
+  items.forEach(txt => {
+    const el = document.createElement('div');
+    el.className = 'ac-item';
+    el.tabIndex = 0;
+    el.textContent = txt;
+    // usar mousedown para não perder o foco antes do click
+    el.addEventListener('mousedown', e => { e.preventDefault(); onPick(txt); });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') onPick(txt); });
+    panel.appendChild(el);
+  });
+  panel.hidden = false;
+}
+
+function attachAutocomplete(inputId, panelId, data) {
+  const input = document.getElementById(inputId);
+  const panel = document.getElementById(panelId);
+  if (!input || !panel) return;
+
+  input.setAttribute('autocomplete', 'off');
+
+  const hide = () => { panel.hidden = true; };
+  const pick = (val) => {
+    input.value = val;
+    hide();
+    input.dispatchEvent(new Event('change')); // caso você escute change
+  };
+
+  const refresh = () => {
+    const q = norm(input.value);
+    const list = q ? data.filter(x => norm(x).includes(q)) : data.slice();
+    renderList(panel, list, pick);
+  };
+
+  // Abre com todas ao focar
+  input.addEventListener('focus', refresh);
+  input.addEventListener('mousedown', refresh); // clique também abre
+  input.addEventListener('input', refresh);
+
+  // Teclado no input
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      const first = panel.querySelector('.ac-item');
+      if (first) { e.preventDefault(); first.focus(); }
+    } else if (e.key === 'Escape') {
+      hide();
+    }
+  });
+
+  // Navegação no painel
+  panel.addEventListener('keydown', (e) => {
+    const items = Array.from(panel.querySelectorAll('.ac-item'));
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      (items[i + 1] || items[i] || input).focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      (items[i - 1] || input).focus();
+    } else if (e.key === 'Escape') {
+      hide(); input.focus();
+    }
+  });
+
+  // dá tempo do mousedown disparar antes do blur esconder
+  input.addEventListener('blur', () => setTimeout(hide, 120));
+  panel.addEventListener('mousedown', e => e.preventDefault());
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  attachAutocomplete('origin', 'ac-origin', LOCALITIES);
+  attachAutocomplete('destination', 'ac-destination', LOCALITIES);
+});
+
+
+
+
+
+
+
+
+
+
+
+  
   // ===== Datas mínimas
   [dateInput, retInput].forEach(inp=>{
     const d=new Date(), yyyy=d.getFullYear(), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
