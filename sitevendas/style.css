@@ -1373,3 +1373,36 @@ footer { text-align: center; }
 }
 
 
+
+
+
+
+
+
+
+
+/* 1) Botões do PREVIEW (dentro da calc-box): CENTRALIZADOS */
+#trips-list .reserva .calc-box > .actions{
+  display:flex !important;
+  justify-content:center !important;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:10px;   /* mantém o respiro acima */
+  padding:0;
+  float:none !important;
+  position:static !important;
+}
+
+/* 2) Botões do TOPO do card (Ver Bilhete / Cancelar): À DIREITA */
+#trips-list .reserva > .actions{
+  display:flex !important;
+  justify-content:flex-end !important;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:6px;
+  padding:0;
+  float:none !important;
+  position:static !important;
+}
