@@ -273,40 +273,6 @@ async function renderReservations() {
   }
 
 
-/*
-// 3) Buscar no Google Sheets por e-mail logado e mesclar
-try {
-  const email = (user?.email || '').trim();
-  if (email) {
-    const r = await fetch(`/api/sheets/bpe-by-email?email=${encodeURIComponent(email)}`);
-    const j = await r.json();
-
-    if (j.ok && Array.isArray(j.items)) {
-      for (const s of j.items) {
-        localTickets.push({
-          origem:  s.origin || s.origem || '',
-          destino: s.destination || s.destino || '',
-          data:    s.date || '',
-          hora:    s.departureTime || s.hora || '',
-          seat:    s.seatNumber || s.poltrona || '',
-          passageiro: '',
-          status: 'Pago',
-          ticketNumber: s.ticketNumber || '',
-          url: s.driveUrl || s.url || '',
-          idaVolta: null,
-          price: 0,
-          _paidAt: null,
-        });
-      }
-    }
-  }
-} catch (e) {
-  console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
-}
-
-*/
-
-
 
   // 3) Buscar no Google Sheets por e-mail logado e mesclar
 try {
@@ -344,6 +310,7 @@ try {
           serie:       s.serie || '',
           paymentType: s.paymentType || '',
           referencia:  s.referencia || '',
+          poltrona:  s.poltrona ||,
         });
       }
     }
@@ -354,39 +321,6 @@ try {
 
 
 
-
-  
-/*
-  // 3) Buscar no Google Sheets por e-mail logado e mesclar
-  try {
-    const email = (user?.email || '').trim();
-    if (email) {
-      const r = await fetch(`/api/sheets/bpe-by-email?email=${encodeURIComponent(email)}`);
-      const j = await r.json();
-
-      if (j.ok && Array.isArray(j.items)) {
-        for (const s of j.items) {
-          localTickets.push({
-            origem:  s.origin || s.origem || '',
-            destino: s.destination || s.destino || '',
-            data:    s.date || '',
-            hora:    s.departureTime || '',
-            seat:    s.seatNumber || s.poltrona || '',
-            passageiro: '',
-            status: 'Pago',
-            ticketNumber: s.ticketNumber || '',
-            url: s.driveUrl || '',
-            idaVolta: null,
-            price: 0,
-            _paidAt: null,
-          });
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[profile] Falha ao buscar/mesclar do Sheets:', e);
-  }
-*/
 
 
 
