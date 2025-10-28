@@ -19,146 +19,6 @@ const PORT = process.env.PORT || 8080;
 
 
 
-/*
-
-// ===== Google Sheets: buscar bilhetes por email
-const { google } = require('googleapis');
-
-async function sheetsAuth() {
-  const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
-  const auth = new google.auth.JWT(
-    key.client_email, null, key.private_key,
-    ['https://www.googleapis.com/auth/spreadsheets.readonly']
-  );
-  console.log(key.client_email)
-  return google.sheets({ version: 'v4', auth });
-}
-
-app.get('/api/sheets/bpe-by-email', async (req, res) => {
-  try {
-    const email = String(req.query.email || '').toLowerCase().trim();
-    if (!email) return res.status(400).json({ ok:false, error:'email é obrigatório' });
-
-    const sheets = await sheetsAuth();
-    const spreadsheetId = process.env.SHEETS_BPE_ID;
-    const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
-
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-    const rows = r.data.values || [];
-    if (!rows.length) return res.json({ ok:true, items:[] });
-
-    const header = rows[0].map(h => (h || '').toString().trim());
-    const col = name => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
-
-    const idxEmail   = col('Email');
-    const idxNum     = header.findIndex(h => h.toLowerCase().includes('bilhete'));
-    const idxDrive   = header.findIndex(h => h.toLowerCase().includes('drive'));
-    const idxOrigem  = header.findIndex(h => h.toLowerCase().includes('origem'));
-    const idxDestino = header.findIndex(h => h.toLowerCase().includes('destino'));
-    const idxData    = header.findIndex(h => h.toLowerCase().includes('data_viagem') || h.toLowerCase().includes('data viagem'));
-    const idxHora    = header.findIndex(h => h.toLowerCase().includes('hora') || h.toLowerCase().includes('saída') || h.toLowerCase().includes('saida'));
-
-    const items = rows.slice(1)
-      .filter(r => (r[idxEmail] || '').toString().toLowerCase().trim() === email)
-      .map(r => ({
-        email,
-        ticketNumber: r[idxNum] || '',
-        driveUrl: r[idxDrive] || '',
-        origin: r[idxOrigem] || '',
-        destination: r[idxDestino] || '',
-        date: r[idxData] || '',
-        departureTime: r[idxHora] || ''
-      }));
-
-    res.json({ ok:true, items });
-  } catch (e) {
-    console.error('[sheets] read error', e);
-    res.status(500).json({ ok:false, error:'sheets_read_failed' });
-  }
-});
-
-*/
-
-
-
-/*
-
-// ===== Google Sheets: buscar bilhetes por email
-const { google } = require('googleapis');
-
-async function sheetsAuth() {
-  const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
-  const auth = new google.auth.JWT(
-    key.client_email, null, key.private_key,
-    ['https://www.googleapis.com/auth/spreadsheets.readonly']
-  );
-  return google.sheets({ version: 'v4', auth });
-}
-
-// util: normaliza cabeçalhos -> minisculo, sem acento/pontuação
-const norm = s => String(s || '')
-  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  .replace(/[^a-z0-9]/gi, '').toLowerCase();
-
-app.get('/api/sheets/bpe-by-email', async (req, res) => {
-  try {
-    const email = String(req.query.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ ok: false, error: 'email é obrigatório' });
-
-    const sheets = await sheetsAuth();
-    const spreadsheetId = process.env.SHEETS_BPE_ID;
-    const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
-
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-    const rows = r.data.values || [];
-    if (!rows.length) return res.json({ ok: true, items: [] });
-
-    // cabeçalho normalizado
-    const headerRaw = rows[0].map(h => (h || '').toString().trim());
-    const header = headerRaw.map(norm);
-
-    // helper de índice por vários sinônimos
-    const idxOf = (...names) => {
-      const want = names.map(norm);
-      return header.findIndex(h => want.includes(h));
-    };
-
-    const idxEmail   = idxOf('email', 'e-mail', 'mail');
-    const idxNum     = header.findIndex(h => h.includes('bilhete'));
-    const idxDrive   = header.findIndex(h => h.includes('drive'));
-    const idxOrigem  = header.findIndex(h => h.includes('origem'));
-    const idxDestino = header.findIndex(h => h.includes('destino'));
-    const idxData    = idxOf('dataviagem', 'datada viagem', 'dataviagembpe', 'data');
-    const idxHora    = idxOf('horapartida', 'horasaida', 'saida', 'saída', 'hora');
-
-    const get = (row, idx) => (idx >= 0 && row[idx] != null) ? String(row[idx]).trim() : '';
-
-    // se não achou a coluna de email, não tem como filtrar
-    if (idxEmail < 0) return res.json({ ok: true, items: [] });
-
-    const items = rows.slice(1)
-      .filter(r => get(r, idxEmail).toLowerCase() === email)
-      .map(r => ({
-        email,
-        ticketNumber: get(r, idxNum),
-        driveUrl:     get(r, idxDrive),
-        origin:       get(r, idxOrigem),
-        destination:  get(r, idxDestino),
-        date:         get(r, idxData),
-        departureTime:get(r, idxHora)
-      }));
-
-    res.json({ ok: true, items });
-  } catch (e) {
-    console.error('[sheets] read error', e);
-    res.status(500).json({ ok: false, error: 'sheets_read_failed' });
-  }
-});
-
-*/
-
-
-
 
 // ===== Google Sheets: buscar bilhetes por email
 const { google } = require('googleapis');
@@ -221,6 +81,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     const idxIdUser     = idxOf('iduser');
     const idxLinkBPE    = idxOf('linkbpe');
     const idxIdUrl      = idxOf('idurl');                // se existir
+    const idxpoltrona   = idxOf('poltrona'); 
 
     if (idxEmail < 0) return res.json({ ok:true, items:[] });
 
@@ -255,7 +116,8 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
           paymentType:  get(r, idxTipoPgto),
           referencia:   get(r, idxRef),
           idUser:       get(r, idxIdUser),
-          driveUrl:     get(r, idxLinkBPE) || get(r, idxIdUrl)
+          driveUrl:     get(r, idxLinkBPE) || get(r, idxIdUrl),
+          poltrona:     get(r, idxpoltrona)
         };
       });
 
