@@ -1379,3 +1379,28 @@ footer { text-align: center; }
   padding:0;
 }
 
+/* ===== Preview de cancelamento (dentro do card .reserva) */
+#trips-list .reserva .calc-box{
+  display:block;
+  max-width: 680px;
+  margin: 10px 0 12px 0;
+  float:none;            /* neutraliza floats herdados */
+  position:static;       /* neutraliza posições absolutas */
+}
+
+#trips-list .reserva .actions{
+  position:static !important;
+  float:none !important;
+  display:flex !important;
+  justify-content:flex-start !important;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin: 0 0 4px 0;
+  padding:0;
+}
+
+/* garante que os botões não fiquem “sobre” a caixa */
+#trips-list .reserva .actions .btn{
+  white-space: nowrap;
+}
