@@ -82,6 +82,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     const idxLinkBPE    = idxOf('linkbpe');
     const idxIdUrl      = idxOf('idurl');                // se existir
     const idxpoltrona   = idxOf('poltrona'); 
+    const idxNome       = idxOf('nome');
 
     if (idxEmail < 0) return res.json({ ok:true, items:[] });
 
@@ -96,28 +97,29 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
         const price = get(r, idxValor).replace(',', '.');
 
         return {
+          name:              get(r, idxNome),
           email,
-          ticketNumber: get(r, idxNum),
-          serie:        get(r, idxSerie),
-          statusPagamento: get(r, idxStatusPay),
-          status:       get(r, idxStatus),
-          price:        price ? Number(price) : 0,
+          ticketNumber:      get(r, idxNum),
+          serie:             get(r, idxSerie),
+          statusPagamento:   get(r, idxStatusPay),
+          status:            get(r, idxStatus),
+          price:             price ? Number(price) : 0,
           valorConveniencia: get(r, idxValorConv),
           valorDevolucao:    get(r, idxValorDev),
-          paidAt:       get(r, idxDataPgto),       // ISO ou string
-          origin:       get(r, idxOrigem),
-          destination:  get(r, idxDestino),
-          date:         get(r, idxDataViagem),
-          dateTime:     dataHora,
+          paidAt:            get(r, idxDataPgto),       // ISO ou string
+          origin:            get(r, idxOrigem),
+          destination:       get(r, idxDestino),
+          date:              get(r, idxDataViagem),
+          dateTime:          dataHora,
           departureTime,
-          sentido:      get(r, idxSentido),        // ida/volta
-          cpf:          get(r, idxCpf),
-          transactionId:get(r, idxNumTrans),
-          paymentType:  get(r, idxTipoPgto),
-          referencia:   get(r, idxRef),
-          idUser:       get(r, idxIdUser),
-          driveUrl:     get(r, idxLinkBPE) || get(r, idxIdUrl),
-          poltrona:     get(r, idxpoltrona)
+          sentido:           get(r, idxSentido),        // ida/volta
+          cpf:               get(r, idxCpf),
+          transactionId:     get(r, idxNumTrans),
+          paymentType:       get(r, idxTipoPgto),
+          referencia:        get(r, idxRef),
+          idUser:            get(r, idxIdUser),
+          driveUrl:          get(r, idxLinkBPE) || get(r, idxIdUrl),
+          poltrona:          get(r, idxpoltrona)
         };
       });
 
