@@ -1308,3 +1308,40 @@ footer { text-align: center; }
   box-shadow:0 6px 18px rgba(0,0,0,.08);
   transform: translateY(-1px);
 }
+
+
+
+/* Hover nos cards da lista de resultados (garantia) */
+.schedule-card{
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.schedule-card:hover{
+  border-color:#9fb3c8; box-shadow:0 6px 16px rgba(0,0,0,.08); transform:translateY(-1px);
+}
+
+/* Hover nos cards da página Minhas Viagens */
+#trips-list .reserva{
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+#trips-list .reserva:hover{
+  border-color:#d5e7db; box-shadow:0 6px 18px rgba(0,0,0,.08); transform:translateY(-1px);
+}
+
+
+
+
+/* Caixa do cálculo (não centralizar) */
+.calc-box{
+  max-width: 620px;
+  margin: 10px 0;                 /* tira o auto (que centralizava o bloco) */
+}
+
+/* Botões do preview de cancelamento: alinhados à esquerda */
+#trips-list .calc-box .actions{
+  display:flex;
+  justify-content:flex-start !important;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
