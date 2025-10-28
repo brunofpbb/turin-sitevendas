@@ -305,7 +305,7 @@ async function renderReservations() {
   // 3.5) Preenche links de bilhete usando dados salvos no localStorage
   hydrateUrlsByTicketNumber(localTickets);
 
-
+/*
 // 3.9) Deduplicar por número de bilhete ou chave composta
 const keyFor = (x) => String(
   x.ticketNumber || `${x.origem}|${x.destino}|${x.data}|${x.hora}|${x.seat||''}`
@@ -335,7 +335,7 @@ listForRender.sort((a, b) => {
 const lines = listForRender.map(tk => { /* ...igual... */ });
 container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
 
-  
+  */
 
 // 4) Heurística para marcar ida/volta quando vier nulo (data pode ser diferente)
 localTickets.forEach((tk) => {
