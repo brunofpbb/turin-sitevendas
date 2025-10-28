@@ -310,7 +310,7 @@ try {
           serie:       s.serie || '',
           paymentType: s.paymentType || '',
           referencia:  s.referencia || '',
-          poltrona:  s.poltrona ||,
+          poltrona:  s.poltrona || '',
         });
       }
     }
