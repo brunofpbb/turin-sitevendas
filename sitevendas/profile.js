@@ -411,8 +411,8 @@ const lines = localTickets.map(tk => {
   return `
     <div class="reserva" data-id="${idCard}">
       <div><b>${tk.origem}</b> → <b>${tk.destino}</b> <span class="badge">${way}</span></div>
-      <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Total: <b>${fmtBRL(valor)}</b></div>
-      <div>Poltronas: ${tk.seat || '—'} &nbsp;&nbsp; Passageiros: ${tk.passageiro || '—'} &nbsp;&nbsp; <b>Status:</b> ${tk.status}</div>
+      <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Valor Total Pago: <b>${fmtBRL(valor)}</b></div>
+      <div>Poltrona: <b>${tk.seat || '—'}</b> &nbsp;&nbsp; Passageiro: <b>${tk.passageiro || '—'}</b> &nbsp;&nbsp; Status: <b>${tk.status}</b></div>
       <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
 
       ${showPreview ? `
