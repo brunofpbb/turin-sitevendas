@@ -45,15 +45,17 @@ const listEl = document.getElementById('trips-list'); // opcional; não bloquear
     return m ? { h: +m[1], m: +m[2] } : { h: 0, m: 0 };
   }
 
-  /** Date de partida no fuso −03:00 */
-  function getDepartureDate(s) {
-    const d = parseISOorBR(s?.date || s?.dataViagem);
-    const { h, m } = parseTimeHHMM(s?.departureTime || s?.horaPartida);
-    if (!d) ull;
-    const depUTC = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, 0);
-    // aplica o offset -03:00
-    return new Date(depUTC + TZ_OFFSET_MIN * 60 * 1000);
-  }
+/** Date de partida no fuso −03:00 */
+function getDepartureDate(s) {
+  const d = parseISOorBR(s?.date || s?.dataViagem);
+  const { h, m } = parseTimeHHMM(s?.departureTime || s?.horaPartida);
+  if (!d) return null;
+  const depUTC = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, 0);
+
+  // CORREÇÃO: somar o offset de −03:00 (180 min) para obter o instante correto
+  return new Date(depUTC + TZ_OFFSET_MIN * 60 * 1000);
+}
+
 
   // ===== utils extras (usar onde renderiza a lista) =====
 function seatFromTicket(t) {
@@ -304,38 +306,59 @@ async function renderReservations() {
   hydrateUrlsByTicketNumber(localTickets);
 
 
+// 3.9) Deduplicar por número de bilhete ou chave composta
+const keyFor = (x) => String(
+  x.ticketNumber || `${x.origem}|${x.destino}|${x.data}|${x.hora}|${x.seat||''}`
+);
+const seen = new Set();
+const deduped = localTickets.filter(x => {
+  const k = keyFor(x);
+  if (seen.has(k)) return false;
+  seen.add(k);
+  return true;
+});
+
+// a partir daqui use 'deduped' no lugar de 'localTickets'
+const listForRender = deduped;
+
+// (mova a ordenação para usar listForRender)
+listForRender.sort((a, b) => {
+  const ta = parseTs(a._paidAt); const tb = parseTs(b._paidAt);
+  if (!Number.isNaN(ta) || !Number.isNaN(tb)) return (tb||0) - (ta||0);
+  const ka = `${String(a.data||'').replaceAll('/', '-') } ${a.hora||''}`;
+  const kb = `${String(b.data||'').replaceAll('/', '-') } ${b.hora||''}`;
+  if (ka !== kb) return kb.localeCompare(ka);
+  return toNumTicket(b) - toNumTicket(a);
+});
+
+// e na hora de montar os cards:
+const lines = listForRender.map(tk => { /* ...igual... */ });
+container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
 
   
 
-// 4) Heurística para marcar ida/volta quando vier nulo
+// 4) Heurística para marcar ida/volta quando vier nulo (data pode ser diferente)
 localTickets.forEach((tk) => {
   if (tk.idaVolta) return;
 
-  // procura par com origem/destino invertidos (em qualquer data)
+  // procura par com origem/destino invertidos
   const pair = localTickets
     .filter(o =>
       o !== tk &&
       samePlace(o.origem, tk.destino) &&
       samePlace(o.destino, tk.origem)
     )
-    // escolhe o mais próximo em tempo
     .sort((a, b) => (Date.parse(a.data || '') || 0) - (Date.parse(b.data || '') || 0))[0];
 
-  if (!pair) {
-    tk.idaVolta = 'ida';
-    return;
-  }
+  if (!pair) { tk.idaVolta = 'ida'; return; }
 
   const tTk   = Date.parse(tk.data || '')   || 0;
   const tPair = Date.parse(pair.data || '') || 0;
 
-  // a viagem que ocorre depois é "Volta", a outra é "Ida"
-  if (tTk > tPair) {
-    tk.idaVolta = 'volta';
-  } else {
-    tk.idaVolta = 'ida';
-  }
+  // a viagem que ocorre depois é "Volta", a anterior é "Ida"
+  tk.idaVolta = tTk > tPair ? 'volta' : 'ida';
 });
+
 
 
 
