@@ -305,37 +305,6 @@ async function renderReservations() {
   // 3.5) Preenche links de bilhete usando dados salvos no localStorage
   hydrateUrlsByTicketNumber(localTickets);
 
-/*
-// 3.9) Deduplicar por número de bilhete ou chave composta
-const keyFor = (x) => String(
-  x.ticketNumber || `${x.origem}|${x.destino}|${x.data}|${x.hora}|${x.seat||''}`
-);
-const seen = new Set();
-const deduped = localTickets.filter(x => {
-  const k = keyFor(x);
-  if (seen.has(k)) return false;
-  seen.add(k);
-  return true;
-});
-
-// a partir daqui use 'deduped' no lugar de 'localTickets'
-const listForRender = deduped;
-
-// (mova a ordenação para usar listForRender)
-listForRender.sort((a, b) => {
-  const ta = parseTs(a._paidAt); const tb = parseTs(b._paidAt);
-  if (!Number.isNaN(ta) || !Number.isNaN(tb)) return (tb||0) - (ta||0);
-  const ka = `${String(a.data||'').replaceAll('/', '-') } ${a.hora||''}`;
-  const kb = `${String(b.data||'').replaceAll('/', '-') } ${b.hora||''}`;
-  if (ka !== kb) return kb.localeCompare(ka);
-  return toNumTicket(b) - toNumTicket(a);
-});
-
-// e na hora de montar os cards:
-const lines = listForRender.map(tk => { /* ...igual... */ });
-container.innerHTML = lines.join('') || '<p class="mute">Nenhuma reserva encontrada.</p>';
-
-  */
 
 // 4) Heurística para marcar ida/volta quando vier nulo (data pode ser diferente)
 localTickets.forEach((tk) => {
