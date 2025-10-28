@@ -299,7 +299,7 @@ try {
           data:        s.date || s.data || '',
           hora:        horaFromDateTime || s.departureTime || s.hora || '',
           seat:        s.seatNumber || s.poltrona || '',     // não existe no Sheets; fica vazio
-          passageiro:  s.nome || '',                         // se um dia você retornar “Nome”
+          passageiro:  s.Nome || '',                         // se um dia você retornar “Nome”
           status:      st,
           ticketNumber:s.ticketNumber || s.numpassagem || '',
           url:         s.driveUrl || s.url || '',
