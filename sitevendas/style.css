@@ -1345,3 +1345,37 @@ footer { text-align: center; }
   flex-wrap:wrap;
   margin-top:10px;
 }
+
+
+
+/* Minhas viagens – cards (qualquer card dentro do container da lista) */
+#trips-list > .card,
+#trips-list > .reserva,
+#trips-list .booking-card {
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+#trips-list > .card:hover,
+#trips-list > .reserva:hover,
+#trips-list .booking-card:hover {
+  border-color:#d5e7db;
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+  transform: translateY(-1px);
+}
+
+
+
+/* Caixa de cálculo / preview de cancelamento */
+#trips-list .calc-box{
+  max-width: 640px;
+  margin: 10px 0;
+}
+#trips-list .calc-box .actions{
+  display:flex;
+  justify-content:flex-start !important;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:10px;
+  padding:0;
+}
+
