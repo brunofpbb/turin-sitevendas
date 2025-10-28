@@ -5,6 +5,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   updateUserNav();
+  
 /*
 const localities = [
   { id: 23, descricao: 'Antonio Pereira' },
