@@ -1414,8 +1414,8 @@ footer { text-align: center; }
 
 /* 🎯 Caixinha do PREVIEW centralizada dentro do card */
 #trips-list .reserva .calc-box{
-  max-width: 500px;
-  margin: 12px auto;          /* centraliza e dá respiro em cima/baixo */
+  max-width: 650px; /*era 720*/
+  margin: 40px auto;          /* era 12, centraliza e dá respiro em cima/baixo */
   float: none;
   position: static;
 }
