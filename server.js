@@ -777,7 +777,7 @@ try {
   if (to) {
     const appName   = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+    const fromEmail = /*process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;*/ 'informaticamaciel2010@gmail.com';                                //EMAIL FIXO, TEM QUE ALTERAR
 
     // Dados resumidos da compra (ajuste conforme seu objeto "schedule"/req)
     const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
