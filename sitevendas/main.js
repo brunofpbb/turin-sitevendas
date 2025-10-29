@@ -54,7 +54,7 @@ if (btnClear) {
     if (acOrigin) acOrigin.hidden = true;
     if (acDest)   acDest.hidden   = true;
 
-    originInput.focus();
+   // originInput.focus();
   });
 }
 
