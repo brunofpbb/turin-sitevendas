@@ -134,18 +134,29 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
 
 // ======== Descobrir E-mail do Cliente
 
-function pickBuyerEmail({ payment, reqBody, vendaResult, fallback }) {
-  // 1) do fluxo de pagamento (MP)
+function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
+  // 0) E-mail do login (PRIORIDADE MÁXIMA)
+  const fromLogin =
+    req?.user?.email ||
+    req?.session?.user?.email ||
+    req?.headers?.['x-user-email'] ||
+    req?.body?.loginEmail ||
+    req?.body?.emailLogin;
+
+  const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+  if (isMail(fromLogin)) return String(fromLogin).trim();
+
+  // 1) Mercado Pago (manter como fallback)
   const fromMP = payment?.payer?.email || payment?.additional_info?.payer?.email;
-  if (fromMP && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromMP)) return fromMP.trim();
+  if (isMail(fromMP)) return String(fromMP).trim();
 
-  // 2) do body da requisição (se você envia)
-  const fromReq = reqBody?.email || reqBody?.buyerEmail || reqBody?.clienteEmail;
-  if (fromReq && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromReq)) return fromReq.trim();
+  // 2) do corpo da requisição (se você enviou em outro campo)
+  const fromReq = req?.body?.email || req?.body?.buyerEmail || req?.body?.clienteEmail;
+  if (isMail(fromReq)) return String(fromReq).trim();
 
-  // 3) do retorno da venda (se existir)
+  // 3) do retorno da venda
   const fromVenda = vendaResult?.Email || vendaResult?.EmailCliente;
-  if (fromVenda && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fromVenda)) return fromVenda.trim();
+  if (isMail(fromVenda)) return String(fromVenda).trim();
 
   return fallback || null;
 }
@@ -649,56 +660,6 @@ pagamentoXml: [{
     const vendaResult = await praxioVendaPassagem(bodyVenda);
     console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
 
-/*
-
-
-    
-    // 5) Gerar PDFs (local) e subir no Google Drive
-    const subDir = new Date().toISOString().slice(0,10);
-    const outDir = path.join(TICKETS_DIR, subDir);
-    await fs.promises.mkdir(outDir, { recursive: true });
-
-    const arquivos = [];
-    for (const p of (vendaResult.ListaPassagem || [])) {
-      if (!p || !p.NumPassagem) continue;
-      const ticket = mapVendaToTicket({
-        ListaPassagem: [p],
-        mp: {
-          payment_type_id: payment.payment_type_id,
-          payment_method_id: (payment.payment_method?.id || payment.payment_method_id || ''),
-          status: payment.status,
-          installments: payment.installments
-        },
-        emissaoISO: new Date().toISOString()
-      });
-
-      const pdf = await generateTicketPdf(ticket, outDir);
-      const localPath = path.join(outDir, pdf.filename);
-      const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
-
-      let drive = null;
-      try {
-        const buf = await fs.promises.readFile(localPath);
-        const nome = `BPE_${ticket.numPassagem}.pdf`;
-        drive = await uploadPdfToDrive({
-          buffer: buf,
-          filename: nome,
-          folderId: process.env.GDRIVE_FOLDER_ID,
-        });
-      } catch (e) {
-        console.error('[Drive] upload falhou:', e?.message || e);
-      }
-
-      arquivos.push({
-        numPassagem: ticket.numPassagem,
-        pdfLocal: localUrl,                     // fallback local
-        driveUrl: drive?.webViewLink || null,   // link do Drive (viewer)
-        driveFileId: drive?.id || null
-      });
-    }
-
-    */
-
 
 
 // 5) Gerar PDFs (local) e subir no Google Drive
@@ -768,8 +729,8 @@ for (const p of (vendaResult.ListaPassagem || [])) {
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
   const to = pickBuyerEmail({
+    req,                 // << adicionado
     payment,
-    reqBody: req.body,
     vendaResult,
     fallback: null,
   });
@@ -854,52 +815,7 @@ try {
 
 
 
-// 6) Disparar webhook "salvarBpe" (um único envio p/ todos os bilhetes)
-try {
-  const payloadWebhook = {
-    fonte: 'sitevendas',
-    mp: {
-      id: payment.id,
-      status: payment.status,
-      status_detail: payment.status_detail,
-      external_reference: payment.external_reference || null,
-      amount: payment.transaction_amount
-    },
-    viagem: {
-      idViagem: schedule?.idViagem,
-      horaPartida: schedule?.horaPartida || schedule?.departureTime,
-      idOrigem: schedule?.idOrigem || schedule?.originId,
-      idDestino: schedule?.idDestino || schedule?.destinationId
-    },
-    // ← todos os bilhetes desta compra no MESMO array
-    bilhetes: (vendaResult.ListaPassagem || []).map(p => ({
-      numPassagem: p.NumPassagem,
-      chaveBPe:   p.ChaveBPe,
-      origem:     p.Origem,
-      destino:    p.Destino,
-      poltrona:   p.Poltrona,
-      nomeCliente:p.NomeCliente,
-      docCliente: p.DocCliente,
-      valor:      p.ValorPgto
-    })),
-    // ← inclui também os arquivos (drive/pdfLocal) que preenchemos acima
-    arquivos
-  };
-
-  // **UM** POST apenas:
-  const hook = await fetch(process.env.WEBHOOK_SALVAR_BPE_URL || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payloadWebhook),
-  });
-  console.log('[Webhook salvarBpe] status:', hook.status);
-} catch (e) {
-  console.error('[Webhook salvarBpe] erro:', e?.message || e);
-}
-
-
-
-    /*
+ /*
 
     // 6) Webhook salvarBpe (payload completo)
     const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
@@ -967,6 +883,95 @@ bilhetes: (vendaResult.ListaPassagem || [])
 
 
 */
+
+
+    
+
+// 6) Disparar webhook "salvarBpe" (um único envio p/ todos os bilhetes)
+try {
+  // Evita posts duplicados caso este trecho seja chamado mais de uma vez no mesmo request
+  if (res.locals._salvarBpeSent) {
+    console.warn('[Webhook salvarBpe] ignorado: já enviado neste request.');
+  } else {
+
+    // Se você já acumulou dentro do loop, use-o; senão, mapeie do retorno da venda
+    const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
+      ? bilhetesPayload
+      : (vendaResult.ListaPassagem || []).map(p => ({
+          numPassagem: p.NumPassagem,
+          chaveBPe:    p.ChaveBPe || null,
+          origem:      p.Origem,
+          destino:     p.Destino,
+          poltrona:    p.Poltrona,
+          nomeCliente: p.NomeCliente,
+          docCliente:  p.DocCliente,
+          valor:       p.ValorPgto
+        }));
+
+    const payloadWebhook = {
+      fonte: 'sitevendas',
+      mp: {
+        id: payment?.id,
+        status: payment?.status,
+        status_detail: payment?.status_detail,
+        external_reference: payment?.external_reference || null,
+        amount: payment?.transaction_amount
+      },
+      viagem: {
+        idViagem:    schedule?.idViagem,
+        horaPartida: schedule?.horaPartida || schedule?.departureTime,
+        idOrigem:    schedule?.idOrigem   || schedule?.originId,
+        idDestino:   schedule?.idDestino  || schedule?.destinationId,
+        origemNome:  schedule?.originName || schedule?.origem,
+        destinoNome: schedule?.destinationName || schedule?.destino,
+        dataViagem:  schedule?.date || schedule?.data || null,
+      },
+      bilhetes,   // ← todos os bilhetes no mesmo array
+      arquivos    // ← links/ids dos PDFs gerados
+    };
+
+    // Apenas para depuração/traço
+    const reqId = Math.random().toString(36).slice(2);
+    console.log(`[Webhook salvarBpe] reqId=${reqId} bilhetes=${bilhetes.length}`);
+
+    const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
+      || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+
+    // Timeout de 15s para não travar o request caso o destino esteja lento
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 15000);
+
+    const hook = await fetch(hookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-source': 'sitevendas',
+        'x-request-id': reqId,
+      },
+      body: JSON.stringify(payloadWebhook),
+      signal: ctrl.signal,
+    }).catch(err => {
+      // fetch pode lançar em abort/timeout; tratamos para logar e seguir
+      throw new Error(`Falha ao postar webhook: ${err?.message || err}`);
+    }).finally(() => clearTimeout(to));
+
+    const hookBody = await hook.text().catch(() => '');
+    console.log('[Webhook salvarBpe] status:', hook.status, '| body:', hookBody.slice(0, 300));
+
+    if (!hook.ok) {
+      throw new Error(`Webhook respondeu ${hook.status}`);
+    }
+
+    // Marca que já enviamos neste request
+    res.locals._salvarBpeSent = true;
+  }
+} catch (e) {
+  console.error('[Webhook salvarBpe] erro:', e?.message || e);
+}
+
+
+
+   
     
 
     // 7) Retorno para o front (payment.js)
