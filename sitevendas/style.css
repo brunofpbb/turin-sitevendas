@@ -1504,3 +1504,25 @@ footer { text-align: center; }
 .btn-danger:hover{ filter:brightness(0.95) }
 
 
+
+
+
+
+
+
+/* 1) Aumentar vertical do "Pesquisar" */
+.btn.btn-primary{
+  padding-block: 14px;     /* antes: 10px */
+  padding-inline: 18px;
+  font-size: 1.05rem;      /* leve destaque */
+  font-weight: 700;
+}
+
+/* 2) Centralizar texto do "Sair" (é <a>) e tirar sublinhado  */
+.btn{
+  display: inline-flex;           /* vale p/ <button> e <a> */
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;          /* remove underline de <a> */
+}
+
