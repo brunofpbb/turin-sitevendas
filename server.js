@@ -20,6 +20,69 @@ const PORT = process.env.PORT || 8080;
 
 
 
+// ==== Agrupador de webhooks por compra (in-memory) ====
+const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], emailSent }
+const WEBHOOK_DEBOUNCE_MS = 1200;
+
+// Constrói a chave de agrupamento da compra
+function computeGroupId(req, payment, schedule) {
+  // tente usar algo estável vindo do front/back:
+  return (
+    req?.body?.grupoId ||
+    req?.body?.referencia ||                   // você já gera 'referencia' no front
+    payment?.external_reference ||
+    req?.headers?.['x-idempotency-key'] ||
+    // fallback: composição de campos (menos ideal, mas funciona)
+    [schedule?.idViagem, schedule?.date || schedule?.dataViagem, schedule?.horaPartida, (req?.user?.email || req?.headers?.['x-user-email'] || '')].join('|')
+  );
+}
+
+// Enfileira/agrupa e dispara o webhook 1x por grupo
+async function queueWebhookSend(groupId, fragment, hookUrl) {
+  let entry = WEBHOOK_BUFFER.get(groupId);
+  if (!entry) entry = { timer: null, base: null, bilhetes: [], arquivos: [], emailSent: false };
+
+  // guarda o "base" (dados comuns) na primeira vez
+  if (!entry.base) entry.base = fragment.base;
+
+  // acumula bilhetes/arquivos
+  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) {
+    entry.bilhetes.push(...fragment.bilhetes);
+  }
+  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) {
+    entry.arquivos.push(...fragment.arquivos);
+  }
+
+  // reinicia o debounce
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = setTimeout(async () => {
+    try {
+      const payload = {
+        ...entry.base,
+        bilhetes: entry.bilhetes,
+        arquivos: entry.arquivos,
+      };
+      const resp = await fetch(hookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
+        body: JSON.stringify(payload),
+      });
+      const txt = await resp.text().catch(()=> '');
+      console.log('[Webhook salvarBpe] groupId=', groupId, 'status=', resp.status, 'bilhetes=', entry.bilhetes.length, '| body:', txt.slice(0,200));
+      WEBHOOK_BUFFER.delete(groupId);
+    } catch (err) {
+      console.error('[Webhook salvarBpe] groupId=', groupId, 'erro:', err?.message || err);
+      WEBHOOK_BUFFER.delete(groupId);
+    }
+  }, WEBHOOK_DEBOUNCE_MS);
+
+  WEBHOOK_BUFFER.set(groupId, entry);
+  return entry;
+}
+
+
+
+
 
 // ===== Google Sheets: buscar bilhetes por email
 const { google } = require('googleapis');
@@ -743,17 +806,24 @@ bilhetesPayload.push({
 
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
-  const to = pickBuyerEmail({
-    req,                 // << adicionado
-    payment,
-    vendaResult,
-    fallback: null,
-  });
+  // extrai e-mail do login do mesmo jeito que o webhook usa
+  const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+  const loginEmail =
+    getMail(req?.user?.email) ||
+    getMail(req?.session?.user?.email) ||
+    getMail(req?.headers?.['x-user-email']) ||
+    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+    null;
+
+  // PRIORIDADE: e-mail do login
+  const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+  console.log('[Email] destinatario (login→fallback):', to);
+
 
   if (to) {
     const appName   = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const fromEmail = /*process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;*/ 'informaticamaciel2010@gmail.com';                                //EMAIL FIXO, TEM QUE ALTERAR
+    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;                               //EMAIL FIXO, TEM QUE ALTERAR
 
     // Dados resumidos da compra (ajuste conforme seu objeto "schedule"/req)
     const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
@@ -902,66 +972,62 @@ bilhetes: (vendaResult.ListaPassagem || [])
 
     
 
-// 6) Webhook salvarBpe (POST ÚNICO com todos os bilhetes + userEmail)
+// 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
-  if (res.locals._salvarBpeSent) {
-    console.warn('[Webhook salvarBpe] ignorado: já enviado neste request.');
-  } else {
-    // 6.1) Campos auxiliares do login e contato
-    const getMail = (v) => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-    const userEmail =
-      getMail(req?.user?.email) ||
-      getMail(req?.session?.user?.email) ||
-      getMail(req?.headers?.['x-user-email']) ||
-      getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-      null;
+  // 6.1) campos do login/contato (iguais aos do e-mail)
+  const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+  const userEmail =
+    getMail(req?.user?.email) ||
+    getMail(req?.session?.user?.email) ||
+    getMail(req?.headers?.['x-user-email']) ||
+    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+    null;
 
-    const userPhone =
-      req?.user?.phone ||
-      req?.session?.user?.phone ||
-      req?.headers?.['x-user-phone'] ||
-      req?.body?.loginPhone ||
-      null;
+  const userPhone =
+    req?.user?.phone ||
+    req?.session?.user?.phone ||
+    req?.headers?.['x-user-phone'] ||
+    req?.body?.loginPhone ||
+    null;
 
-    // 6.2) Datas/horas da viagem (mantendo seu formato antigo)
-    const toYMD = (isoOrBr) => {
-      try {
-        if (!isoOrBr) return '';
-        // aceita "YYYY-MM-DD" ou "DD/MM/YYYY"
-        if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrBr)) return isoOrBr;
-        const m = String(isoOrBr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
-      } catch { return ''; }
-    };
-    const joinDateTime = (d, hm) => (d && hm) ? `${d} ${hm}` : (d || hm || '');
+  // 6.2) datas/horas no mesmo formato
+  const toYMD = (isoOrBr) => {
+    try {
+      if (!isoOrBr) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrBr)) return isoOrBr;
+      const m = String(isoOrBr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+    } catch { return ''; }
+  };
+  const joinDateTime = (d, hm) => (d && hm) ? `${d} ${hm}` : (d || hm || '');
+  const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
+  const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
 
-    const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
-    const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
+  // 6.3) escolhe a lista de bilhetes deste request
+  const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
+    ? bilhetesPayload
+    : (vendaResult.ListaPassagem || []).map(p => ({
+        numPassagem: p.NumPassagem,
+        chaveBBe:    p.ChaveBPe || null,
+        origem:      p.Origem,
+        destino:     p.Destino,
+        poltrona:    p.Poltrona,
+        nomeCliente: p.NomeCliente,
+        docCliente:  p.DocCliente,
+        valor:       p.ValorPgto
+      }));
 
-    // 6.3) Todos os bilhetes (usa o acumulado; se faltar, mapeia da venda)
-    const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
-      ? bilhetesPayload
-      : (vendaResult.ListaPassagem || []).map(p => ({
-          numPassagem: p.NumPassagem,
-          chaveBPe:    p.ChaveBPe || null,
-          origem:      p.Origem,
-          destino:     p.Destino,
-          poltrona:    p.Poltrona,
-          nomeCliente: p.NomeCliente,
-          docCliente:  p.DocCliente,
-          valor:       p.ValorPgto
-        }));
-
-    // 6.4) Payload no formato completo (inclui userEmail como no seu antigo)
-    const payloadWebhook = {
+  // 6.4) monta o "fragmento" desta chamada
+  const fragment = {
+    base: {
       fonte: 'sitevendas',
-      userEmail,                 // ← e-mail do login
-      userPhone,                 // ← se tiver
-      idaVolta:  req?.body?.idaVolta ?? null,
-      tipoPagamento: req?.body?.tipoPagamento ?? null,
+      userEmail,
+      userPhone,
+      idaVolta:       req?.body?.idaVolta ?? null,
+      tipoPagamento:  req?.body?.tipoPagamento ?? null,
       formaPagamento: req?.body?.formaPagamento ?? null,
-      dataViagem: ymdViagem,                         // YYYY-MM-DD
-      dataHora:   joinDateTime(ymdViagem, hhmm),     // YYYY-MM-DD HH:mm
+      dataViagem: ymdViagem,                      // YYYY-MM-DD
+      dataHora:   joinDateTime(ymdViagem, hhmm),  // YYYY-MM-DD HH:mm
       mp: {
         id: payment?.id,
         status: payment?.status,
@@ -977,25 +1043,18 @@ try {
         origemNome:  schedule?.originName || schedule?.origem,
         destinoNome: schedule?.destinationName || schedule?.destino,
       },
-      bilhetes,   // ← todos os bilhetes no mesmo array
-      arquivos    // ← links/ids dos PDFs gerados
-    };
+    },
+    bilhetes,   // deste request
+    arquivos    // destes PDFs
+  };
 
-    const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
-      || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+  // 6.5) calcula a chave de agrupamento e enfileira envio
+  const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
+    || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
 
-    const hook = await fetch(hookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-source': 'sitevendas'
-      },
-      body: JSON.stringify(payloadWebhook),
-    });
-
-    console.log('[Webhook salvarBpe] status:', hook.status, '| bilhetes:', bilhetes.length, '| userEmail:', userEmail || '(nenhum)');
-    res.locals._salvarBpeSent = true;
-  }
+  const groupId = computeGroupId(req, payment, schedule);
+  await queueWebhookSend(groupId, fragment, hookUrl);
+  console.log('[Webhook salvarBpe] agrupado: groupId=', groupId, 'req-bilhetes=', bilhetes.length, 'userEmail=', userEmail || '(nenhum)');
 } catch (e) {
   console.error('[Webhook salvarBpe] erro:', e?.message || e);
 }
