@@ -1459,5 +1459,48 @@ footer { text-align: center; }
 
 
 
+/* ===== Espaçamento entre campos ===== */
+#search-form label {
+  display: block;
+  margin: 16px 0 6px;      /* espaço ANTES de cada label */
+  font-weight: 600;
+}
+#search-form label:first-of-type { margin-top: 0; }  /* não empurra o topo do card */
+#search-form input[type="text"],
+#search-form input[type="date"] {
+  width: 100%;
+  padding: 10px 12px;      /* aumenta um pouco a altura */
+  box-sizing: border-box;
+}
+
+/* ===== Botões ===== */
+.search-actions { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 12px;               /* separa o Pesquisar do grupo de baixo */
+}
+
+/* Pesquisar ocupa toda a largura do card */
+.search-actions > .btn.btn-primary { width: 100%; }
+
+/* Linha de botões inferiores, lado a lado e somando a mesma largura do "Pesquisar" */
+.search-actions-row { 
+  display: flex; 
+  gap: 10px; 
+}
+.search-actions-row .btn { 
+  flex: 1;                 /* ambos com a MESMA largura */
+}
+
+/* Aumenta a altura de TODOS os botões um pouquinho */
+.btn { 
+  padding: 10px 14px;      /* vertical maior */
+}
+
+/* Cores já combinadas anteriormente */
+.btn-secondary{ background:#e5e7eb;color:#111;border:1px solid #d1d5db }
+.btn-secondary:hover{ filter:brightness(0.97) }
+.btn-danger{ background:#d32f2f;color:#fff;border:1px solid #b71c1c }
+.btn-danger:hover{ filter:brightness(0.95) }
 
 
