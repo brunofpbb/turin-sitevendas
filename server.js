@@ -24,18 +24,38 @@ const PORT = process.env.PORT || 8080;
 const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], emailSent }
 const WEBHOOK_DEBOUNCE_MS = 1200;
 
-// Constrói a chave de agrupamento da compra
 function computeGroupId(req, payment, schedule) {
-  // tente usar algo estável vindo do front/back:
-  return (
-    req?.body?.grupoId ||
-    req?.body?.referencia ||                   // você já gera 'referencia' no front
-    payment?.external_reference ||
-    req?.headers?.['x-idempotency-key'] ||
-    // fallback: composição de campos (menos ideal, mas funciona)
-    [schedule?.idViagem, schedule?.date || schedule?.dataViagem, schedule?.horaPartida, (req?.user?.email || req?.headers?.['x-user-email'] || '')].join('|')
-  );
+  // 1) se houver, o id do pagamento é o melhor agrupador
+  if (payment?.id) return `pay:${payment.id}`;
+
+  // 2) chaves enviadas pelo front
+  const origRef = req?.body?.grupoId || req?.body?.referencia || payment?.external_reference;
+  const ref = origRef ? String(origRef).trim() : null;
+  if (ref) return `ref:${ref}`;
+
+  // 3) normaliza data/hora para evitar chaves diferentes
+  const toYMD = (dateStr) => {
+    try {
+      if (!dateStr) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+      const m = String(dateStr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : String(dateStr);
+    } catch { return String(dateStr || ''); }
+  };
+  const toHHMM = (h) => {
+    const s = String(h || '').replace(/\D/g, '');
+    const hh = (s.length >= 2 ? s.slice(0,2) : s.padStart(2,'0')) || '00';
+    const mm = (s.length >= 4 ? s.slice(2,4) : s.slice(2).padEnd(2,'0')) || '00';
+    return `${hh}:${mm}`;
+  };
+
+  const ymd  = toYMD(schedule?.date || schedule?.dataViagem || '');
+  const hhmm = toHHMM(schedule?.horaPartida || schedule?.departureTime || '');
+  const email = (req?.user?.email || req?.headers?.['x-user-email'] || req?.body?.userEmail || '').toLowerCase();
+
+  return `sched:${schedule?.idViagem || ''}|${ymd}|${hhmm}|${email}`;
 }
+
 
 // Enfileira/agrupa e dispara o webhook 1x por grupo
 async function queueWebhookSend(groupId, fragment, hookUrl) {
@@ -198,31 +218,33 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
 // ======== Descobrir E-mail do Cliente
 
 function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
-  // 0) E-mail do login (PRIORIDADE MÁXIMA)
+  const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+
+  // PRIORIDADE: fontes do login/front (inclui o body.userEmail do legacy)
   const fromLogin =
     req?.user?.email ||
     req?.session?.user?.email ||
     req?.headers?.['x-user-email'] ||
     req?.body?.loginEmail ||
-    req?.body?.emailLogin;
+    req?.body?.emailLogin ||
+    req?.body?.userEmail ||            // <<< ADICIONADO
+    req?.body?.user?.email;            // <<< ADICIONADO
 
-  const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
   if (isMail(fromLogin)) return String(fromLogin).trim();
 
-  // 1) Mercado Pago (manter como fallback)
+  // Fallbacks
   const fromMP = payment?.payer?.email || payment?.additional_info?.payer?.email;
   if (isMail(fromMP)) return String(fromMP).trim();
 
-  // 2) do corpo da requisição (se você enviou em outro campo)
   const fromReq = req?.body?.email || req?.body?.buyerEmail || req?.body?.clienteEmail;
   if (isMail(fromReq)) return String(fromReq).trim();
 
-  // 3) do retorno da venda
   const fromVenda = vendaResult?.Email || vendaResult?.EmailCliente;
   if (isMail(fromVenda)) return String(fromVenda).trim();
 
   return fallback || null;
 }
+
 
 
 
@@ -786,17 +808,20 @@ bilhetesPayload.push({
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
   // extrai e-mail do login do mesmo jeito que o webhook usa
-  const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-  const loginEmail =
-    getMail(req?.user?.email) ||
-    getMail(req?.session?.user?.email) ||
-    getMail(req?.headers?.['x-user-email']) ||
-    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-    null;
+const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+const loginEmail =
+  getMail(req?.user?.email) ||
+  getMail(req?.session?.user?.email) ||
+  getMail(req?.headers?.['x-user-email']) ||
+  getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+  getMail(req?.body?.userEmail) ||               // <<< ADICIONADO
+  getMail(req?.body?.user?.email) ||             // <<< ADICIONADO
+  null;
 
-  // PRIORIDADE: e-mail do login
-  const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-  console.log('[Email] destinatario (login→fallback):', to);
+// PRIORIDADE: e-mail do login; se não houver, cai no picker
+const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
+
 
 
   if (to) {
@@ -883,13 +908,16 @@ try {
 // 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
   // 6.1) campos do login/contato (iguais aos do e-mail)
-  const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-  const userEmail =
-    getMail(req?.user?.email) ||
-    getMail(req?.session?.user?.email) ||
-    getMail(req?.headers?.['x-user-email']) ||
-    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-    null;
+const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+const userEmail =
+  getMail(req?.user?.email) ||
+  getMail(req?.session?.user?.email) ||
+  getMail(req?.headers?.['x-user-email']) ||
+  getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+  getMail(req?.body?.userEmail) ||             // <<< ADICIONADO
+  getMail(req?.body?.user?.email) ||           // <<< ADICIONADO
+  null;
+
 
   const userPhone =
     req?.user?.phone ||
