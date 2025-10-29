@@ -318,27 +318,6 @@ async function ensureTransport() {
   }
   return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
 }
-/*
-async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName }) {
-  const apiKey = process.env.BREVO_API_KEY;
-  if (!apiKey) throw new Error('BREVO_API_KEY ausente');
-  const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'api-key': apiKey },
-    body: JSON.stringify({
-      sender: { email: fromEmail, name: fromName },
-      to: [{ email: to }],
-      subject, htmlContent: html, textContent: text,
-    }),
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`Brevo API ${resp.status}: ${body.slice(0, 300)}`);
-  }
-  return resp.json();
-}
-
-*/
 
 
 // === Brevo API (primário) ===
@@ -897,77 +876,6 @@ try {
 } catch (e) {
   console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
 }
-
-
-
- /*
-
-    // 6) Webhook salvarBpe (payload completo)
-    const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
-    const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00');
-
-    const payloadWebhook = {
-      fonte: 'sitevendas',
-      userEmail,
-      userPhone,
-      idaVolta,
-      tipoPagamento,
-      formaPagamento,
-      dataViagem: ymdViagem,                   // YYYY-MM-DD
-      dataHora: joinDateTime(ymdViagem, hhmm), // YYYY-MM-DD HH:mm
-      mp: {
-        id: payment.id,
-        status: payment.status,
-        status_detail: payment.status_detail,
-        external_reference: payment.external_reference || null,
-        amount: payment.transaction_amount
-      },
-      viagem: {
-        idViagem: schedule.idViagem,
-        horaPartida: schedule.horaPartida,
-        idOrigem: schedule.idOrigem,
-        idDestino: schedule.idDestino
-      },
-
-
-bilhetes: (vendaResult.ListaPassagem || [])
-  .filter(p => p && p.NumPassagem) // <<< filtro
-  .map(p => {
-    const ymd = toYMD(p.DataViagem || ymdViagem);
-    const hh = hhmm;
-    return {
-      numPassagem: p.NumPassagem,
-      chaveBPe: p.ChaveBPe,
-      origem: p.Origem,
-      destino: p.Destino,
-      poltrona: p.Poltrona,
-      nomeCliente: p.NomeCliente,
-      docCliente: p.DocCliente,
-      valor: p.ValorPgto,
-      dataViagem: ymd,
-      dataHora: joinDateTime(ymd, hh),
-      idaVolta                                // <<< NOVO
-    };
-  }),
-
-
-      
-      arquivos
-    };
-
-    try {
-      const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadWebhook),
-      });
-      console.log('[Webhook salvarBpe] status:', hook.status);
-    } catch (e) {
-      console.error('[Webhook salvarBpe] erro:', e?.message || e);
-    }
-
-
-*/
 
 
     
