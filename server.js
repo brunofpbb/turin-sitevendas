@@ -669,7 +669,8 @@ await fs.promises.mkdir(outDir, { recursive: true });
 
 const arquivos = [];
 const emailAttachments = []; // ← acumularemos os anexos (base64) para Brevo e Buffer para SMTP
-
+const bilhetesPayload = [];
+    
 for (const p of (vendaResult.ListaPassagem || [])) {
   const ticket = mapVendaToTicket({
     ListaPassagem: [p],
@@ -724,6 +725,20 @@ for (const p of (vendaResult.ListaPassagem || [])) {
     driveUrl: drive?.webViewLink || null,
     driveFileId: drive?.id || null
   });
+
+bilhetesPayload.push({
+  numPassagem: p.NumPassagem || ticket.numPassagem,
+  chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
+  origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  poltrona:    p.Poltrona || ticket.poltrona || null,
+  nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
+  docCliente:  p.DocCliente || ticket.docCliente || null,
+  valor:       p.ValorPgto ?? ticket.valor ?? null
+});
+
+
+  
 }
 
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
@@ -887,14 +902,43 @@ bilhetes: (vendaResult.ListaPassagem || [])
 
     
 
-// 6) Disparar webhook "salvarBpe" (um único envio p/ todos os bilhetes)
+// 6) Webhook salvarBpe (POST ÚNICO com todos os bilhetes + userEmail)
 try {
-  // Evita posts duplicados caso este trecho seja chamado mais de uma vez no mesmo request
   if (res.locals._salvarBpeSent) {
     console.warn('[Webhook salvarBpe] ignorado: já enviado neste request.');
   } else {
+    // 6.1) Campos auxiliares do login e contato
+    const getMail = (v) => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+    const userEmail =
+      getMail(req?.user?.email) ||
+      getMail(req?.session?.user?.email) ||
+      getMail(req?.headers?.['x-user-email']) ||
+      getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+      null;
 
-    // Se você já acumulou dentro do loop, use-o; senão, mapeie do retorno da venda
+    const userPhone =
+      req?.user?.phone ||
+      req?.session?.user?.phone ||
+      req?.headers?.['x-user-phone'] ||
+      req?.body?.loginPhone ||
+      null;
+
+    // 6.2) Datas/horas da viagem (mantendo seu formato antigo)
+    const toYMD = (isoOrBr) => {
+      try {
+        if (!isoOrBr) return '';
+        // aceita "YYYY-MM-DD" ou "DD/MM/YYYY"
+        if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrBr)) return isoOrBr;
+        const m = String(isoOrBr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+      } catch { return ''; }
+    };
+    const joinDateTime = (d, hm) => (d && hm) ? `${d} ${hm}` : (d || hm || '');
+
+    const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
+    const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
+
+    // 6.3) Todos os bilhetes (usa o acumulado; se faltar, mapeia da venda)
     const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
       ? bilhetesPayload
       : (vendaResult.ListaPassagem || []).map(p => ({
@@ -908,8 +952,16 @@ try {
           valor:       p.ValorPgto
         }));
 
+    // 6.4) Payload no formato completo (inclui userEmail como no seu antigo)
     const payloadWebhook = {
       fonte: 'sitevendas',
+      userEmail,                 // ← e-mail do login
+      userPhone,                 // ← se tiver
+      idaVolta:  req?.body?.idaVolta ?? null,
+      tipoPagamento: req?.body?.tipoPagamento ?? null,
+      formaPagamento: req?.body?.formaPagamento ?? null,
+      dataViagem: ymdViagem,                         // YYYY-MM-DD
+      dataHora:   joinDateTime(ymdViagem, hhmm),     // YYYY-MM-DD HH:mm
       mp: {
         id: payment?.id,
         status: payment?.status,
@@ -924,50 +976,30 @@ try {
         idDestino:   schedule?.idDestino  || schedule?.destinationId,
         origemNome:  schedule?.originName || schedule?.origem,
         destinoNome: schedule?.destinationName || schedule?.destino,
-        dataViagem:  schedule?.date || schedule?.data || null,
       },
       bilhetes,   // ← todos os bilhetes no mesmo array
       arquivos    // ← links/ids dos PDFs gerados
     };
 
-    // Apenas para depuração/traço
-    const reqId = Math.random().toString(36).slice(2);
-    console.log(`[Webhook salvarBpe] reqId=${reqId} bilhetes=${bilhetes.length}`);
-
     const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
       || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
-
-    // Timeout de 15s para não travar o request caso o destino esteja lento
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 15000);
 
     const hook = await fetch(hookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-source': 'sitevendas',
-        'x-request-id': reqId,
+        'x-source': 'sitevendas'
       },
       body: JSON.stringify(payloadWebhook),
-      signal: ctrl.signal,
-    }).catch(err => {
-      // fetch pode lançar em abort/timeout; tratamos para logar e seguir
-      throw new Error(`Falha ao postar webhook: ${err?.message || err}`);
-    }).finally(() => clearTimeout(to));
+    });
 
-    const hookBody = await hook.text().catch(() => '');
-    console.log('[Webhook salvarBpe] status:', hook.status, '| body:', hookBody.slice(0, 300));
-
-    if (!hook.ok) {
-      throw new Error(`Webhook respondeu ${hook.status}`);
-    }
-
-    // Marca que já enviamos neste request
+    console.log('[Webhook salvarBpe] status:', hook.status, '| bilhetes:', bilhetes.length, '| userEmail:', userEmail || '(nenhum)');
     res.locals._salvarBpeSent = true;
   }
 } catch (e) {
   console.error('[Webhook salvarBpe] erro:', e?.message || e);
 }
+
 
 
 
