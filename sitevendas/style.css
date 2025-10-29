@@ -296,7 +296,7 @@ footer{
   display:flex;
   flex-direction:column;
   gap:10px;
-  min-height:500px;                                                                                   /* ajuste se quiser mais/menos alto */
+  min-height:540px;                                                                                   /* ajuste se quiser mais/menos alto */
 }
 
 
