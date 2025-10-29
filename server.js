@@ -7,6 +7,7 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { uploadPdfToDrive } = require('./drive');
 
+
 // === serviços de bilhete (PDF) ===
 const { mapVendaToTicket } = require('./services/ticket/mapper');
 const { generateTicketPdf } = require('./services/ticket/pdf');
@@ -16,23 +17,23 @@ const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
-/* ============================================================================
-   Agrupador de e-mail + webhook por compra (in-memory)
-   - Junta múltiplos requests da MESMA compra (ex.: 2 poltronas)
-   - Dispara 1 e-mail (com todos os anexos) e 1 webhook (com todos os bilhetes)
-============================================================================ */
-const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], attachments:[], emailSent }
-const WEBHOOK_DEBOUNCE_MS = 3500; // janela maior para consolidar 2+ requests
+
+
+
+// ==== Agrupador de webhooks por compra (in-memory) ====
+const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], emailSent }
+const WEBHOOK_DEBOUNCE_MS = 1200;
 
 function computeGroupId(req, payment, schedule) {
-  // 1) id do pagamento é o melhor agrupador
+  // 1) se houver, o id do pagamento é o melhor agrupador
   if (payment?.id) return `pay:${payment.id}`;
 
   // 2) chaves enviadas pelo front
-  const ref = (req?.body?.grupoId || req?.body?.referencia || payment?.external_reference || '').toString().trim();
+  const origRef = req?.body?.grupoId || req?.body?.referencia || payment?.external_reference;
+  const ref = origRef ? String(origRef).trim() : null;
   if (ref) return `ref:${ref}`;
 
-  // 3) normaliza data/hora para consistência
+  // 3) normaliza data/hora para evitar chaves diferentes
   const toYMD = (dateStr) => {
     try {
       if (!dateStr) return '';
@@ -55,89 +56,32 @@ function computeGroupId(req, payment, schedule) {
   return `sched:${schedule?.idViagem || ''}|${ymd}|${hhmm}|${email}`;
 }
 
+
+// Enfileira/agrupa e dispara o webhook 1x por grupo
 async function queueWebhookSend(groupId, fragment, hookUrl) {
   let entry = WEBHOOK_BUFFER.get(groupId);
-  if (!entry) entry = { timer: null, base: null, bilhetes: [], arquivos: [], attachments: [], emailSent: false };
+  if (!entry) entry = { timer: null, base: null, bilhetes: [], arquivos: [], emailSent: false };
 
-  // guarda base na 1ª vez
+  // guarda o "base" (dados comuns) na primeira vez
   if (!entry.base) entry.base = fragment.base;
 
-  // acumula dados
-  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) entry.bilhetes.push(...fragment.bilhetes);
-  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) entry.arquivos.push(...fragment.arquivos);
-  if (Array.isArray(fragment.attachments) && fragment.attachments.length) entry.attachments.push(...fragment.attachments);
+  // acumula bilhetes/arquivos
+  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) {
+    entry.bilhetes.push(...fragment.bilhetes);
+  }
+  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) {
+    entry.arquivos.push(...fragment.arquivos);
+  }
 
-  // (re)inicia debounce
+  // reinicia o debounce
   if (entry.timer) clearTimeout(entry.timer);
   entry.timer = setTimeout(async () => {
     try {
-      // 1) Enviar E-MAIL (apenas 1x) com TODOS os anexos do grupo
-      if (!entry.emailSent) {
-        const to = entry.base?.userEmail || null;
-        if (to) {
-          const appName   = process.env.APP_NAME || 'Turin Transportes';
-          const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-          const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
-
-          const rota = `${entry.base?.viagem?.origemNome || ''} → ${entry.base?.viagem?.destinoNome || ''}`;
-          const data = entry.base?.dataViagem || '';
-          const hora = (entry.base?.viagem?.horaPartida || '').toString().slice(0,5);
-          const valorTotalBRL = (Number(entry.base?.mp?.amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-          const lista = entry.arquivos.map((a,i)=>{
-            const link = a.driveUrl || a.pdfLocal || '';
-            const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
-            return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
-          }).join('');
-
-          const html =
-            `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
-              <p>Olá,</p>
-              <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
-              <p><b>Rota:</b> ${rota}<br/>
-                 <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
-                 <b>Valor total:</b> ${valorTotalBRL}
-              </p>
-              <p><b>Bilhetes:</b></p>
-              <ul style="margin-top:8px">${lista}</ul>
-              <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
-            </div>`;
-
-          const text =
-            `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
-            `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
-            `Bilhetes:\n` + entry.arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
-
-          // tenta SMTP; se falhar, Brevo
-          let sent = false;
-          try {
-            const got = await ensureTransport();
-            if (got.transporter) {
-              await got.transporter.sendMail({
-                from: `"${fromName}" <${fromEmail}>`,
-                to, subject: `Seus bilhetes – ${appName}`, html, text,
-                attachments: entry.attachments.map(a => ({ filename: a.filename, content: a.buffer }))
-              });
-              sent = true;
-              console.log(`[Email(grouped)] enviados ${entry.attachments.length} anexos para ${to} via ${got.mode}`);
-            }
-          } catch (e) {
-            console.warn('[Email(grouped) SMTP] falhou, tentando Brevo...', e?.message || e);
-          }
-          if (!sent) {
-            await sendViaBrevoApi({
-              to, subject: `Seus bilhetes – ${appName}`, html, text, fromEmail, fromName,
-              attachments: entry.attachments.map(a => ({ filename: a.filename, contentBase64: a.contentBase64 }))
-            });
-            console.log(`[Email(grouped)] enviados ${entry.attachments.length} anexos para ${to} via Brevo API`);
-          }
-        } else {
-          console.warn('[Email(grouped)] userEmail ausente — e-mail não enviado.');
-        }
-        entry.emailSent = true;
-      }
-
-      // 2) Enviar WEBHOOK 1x com todos os bilhetes
-      const payload = { ...entry.base, bilhetes: entry.bilhetes, arquivos: entry.arquivos };
+      const payload = {
+        ...entry.base,
+        bilhetes: entry.bilhetes,
+        arquivos: entry.arquivos,
+      };
       const resp = await fetch(hookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
@@ -156,9 +100,11 @@ async function queueWebhookSend(groupId, fragment, hookUrl) {
   return entry;
 }
 
-/* ============================================================================
-   Google Sheets (consulta por email) – leitura (mantido)
-============================================================================ */
+
+
+
+
+// ===== Google Sheets: buscar bilhetes por email
 const { google } = require('googleapis');
 
 async function sheetsAuth() {
@@ -197,7 +143,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     };
     const get = (row, idx) => (idx >= 0 && row[idx] != null) ? String(row[idx]).trim() : '';
 
-    // índices necessárias
+    // índices pelas colunas que você listou
     const idxEmail      = idxOf('email', 'e-mail');
     const idxNum        = idxOf('numpassagem', 'bilhete');
     const idxSerie      = idxOf('seriepassagem');
@@ -208,18 +154,18 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     const idxValorDev   = idxOf('valordevolucao');
     const idxDataPgto   = idxOf('datahorapagamento', 'datahora_pagamento');
     const idxDataViagem = idxOf('dataviagem', 'data_viagem');
-    const idxDataHora   = idxOf('datahora', 'data_hora');
+    const idxDataHora   = idxOf('datahora', 'data_hora'); // ex: 2025-11-03 10:48
     const idxOrigem     = idxOf('origem');
     const idxDestino    = idxOf('destino');
-    const idxSentido    = idxOf('sentido');
+    const idxSentido    = idxOf('sentido');              // “ida” / “volta”
     const idxCpf        = idxOf('cpf');
     const idxNumTrans   = idxOf('idtransacao', 'id_transacao', 'idtransação', 'id_transação');
     const idxTipoPgto   = idxOf('tipopagamento');
     const idxRef        = idxOf('referencia');
     const idxIdUser     = idxOf('iduser');
     const idxLinkBPE    = idxOf('linkbpe');
-    const idxIdUrl      = idxOf('idurl');
-    const idxpoltrona   = idxOf('poltrona');
+    const idxIdUrl      = idxOf('idurl');                // se existir
+    const idxpoltrona   = idxOf('poltrona'); 
     const idxNome       = idxOf('nome');
 
     if (idxEmail < 0) return res.json({ ok:true, items:[] });
@@ -227,10 +173,11 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
     const items = rows.slice(1)
       .filter(r => get(r, idxEmail).toLowerCase() === email)
       .map(r => {
-        const dataHora = get(r, idxDataHora);
+        const dataHora = get(r, idxDataHora); // “YYYY-MM-DD HH:MM” (se vier)
         const departureTime = dataHora.includes(' ')
           ? dataHora.split(' ')[1]
           : '';
+
         const price = get(r, idxValor).replace(',', '.');
 
         return {
@@ -243,13 +190,13 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
           price:             price ? Number(price) : 0,
           valorConveniencia: get(r, idxValorConv),
           valorDevolucao:    get(r, idxValorDev),
-          paidAt:            get(r, idxDataPgto),
+          paidAt:            get(r, idxDataPgto),       // ISO ou string
           origin:            get(r, idxOrigem),
           destination:       get(r, idxDestino),
           date:              get(r, idxDataViagem),
           dateTime:          dataHora,
           departureTime,
-          sentido:           get(r, idxSentido),
+          sentido:           get(r, idxSentido),        // ida/volta
           cpf:               get(r, idxCpf),
           transactionId:     get(r, idxNumTrans),
           paymentType:       get(r, idxTipoPgto),
@@ -267,22 +214,25 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
   }
 });
 
-/* ============================================================================
-   Descobrir e-mail do cliente (prioriza login, inclui body.userEmail)
-============================================================================ */
+
+// ======== Descobrir E-mail do Cliente
+
 function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
   const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+
+  // PRIORIDADE: fontes do login/front (inclui o body.userEmail do legacy)
   const fromLogin =
     req?.user?.email ||
     req?.session?.user?.email ||
     req?.headers?.['x-user-email'] ||
     req?.body?.loginEmail ||
     req?.body?.emailLogin ||
-    req?.body?.userEmail ||      // legado
-    req?.body?.user?.email;      // legado
+    req?.body?.userEmail ||            // <<< ADICIONADO
+    req?.body?.user?.email;            // <<< ADICIONADO
 
   if (isMail(fromLogin)) return String(fromLogin).trim();
 
+  // Fallbacks
   const fromMP = payment?.payer?.email || payment?.additional_info?.payer?.email;
   if (isMail(fromMP)) return String(fromMP).trim();
 
@@ -294,6 +244,9 @@ function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
 
   return fallback || null;
 }
+
+
+
 
 /* =================== CSP (Bricks) =================== */
 app.use((req, res, next) => {
@@ -388,14 +341,16 @@ async function ensureTransport() {
   return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
 }
 
+
 // === Brevo API (primário) ===
 async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName, attachments = [] }) {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
 
+  // attachments: [{ filename, contentBase64 }]
   const brevoAttachments = (attachments || []).map(a => ({
     name: a.filename || 'anexo.pdf',
-    content: a.contentBase64 || a.content || ''
+    content: a.contentBase64 || a.content || '' // Brevo espera base64 em "content"
   }));
 
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -420,6 +375,8 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName, a
   }
   return resp.json();
 }
+
+
 
 /* =================== Auth: códigos por e-mail =================== */
 const codes = new Map();
@@ -499,13 +456,20 @@ app.post('/api/auth/verify-code', (req, res) => {
 });
 
 /* =================== Praxio helpers =================== */
+
+
+// Coloque junto dos outros helpers, acima das rotas
 function normalizeHoraPartida(h) {
   if (!h) return '';
+  // remove tudo que não for dígito (ex.: "17:00" -> "1700")
   let s = String(h).replace(/\D/g, '');
+  // se vier "900" vira "0900"
   if (s.length === 3) s = '0' + s;
+  // garante 4 dígitos
   if (s.length >= 4) s = s.slice(0, 4);
   return s;
 }
+
 
 async function praxioLogin() {
   const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
@@ -636,19 +600,20 @@ app.post('/api/mp/webhook', async (req, res) => {
   try {
     const { type, data } = req.body || {};
     console.log('[MP webhook] type:', type, 'id:', data?.id);
+    // Decidimos emitir a venda pelo front -> /api/praxio/vender
   } catch (err) {
     console.error('[MP webhook] erro:', err?.message || err);
   }
 });
 
-/* =================== Venda Praxio + PDF + e-mail + Webhook agrupado =================== */
+/* =================== Venda Praxio + PDF + Webhook salvarBpe =================== */
 app.post('/api/praxio/vender', async (req, res) => {
   try {
     const {
-      mpPaymentId,                 // MP payment id
-      schedule,                    // { idViagem, horaPartida, idOrigem, idDestino, ... }
+      mpPaymentId,                 // id do pagamento aprovado (MP)
+      schedule,                    // { idViagem, horaPartida, idOrigem, idDestino, agencia? }
       passengers,                  // [{ seatNumber, name, document }]
-      totalAmount,                 // valor total
+      totalAmount,                 // valor total cobrado
       idEstabelecimentoVenda = '1',
       idEstabelecimentoTicket = '93',
       serieBloco = '93',
@@ -657,7 +622,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       idaVolta = 'ida'
     } = req.body || {};
 
-    // 1) Revalida o pagamento
+    // 1) Revalidar pagamento no MP
     const r = await fetch(`https://api.mercadopago.com/v1/payments/${mpPaymentId}`, {
       headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
     });
@@ -667,22 +632,27 @@ app.post('/api/praxio/vender', async (req, res) => {
     }
 
     const mpAmount = Number(payment.transaction_amount || 0);
-    if (totalAmount && Number(totalAmount) > mpAmount + 0.01) {
-      return res.status(400).json({ ok:false, error:'Valor do item maior que o total pago.' });
-    }
+      // Aceita emissão por item: apenas impede item com valor acima do total pago.
+      // (se quiser, pode somar itens no back e garantir que a soma <= mpAmount)
+        if (totalAmount && Number(totalAmount) > mpAmount + 0.01) {
+          return res.status(400).json({ ok:false, error:'Valor do item maior que o total pago.' });
+        }
 
-    // tipo/forma de pagamento
-    const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card'|'debit_card'|'pix'|...
-    const tipoPagamento = (mpType === 'pix') ? '8' : '3';                // 8=PIX | 3=Cartão
-    const tipoCartao    = (mpType === 'credit_card') ? '1'
-                        : (mpType === 'debit_card')  ? '2'
-                        : '0';                                           // 0=PIX
-    const formaPagamento = (mpType === 'pix') ? 'PIX'
-                        : (mpType === 'debit_card') ? 'Cartão de Débito'
-                        : 'Cartão de Crédito';
-    const parcelas = Number(payment?.installments || 1);
+    // tipo/forma de pagamento (para o webhook)
+ const mpType = String(payment?.payment_type_id || '').toLowerCase(); // 'credit_card' | 'debit_card' | 'pix' | ...
+ const tipoPagamento = (mpType === 'pix') ? '8' : '3';                // 8 = PIX | 3 = Cartão
+ const tipoCartao    = (mpType === 'credit_card') ? '1'
+                    : (mpType === 'debit_card')  ? '2'
+                    : '0';                                           // 0 = sem cartão (PIX)
+ const formaPagamento = (mpType === 'pix') ? 'PIX'
+                      : (mpType === 'debit_card') ? 'Cartão de Débito'
+                      : 'Cartão de Crédito';
+ const parcelas = Number(payment?.installments || 1);
 
-    // helpers datas
+
+
+
+    // helpers de data para a VIAGEM
     function toYMD(dateStr) {
       if (!dateStr) return '';
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
@@ -709,16 +679,18 @@ app.post('/api/praxio/vender', async (req, res) => {
     // 2) Login Praxio
     const IdSessaoOp = await praxioLogin();
 
-    // 3) Monta body venda
-    const passagemXml = (passengers || []).map(p => ({
-      IdEstabelecimento: String(idEstabelecimentoTicket),
-      SerieBloco: String(serieBloco),
-      IdViagem: String(schedule?.idViagem || ''),
-      Poltrona: String(p.seatNumber || ''),
-      NomeCli: String(p.name || ''),
-      IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
-      TelefoneCli: String((p.phone || userPhone || '')).replace(/\D/g,''),
-    }));
+    
+
+    // 3) Montar body da venda
+ const passagemXml = (passengers || []).map(p => ({
+   IdEstabelecimento: String(idEstabelecimentoTicket),
+   SerieBloco: String(serieBloco),
+   IdViagem: String(schedule?.idViagem || ''),      // <- redundante, mas previne "Viagem 0"
+   Poltrona: String(p.seatNumber || ''),            // <- garante string numérica
+   NomeCli: String(p.name || ''),
+   IdentidadeCli: String((p.document || '').replace(/\D/g,'')),
+   TelefoneCli: String((p.phone || userPhone || '')).replace(/\D/g,''),
+ }));
 
     const horaPad = normalizeHoraPartida(schedule?.horaPartida);
     if (!schedule?.idViagem || !horaPad || !schedule?.idOrigem || !schedule?.idDestino || !passagemXml.length) {
@@ -736,199 +708,300 @@ app.post('/api/praxio/vender', async (req, res) => {
         Embarque: "S", Seguro: "N", Excesso: "N",
         BPe: 1,
         passagemXml,
-        pagamentoXml: [{
-          DataPagamento: nowWithTZOffsetISO(-180), // ISO -03:00
-          TipoPagamento: tipoPagamento,           // 8=PIX | 3=Cartão
-          TipoCartao: tipoCartao,                 // 1=crédito | 2=débito | 0=PIX
-          QtdParcelas: parcelas,
-          ValorPagamento: Number(totalAmount || mpAmount)
-        }]
+pagamentoXml: [{
+       DataPagamento: nowWithTZOffsetISO(-180),     // ISO -03:00
+       TipoPagamento: tipoPagamento,                // '8' PIX | '3' Cartão
+       TipoCartao: tipoCartao,                      // '1' crédito | '2' débito | '0' PIX
+       QtdParcelas: parcelas,
+       ValorPagamento: Number(totalAmount || mpAmount)
+}]
       }]
     };
 
     console.log('[Praxio][Venda] body:', JSON.stringify(bodyVenda).slice(0, 4000));
 
-    // 4) Chama Praxio
+    // 4) Chamar Praxio
     const vendaResult = await praxioVendaPassagem(bodyVenda);
     console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
 
-    // 5) Gerar PDFs (local) e subir no Drive
-    const subDir = new Date().toISOString().slice(0,10);
-    const outDir = path.join(TICKETS_DIR, subDir);
-    await fs.promises.mkdir(outDir, { recursive: true });
 
-    const arquivos = [];
-    const emailAttachments = []; // base64 + Buffer
-    const bilhetesPayload = [];
 
-    for (const p of (vendaResult.ListaPassagem || [])) {
-      const ticket = mapVendaToTicket({
-        ListaPassagem: [p],
-        mp: {
-          payment_type_id: payment.payment_type_id,
-          payment_method_id: (payment.payment_method?.id || payment.payment_method_id || ''),
-          status: payment.status,
-          installments: payment.installments
-        },
-        emissaoISO: new Date().toISOString()
-      });
+// 5) Gerar PDFs (local) e subir no Google Drive
+const subDir = new Date().toISOString().slice(0,10);
+const outDir = path.join(TICKETS_DIR, subDir);
+await fs.promises.mkdir(outDir, { recursive: true });
 
-      // 5.1 gerar PDF local
-      const pdf = await generateTicketPdf(ticket, outDir);
-      const localPath = path.join(outDir, pdf.filename);
-      const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
+const arquivos = [];
+const emailAttachments = []; // ← acumularemos os anexos (base64) para Brevo e Buffer para SMTP
+const bilhetesPayload = [];
+    
+for (const p of (vendaResult.ListaPassagem || [])) {
+  const ticket = mapVendaToTicket({
+    ListaPassagem: [p],
+    mp: {
+      payment_type_id: payment.payment_type_id,
+      payment_method_id: (payment.payment_method?.id || payment.payment_method_id || ''),
+      status: payment.status,
+      installments: payment.installments
+    },
+    emissaoISO: new Date().toISOString()
+  });
 
-      // 5.2 subir no Drive (opcional)
-      let drive = null;
-      try {
-        const buf = await fs.promises.readFile(localPath);
-        const nome = `BPE_${ticket.numPassagem}.pdf`;
-        drive = await uploadPdfToDrive({
-          buffer: buf,
-          filename: nome,
-          folderId: process.env.GDRIVE_FOLDER_ID,
-        });
+  // 5.1) gerar PDF local
+  const pdf = await generateTicketPdf(ticket, outDir);
+  const localPath = path.join(outDir, pdf.filename);
+  const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
 
-        // preparar anexos para e-mail
-        emailAttachments.push({
-          filename: nome,
-          contentBase64: buf.toString('base64'),
-          buffer: buf,
-        });
-      } catch (e) {
-        console.error('[Drive] upload falhou:', e?.message || e);
-        try {
-          const buf = await fs.promises.readFile(localPath);
-          const nome = `BPE_${ticket.numPassagem}.pdf`;
-          emailAttachments.push({
-            filename: nome,
-            contentBase64: buf.toString('base64'),
-            buffer: buf,
-          });
-        } catch(_) {}
-      }
+  // 5.2) subir no Drive (opcional, como você já tinha)
+  let drive = null;
+  try {
+    const buf = await fs.promises.readFile(localPath);
+    const nome = `BPE_${ticket.numPassagem}.pdf`;
+    drive = await uploadPdfToDrive({
+      buffer: buf,
+      filename: nome,
+      folderId: process.env.GDRIVE_FOLDER_ID,
+    });
 
-      arquivos.push({
-        numPassagem: ticket.numPassagem,
-        pdfLocal: localUrl,
-        driveUrl: drive?.webViewLink || null,
-        driveFileId: drive?.id || null
-      });
-
-      bilhetesPayload.push({
-        numPassagem: p.NumPassagem || ticket.numPassagem,
-        chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
-        origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
-        destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
-        poltrona:    p.Poltrona || ticket.poltrona || null,
-        nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
-        docCliente:  p.DocCliente || ticket.docCliente || null,
-        valor:       p.ValorPgto ?? ticket.valor ?? null
-      });
-    }
-
-    // 5.3 Envio imediato de e-mail — DESATIVADO (vamos enviar no agrupador)
-    const SEND_IMMEDIATE_EMAIL = false;
-    if (SEND_IMMEDIATE_EMAIL) {
-      try {
-        const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-        const loginEmail =
-          getMail(req?.user?.email) ||
-          getMail(req?.session?.user?.email) ||
-          getMail(req?.headers?.['x-user-email']) ||
-          getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-          getMail(req?.body?.userEmail) ||
-          getMail(req?.body?.user?.email) ||
-          null;
-        const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-        console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
-        if (to) {
-          // ... (enviar como antes)
-        }
-      } catch (e) {
-        console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
-      }
-    }
-
-    // 6) Webhook + E-mail via AGRUPADOR (POST único por compra)
+    // ← Preparar anexos para o e-mail (base64 para Brevo, Buffer para SMTP)
+    emailAttachments.push({
+      filename: nome,
+      contentBase64: buf.toString('base64'),
+      buffer: buf, // útil para SMTP
+    });
+  } catch (e) {
+    console.error('[Drive] upload falhou:', e?.message || e);
+    // Ainda assim adiciona anexo só com local
     try {
-      const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-      const userEmailFinal =
-        getMail(req?.user?.email) ||
-        getMail(req?.session?.user?.email) ||
-        getMail(req?.headers?.['x-user-email']) ||
-        getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-        getMail(req?.body?.userEmail) ||
-        getMail(req?.body?.user?.email) ||
-        null;
+      const buf = await fs.promises.readFile(localPath);
+      const nome = `BPE_${ticket.numPassagem}.pdf`;
+      emailAttachments.push({
+        filename: nome,
+        contentBase64: buf.toString('base64'),
+        buffer: buf,
+      });
+    } catch(_) {}
+  }
 
-      const toYMD = (isoOrBr) => {
-        try {
-          if (!isoOrBr) return '';
-          if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrBr)) return isoOrBr;
-          const m = String(isoOrBr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-          return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
-        } catch { return ''; }
-      };
-      const joinDateTime = (d, hm) => (d && hm) ? `${d} ${hm}` : (d || hm || '');
-      const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
-      const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
+  arquivos.push({
+    numPassagem: ticket.numPassagem,
+    pdfLocal: localUrl,                 // fallback local
+    driveUrl: drive?.webViewLink || null,
+    driveFileId: drive?.id || null
+  });
 
-      const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
-        ? bilhetesPayload
-        : (vendaResult.ListaPassagem || []).map(p => ({
-            numPassagem: p.NumPassagem,
-            chaveBPe:    p.ChaveBPe || null,
-            origem:      p.Origem,
-            destino:     p.Destino,
-            poltrona:    p.Poltrona,
-            nomeCliente: p.NomeCliente,
-            docCliente:  p.DocCliente,
-            valor:       p.ValorPgto
-          }));
+bilhetesPayload.push({
+  numPassagem: p.NumPassagem || ticket.numPassagem,
+  chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
+  origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  poltrona:    p.Poltrona || ticket.poltrona || null,
+  nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
+  docCliente:  p.DocCliente || ticket.docCliente || null,
+  valor:       p.ValorPgto ?? ticket.valor ?? null
+});
 
-      const fragment = {
-        base: {
-          fonte: 'sitevendas',
-          userEmail: userEmailFinal,
-          userPhone: req?.user?.phone || req?.session?.user?.phone || req?.headers?.['x-user-phone'] || req?.body?.loginPhone || null,
-          idaVolta:       req?.body?.idaVolta ?? null,
-          tipoPagamento:  req?.body?.tipoPagamento ?? null,
-          formaPagamento: req?.body?.formaPagamento ?? null,
-          dataViagem: ymdViagem,
-          dataHora:   joinDateTime(ymdViagem, hhmm),
-          mp: {
-            id: payment?.id,
-            status: payment?.status,
-            status_detail: payment?.status_detail,
-            external_reference: payment?.external_reference || null,
-            amount: payment?.transaction_amount
-          },
-          viagem: {
-            idViagem:    schedule?.idViagem,
-            horaPartida: schedule?.horaPartida || schedule?.departureTime,
-            idOrigem:    schedule?.idOrigem   || schedule?.originId,
-            idDestino:   schedule?.idDestino  || schedule?.destinationId,
-            origemNome:  schedule?.originName || schedule?.origem,
-            destinoNome: schedule?.destinationName || schedule?.destino,
-          },
-        },
-        bilhetes,
-        arquivos,
-        attachments: emailAttachments,
-      };
 
-      const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
-        || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+  
+}
 
-      const groupId = computeGroupId(req, payment, schedule);
-      await queueWebhookSend(groupId, fragment, hookUrl);
-      console.log('[Webhook salvarBpe] agrupado: groupId=', groupId, 'req-bilhetes=', bilhetes.length, 'userEmail=', userEmailFinal || '(nenhum)');
+// 5.3) Enviar e-mail para o cliente com todos os bilhetes
+try {
+  // extrai e-mail do login do mesmo jeito que o webhook usa
+const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+const loginEmail =
+  getMail(req?.user?.email) ||
+  getMail(req?.session?.user?.email) ||
+  getMail(req?.headers?.['x-user-email']) ||
+  getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+  getMail(req?.body?.userEmail) ||               // <<< ADICIONADO
+  getMail(req?.body?.user?.email) ||             // <<< ADICIONADO
+  null;
+
+// PRIORIDADE: e-mail do login; se não houver, cai no picker
+const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
+
+
+
+  if (to) {
+    const appName   = process.env.APP_NAME || 'Turin Transportes';
+    const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;                               //EMAIL FIXO, TEM QUE ALTERAR
+
+    // Dados resumidos da compra (ajuste conforme seu objeto "schedule"/req)
+    const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
+    const data = schedule?.date || '';
+    const hora = schedule?.horaPartida || schedule?.departureTime || '';
+    const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+    const listaBilhetesHtml = arquivos.map((a,i) => {
+      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
+      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+      return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
+    }).join('');
+
+    const html =
+      `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+        <p>Olá,</p>
+        <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+        <p><b>Rota:</b> ${rota}<br/>
+           <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
+           <b>Valor total:</b> ${valorTotalBRL}
+        </p>
+        <p><b>Bilhetes:</b></p>
+        <ul style="margin-top:8px">${listaBilhetesHtml}</ul>
+        <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+      </div>`;
+
+    const text =
+      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
+      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
+      `Bilhetes:\n` + arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
+
+    // 1) tentar SMTP (se configurado)
+    let sent = false;
+    try {
+      const got = await ensureTransport();
+      if (got.transporter) {
+        await got.transporter.sendMail({
+          from: `"${fromName}" <${fromEmail}>`,
+          to,
+          subject: `Seus bilhetes – ${appName}`,
+          html, text,
+          attachments: (emailAttachments || []).map(a => ({
+            filename: a.filename,
+            content: a.buffer, // Buffer
+          })),
+        });
+        sent = true;
+        console.log(`[Email] enviados ${emailAttachments.length} anexos para ${to} via ${got.mode}`);
+      }
     } catch (e) {
-      console.error('[Webhook salvarBpe] erro:', e?.message || e);
+      console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e);
     }
 
-    // 7) Retorno para o front
+    // 2) fallback: Brevo API (HTTPS)
+    if (!sent) {
+      await sendViaBrevoApi({
+        to,
+        subject: `Seus bilhetes – ${appName}`,
+        html, text,
+        fromEmail, fromName,
+        attachments: (emailAttachments || []).map(a => ({
+          filename: a.filename,
+          contentBase64: a.contentBase64, // base64
+        })),
+      });
+      console.log(`[Email] enviados ${emailAttachments.length} anexos para ${to} via Brevo API`);
+    }
+  } else {
+    console.warn('[Email] comprador sem e-mail. Pulando envio.');
+  }
+} catch (e) {
+  console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
+}
+
+
+    
+
+// 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
+try {
+  // 6.1) campos do login/contato (iguais aos do e-mail)
+const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+const userEmail =
+  getMail(req?.user?.email) ||
+  getMail(req?.session?.user?.email) ||
+  getMail(req?.headers?.['x-user-email']) ||
+  getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+  getMail(req?.body?.userEmail) ||             // <<< ADICIONADO
+  getMail(req?.body?.user?.email) ||           // <<< ADICIONADO
+  null;
+
+
+  const userPhone =
+    req?.user?.phone ||
+    req?.session?.user?.phone ||
+    req?.headers?.['x-user-phone'] ||
+    req?.body?.loginPhone ||
+    null;
+
+  // 6.2) datas/horas no mesmo formato
+  const toYMD = (isoOrBr) => {
+    try {
+      if (!isoOrBr) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrBr)) return isoOrBr;
+      const m = String(isoOrBr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+    } catch { return ''; }
+  };
+  const joinDateTime = (d, hm) => (d && hm) ? `${d} ${hm}` : (d || hm || '');
+  const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
+  const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
+
+  // 6.3) escolhe a lista de bilhetes deste request
+  const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
+    ? bilhetesPayload
+    : (vendaResult.ListaPassagem || []).map(p => ({
+        numPassagem: p.NumPassagem,
+        chaveBBe:    p.ChaveBPe || null,
+        origem:      p.Origem,
+        destino:     p.Destino,
+        poltrona:    p.Poltrona,
+        nomeCliente: p.NomeCliente,
+        docCliente:  p.DocCliente,
+        valor:       p.ValorPgto
+      }));
+
+  // 6.4) monta o "fragmento" desta chamada
+  const fragment = {
+    base: {
+      fonte: 'sitevendas',
+      userEmail,
+      userPhone,
+      idaVolta:       req?.body?.idaVolta ?? null,
+      tipoPagamento:  req?.body?.tipoPagamento ?? null,
+      formaPagamento: req?.body?.formaPagamento ?? null,
+      dataViagem: ymdViagem,                      // YYYY-MM-DD
+      dataHora:   joinDateTime(ymdViagem, hhmm),  // YYYY-MM-DD HH:mm
+      mp: {
+        id: payment?.id,
+        status: payment?.status,
+        status_detail: payment?.status_detail,
+        external_reference: payment?.external_reference || null,
+        amount: payment?.transaction_amount
+      },
+      viagem: {
+        idViagem:    schedule?.idViagem,
+        horaPartida: schedule?.horaPartida || schedule?.departureTime,
+        idOrigem:    schedule?.idOrigem   || schedule?.originId,
+        idDestino:   schedule?.idDestino  || schedule?.destinationId,
+        origemNome:  schedule?.originName || schedule?.origem,
+        destinoNome: schedule?.destinationName || schedule?.destino,
+      },
+    },
+    bilhetes,   // deste request
+    arquivos    // destes PDFs
+  };
+
+  // 6.5) calcula a chave de agrupamento e enfileira envio
+  const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
+    || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+
+  const groupId = computeGroupId(req, payment, schedule);
+  await queueWebhookSend(groupId, fragment, hookUrl);
+  console.log('[Webhook salvarBpe] agrupado: groupId=', groupId, 'req-bilhetes=', bilhetes.length, 'userEmail=', userEmail || '(nenhum)');
+} catch (e) {
+  console.error('[Webhook salvarBpe] erro:', e?.message || e);
+}
+
+
+
+
+   
+    
+
+    // 7) Retorno para o front (payment.js)
     return res.json({ ok: true, venda: vendaResult, arquivos });
 
   } catch (e) {
@@ -937,6 +1010,10 @@ app.post('/api/praxio/vender', async (req, res) => {
   }
 });
 
+
+
+
+    
 /* =================== Fallback para .html =================== */
 app.get('*', (req, res, next) => {
   if (req.path.endsWith('.html')) {
