@@ -36,21 +36,28 @@ const localities = [
   const content     = $('#content-root');
 
   // ======== Botão Limpar
-  const btnClear = document.getElementById('btnClear');
+const btnClear = document.getElementById('btnClear');
 if (btnClear) {
-  btnClear.addEventListener('click', () => {
+  btnClear.setAttribute('type', 'button'); // garante que não submete
+
+  btnClear.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     originInput.value = '';
     destInput.value   = '';
     dateInput.value   = '';
     retInput.value    = '';
-    // esconde painéis do autocomplete
+
     const acOrigin = document.querySelector('#ac-origin');
     const acDest   = document.querySelector('#ac-destination');
     if (acOrigin) acOrigin.hidden = true;
     if (acDest)   acDest.hidden   = true;
+
     originInput.focus();
   });
 }
+
 
 
 // ======== Enter para escolher
