@@ -16,100 +16,7 @@ const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
 
-/* ============================================================================
-   Agrupador de e-mail + webhook por compra (in-memory)
-   - Junta múltiplos requests da MESMA compra (ex.: 2 poltronas)
-   - Dispara 1 e-mail (com todos os anexos) e 1 webhook (com todos os bilhetes)
-============================================================================ */
-// ==== Agrupador por compra (in-memory) ====
-// groupId -> { timer, base, bilhetes:[], arquivos:[], email:{to,html,text,attachments}, flushed }
-const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 1200;
 
-function computeGroupId(req, payment, schedule) {
-  // Tente sempre usar o id do pagamento. Se não houver, caia para referencia/grupoId etc.
-  return String(
-    payment?.id ||
-    req?.body?.grupoId ||
-    req?.body?.referencia ||
-    payment?.external_reference ||
-    req?.headers?.['x-idempotency-key'] ||
-    [schedule?.idViagem, schedule?.date || schedule?.dataViagem, schedule?.horaPartida].join('|')
-  );
-}
-
-// Insere/atualiza o agregado e arma o flush
-async function queueUnifiedSend(groupId, fragment, hookUrl) {
-  let e = AGGR.get(groupId);
-  if (!e) e = { timer: null, base: null, bilhetes: [], arquivos: [], email: null, flushed: false };
-
-  // guarda a base uma única vez
-  if (!e.base && fragment.base) e.base = fragment.base;
-
-  // acumula bilhetes e arquivos
-  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) e.bilhetes.push(...fragment.bilhetes);
-  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) e.arquivos.push(...fragment.arquivos);
-
-  // se chegou pacote de e-mail, mantenha o “melhor” (normalmente o último sobrescreve)
-  if (fragment.email) e.email = fragment.email;
-
-  // rearmar o debounce
-  if (e.timer) clearTimeout(e.timer);
-  e.timer = setTimeout(async () => {
-    try {
-      // 1) webhook único
-      const payload = { ...e.base, bilhetes: e.bilhetes, arquivos: e.arquivos };
-      const resp = await fetch(hookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
-        body: JSON.stringify(payload),
-      });
-      console.log('[AGGR] webhook status=', resp.status, '| groupId=', groupId, '| itens=', e.bilhetes.length);
-
-      // 2) e-mail único (se houver “to”)
-      if (e.email?.to) {
-        let sent = false;
-        try {
-          const got = await ensureTransport();
-          if (got.transporter) {
-            await got.transporter.sendMail({
-              from: `"${e.email.fromName}" <${e.email.fromEmail}>`,
-              to: e.email.to,
-              subject: e.email.subject,
-              html: e.email.html,
-              text: e.email.text,
-              attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, content: a.buffer })),
-            });
-            sent = true;
-            console.log('[AGGR] email via SMTP para', e.email.to, '| anexos=', (e.email.attachments||[]).length);
-          }
-        } catch (err) {
-          console.warn('[AGGR] SMTP falhou, caindo p/ Brevo:', err?.message || err);
-        }
-        if (!sent) {
-          await sendViaBrevoApi({
-            to: e.email.to,
-            subject: e.email.subject,
-            html: e.email.html,
-            text: e.email.text,
-            fromEmail: e.email.fromEmail,
-            fromName: e.email.fromName,
-            attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, contentBase64: a.contentBase64 })),
-          });
-          console.log('[AGGR] email via Brevo para', e.email.to, '| anexos=', (e.email.attachments||[]).length);
-        }
-      }
-    } catch (err) {
-      console.error('[AGGR] flush erro:', err?.message || err);
-    } finally {
-      e.flushed = true;
-      AGGR.delete(groupId);
-    }
-  }, AGGR_DEBOUNCE_MS);
-
-  AGGR.set(groupId, e);
-  return e;
-}
 
 
 /* ============================================================================
@@ -268,6 +175,115 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+
+
+
+/* ============================================================================
+   Agrupador de e-mail + webhook por compra (in-memory)
+   - Junta múltiplos requests da MESMA compra (ex.: 2 poltronas)
+   - Dispara 1 e-mail (com todos os anexos) e 1 webhook (com todos os bilhetes)
+============================================================================ */
+// ==== Agrupador por compra (in-memory) ====
+// groupId -> { timer, base, bilhetes:[], arquivos:[], email:{to,html,text,attachments}, flushed }
+const AGGR = new Map();
+const AGGR_DEBOUNCE_MS = 1200;
+
+function computeGroupId(req, payment, schedule) {
+  // Tente sempre usar o id do pagamento. Se não houver, caia para referencia/grupoId etc.
+  return String(
+    payment?.id ||
+    req?.body?.grupoId ||
+    req?.body?.referencia ||
+    payment?.external_reference ||
+    req?.headers?.['x-idempotency-key'] ||
+    [schedule?.idViagem, schedule?.date || schedule?.dataViagem, schedule?.horaPartida].join('|')
+  );
+}
+
+// Insere/atualiza o agregado e arma o flush
+async function queueUnifiedSend(groupId, fragment, hookUrl) {
+  let e = AGGR.get(groupId);
+  if (!e) e = { timer: null, base: null, bilhetes: [], arquivos: [], email: null, flushed: false };
+
+  // guarda a base uma única vez
+  if (!e.base && fragment.base) e.base = fragment.base;
+
+  // acumula bilhetes e arquivos
+  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) e.bilhetes.push(...fragment.bilhetes);
+  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) e.arquivos.push(...fragment.arquivos);
+
+  // se chegou pacote de e-mail, mantenha o “melhor” (normalmente o último sobrescreve)
+  if (fragment.email) e.email = fragment.email;
+
+  // rearmar o debounce
+  if (e.timer) clearTimeout(e.timer);
+  e.timer = setTimeout(async () => {
+    try {
+      // 1) webhook único
+      const payload = { ...e.base, bilhetes: e.bilhetes, arquivos: e.arquivos };
+      const resp = await fetch(hookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
+        body: JSON.stringify(payload),
+      });
+      console.log('[AGGR] webhook status=', resp.status, '| groupId=', groupId, '| itens=', e.bilhetes.length);
+
+      // 2) e-mail único (se houver “to”)
+      if (e.email?.to) {
+        let sent = false;
+        try {
+          const got = await ensureTransport();
+          if (got.transporter) {
+            await got.transporter.sendMail({
+              from: `"${e.email.fromName}" <${e.email.fromEmail}>`,
+              to: e.email.to,
+              subject: e.email.subject,
+              html: e.email.html,
+              text: e.email.text,
+              attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, content: a.buffer })),
+            });
+            sent = true;
+            console.log('[AGGR] email via SMTP para', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+          }
+        } catch (err) {
+          console.warn('[AGGR] SMTP falhou, caindo p/ Brevo:', err?.message || err);
+        }
+        if (!sent) {
+          await sendViaBrevoApi({
+            to: e.email.to,
+            subject: e.email.subject,
+            html: e.email.html,
+            text: e.email.text,
+            fromEmail: e.email.fromEmail,
+            fromName: e.email.fromName,
+            attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, contentBase64: a.contentBase64 })),
+          });
+          console.log('[AGGR] email via Brevo para', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+        }
+      }
+    } catch (err) {
+      console.error('[AGGR] flush erro:', err?.message || err);
+    } finally {
+      e.flushed = true;
+      AGGR.delete(groupId);
+    }
+  }, AGGR_DEBOUNCE_MS);
+
+  AGGR.set(groupId, e);
+  return e;
+}
+
+
+
+
+
+
+
+
+
+
+
 
 /* =================== Middlewares =================== */
 app.use(express.json({ limit: '2mb' }));
