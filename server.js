@@ -15,15 +15,14 @@ const WEBHOOK_DEBOUNCE_MS = 3500;
 
 // Constrói a chave de agrupamento da compra
 function computeGroupId(req, payment, schedule) {
-  // 1) se houver, o id do pagamento é o melhor agrupador
+  // 1) id do pagamento é o melhor agrupador
   if (payment?.id) return `pay:${payment.id}`;
 
   // 2) chaves enviadas pelo front
-  const origRef = req?.body?.grupoId || req?.body?.referencia || payment?.external_reference;
-  const ref = origRef ? String(origRef).trim() : null;
+  const ref = (req?.body?.grupoId || req?.body?.referencia || payment?.external_reference || '').toString().trim();
   if (ref) return `ref:${ref}`;
 
-  // 3) normaliza data/hora para evitar chaves diferentes
+  // 3) normaliza data/hora
   const toYMD = (dateStr) => {
     try {
       if (!dateStr) return '';
@@ -47,31 +46,87 @@ function computeGroupId(req, payment, schedule) {
 }
 
 
+
 // Enfileira/agrupa e dispara o webhook 1x por grupo
 async function queueWebhookSend(groupId, fragment, hookUrl) {
   let entry = WEBHOOK_BUFFER.get(groupId);
-  if (!entry) entry = { timer: null, base: null, bilhetes: [], arquivos: [], emailSent: false };
+  if (!entry) entry = { timer: null, base: null, bilhetes: [], arquivos: [], attachments: [], emailSent: false };
 
-  // guarda o "base" (dados comuns) na primeira vez
   if (!entry.base) entry.base = fragment.base;
+  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) entry.bilhetes.push(...fragment.bilhetes);
+  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) entry.arquivos.push(...fragment.arquivos);
+  if (Array.isArray(fragment.attachments) && fragment.attachments.length) entry.attachments.push(...fragment.attachments);
 
-  // acumula bilhetes/arquivos
-  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) {
-    entry.bilhetes.push(...fragment.bilhetes);
-  }
-  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) {
-    entry.arquivos.push(...fragment.arquivos);
-  }
-
-  // reinicia o debounce
   if (entry.timer) clearTimeout(entry.timer);
   entry.timer = setTimeout(async () => {
     try {
-      const payload = {
-        ...entry.base,
-        bilhetes: entry.bilhetes,
-        arquivos: entry.arquivos,
-      };
+      // -------- 1) Enviar E-MAIL 1x com TODOS os anexos do grupo --------
+      if (!entry.emailSent) {
+        const to = entry.base?.userEmail || null;
+        if (to) {
+          const appName   = process.env.APP_NAME || 'Turin Transportes';
+          const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+          const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+          const rota = `${entry.base?.viagem?.origemNome || ''} → ${entry.base?.viagem?.destinoNome || ''}`;
+          const data = entry.base?.dataViagem || '';
+          const hora = (entry.base?.viagem?.horaPartida || '').toString().slice(0,5);
+          const valorTotalBRL = (Number(entry.base?.mp?.amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+          const lista = entry.arquivos.map((a,i)=>{
+            const link = a.driveUrl || a.pdfLocal || '';
+            const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+            return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
+          }).join('');
+
+          const html =
+            `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+              <p>Olá,</p>
+              <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+              <p><b>Rota:</b> ${rota}<br/>
+                 <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
+                 <b>Valor total:</b> ${valorTotalBRL}
+              </p>
+              <p><b>Bilhetes:</b></p>
+              <ul style="margin-top:8px">${lista}</ul>
+              <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+            </div>`;
+
+          const text =
+            `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
+            `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
+            `Bilhetes:\n` + entry.arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
+
+          // tentamos SMTP; se não, Brevo
+          let sent = false;
+          try {
+            const got = await ensureTransport();
+            if (got.transporter) {
+              await got.transporter.sendMail({
+                from: `"${fromName}" <${fromEmail}>`,
+                to, subject: `Seus bilhetes – ${appName}`, html, text,
+                attachments: entry.attachments.map(a => ({ filename: a.filename, content: a.buffer }))
+              });
+              sent = true;
+              console.log(`[Email(grouped)] enviados ${entry.attachments.length} anexos para ${to} via ${got.mode}`);
+            }
+          } catch (e) {
+            console.warn('[Email(grouped) SMTP] falhou, tentando Brevo...', e?.message || e);
+          }
+          if (!sent) {
+            await sendViaBrevoApi({
+              to, subject: `Seus bilhetes – ${appName}`, html, text, fromEmail, fromName,
+              attachments: entry.attachments.map(a => ({ filename: a.filename, contentBase64: a.contentBase64 }))
+            });
+            console.log(`[Email(grouped)] enviados ${entry.attachments.length} anexos para ${to} via Brevo API`);
+          }
+        } else {
+          console.warn('[Email(grouped)] userEmail ausente — e-mail não enviado.');
+        }
+        entry.emailSent = true;
+      }
+
+      // -------- 2) Enviar WEBHOOK 1x com todos os bilhetes --------
+      const payload = { ...entry.base, bilhetes: entry.bilhetes, arquivos: entry.arquivos };
       const resp = await fetch(hookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
@@ -89,6 +144,7 @@ async function queueWebhookSend(groupId, fragment, hookUrl) {
   WEBHOOK_BUFFER.set(groupId, entry);
   return entry;
 }
+
 
 
 
@@ -793,6 +849,8 @@ for (const p of (vendaResult.ListaPassagem || [])) {
   });
 }
 
+    
+/*
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
   // Preferência: e-mail do login (headers/body/session). Se não houver, usa o picker.
@@ -898,9 +956,16 @@ try {
   } else {
     console.warn('[Email] comprador sem e-mail. Pulando envio.');
   }
-} catch (e) {
+} 
+
+
+
+
+catch (e) {
   console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
 }
+
+  */
 
 // 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
@@ -978,7 +1043,8 @@ const userEmail =
       },
     },
     bilhetes,   // deste request
-    arquivos    // destes PDFs
+    arquivos,    // destes PDFs
+    attachments: emailAttachments // <<<<< ADICIONE ESTA LINHA
   };
 
   // 6.5) calcula a chave de agrupamento e enfileira envio
