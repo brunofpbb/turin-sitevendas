@@ -8,6 +8,16 @@ const nodemailer = require('nodemailer');
 const { uploadPdfToDrive } = require('./drive');
 
 
+// === serviços de bilhete (PDF) ===
+const { mapVendaToTicket } = require('./services/ticket/mapper');
+const { generateTicketPdf } = require('./services/ticket/pdf');
+
+const app = express();
+const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
+const TICKETS_DIR = path.join(__dirname, 'tickets');
+const PORT = process.env.PORT || 8080;
+
+
 
 // ==== Agrupador de webhooks por compra (in-memory) ====
 const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], emailSent }
@@ -90,53 +100,6 @@ async function queueWebhookSend(groupId, fragment, hookUrl) {
   return entry;
 }
 
-
-
-
-
-
-
-
-
-
-// === serviços de bilhete (PDF) ===
-const { mapVendaToTicket } = require('./services/ticket/mapper');
-const { generateTicketPdf } = require('./services/ticket/pdf');
-
-const app = express();
-const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
-const TICKETS_DIR = path.join(__dirname, 'tickets');
-const PORT = process.env.PORT || 8080;
-
-
-
-function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
-  const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
-
-  // PRIORIDADE: fontes do login/front (inclui o body.userEmail do legacy)
-  const fromLogin =
-    req?.user?.email ||
-    req?.session?.user?.email ||
-    req?.headers?.['x-user-email'] ||
-    req?.body?.loginEmail ||
-    req?.body?.emailLogin ||
-    req?.body?.userEmail ||            // <<< ADICIONADO
-    req?.body?.user?.email;            // <<< ADICIONADO
-
-  if (isMail(fromLogin)) return String(fromLogin).trim();
-
-  // Fallbacks
-  const fromMP = payment?.payer?.email || payment?.additional_info?.payer?.email;
-  if (isMail(fromMP)) return String(fromMP).trim();
-
-  const fromReq = req?.body?.email || req?.body?.buyerEmail || req?.body?.clienteEmail;
-  if (isMail(fromReq)) return String(fromReq).trim();
-
-  const fromVenda = vendaResult?.Email || vendaResult?.EmailCliente;
-  if (isMail(fromVenda)) return String(fromVenda).trim();
-
-  return fallback || null;
-}
 
 
 
@@ -390,6 +353,8 @@ const MAX_ATTEMPTS = 6;
 const genCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 const normalizeEmail = e => String(e || '').trim().toLowerCase();
 
+
+
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of codes.entries()) if (v.expiresAt <= now) codes.delete(k);
@@ -459,6 +424,48 @@ app.post('/api/auth/verify-code', (req, res) => {
   const user = { email, name: email.split('@')[0], createdAt: new Date().toISOString() };
   res.json({ ok: true, user });
 });
+
+
+
+
+function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
+  const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+
+  // PRIORIDADE: fontes do login/front (inclui o body.userEmail do legacy)
+  const fromLogin =
+    req?.user?.email ||
+    req?.session?.user?.email ||
+    req?.headers?.['x-user-email'] ||
+    req?.body?.loginEmail ||
+    req?.body?.emailLogin ||
+    req?.body?.userEmail ||            // <<< ADICIONADO
+    req?.body?.user?.email;            // <<< ADICIONADO
+
+  if (isMail(fromLogin)) return String(fromLogin).trim();
+
+  // Fallbacks
+  const fromMP = payment?.payer?.email || payment?.additional_info?.payer?.email;
+  if (isMail(fromMP)) return String(fromMP).trim();
+
+  const fromReq = req?.body?.email || req?.body?.buyerEmail || req?.body?.clienteEmail;
+  if (isMail(fromReq)) return String(fromReq).trim();
+
+  const fromVenda = vendaResult?.Email || vendaResult?.EmailCliente;
+  if (isMail(fromVenda)) return String(fromVenda).trim();
+
+  return fallback || null;
+}
+
+
+
+
+
+
+
+
+
+
+
 
 /* =================== Praxio helpers =================== */
 
@@ -729,6 +736,8 @@ pagamentoXml: [{
     const vendaResult = await praxioVendaPassagem(bodyVenda);
     console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
 
+   
+    
    // 5) Gerar PDFs (local) e subir no Google Drive
 const subDir = new Date().toISOString().slice(0,10);
 const outDir = path.join(TICKETS_DIR, subDir);
@@ -736,6 +745,7 @@ await fs.promises.mkdir(outDir, { recursive: true });
 
 const arquivos = [];
 const emailAttachments = []; // ← acumularemos os anexos (base64) para Brevo e Buffer para SMTP
+const bilhetesPayload = [];
 
 for (const p of (vendaResult.ListaPassagem || [])) {
   const ticket = mapVendaToTicket({
@@ -753,6 +763,11 @@ for (const p of (vendaResult.ListaPassagem || [])) {
   const pdf = await generateTicketPdf(ticket, outDir);
   const localPath = path.join(outDir, pdf.filename);
   const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
+
+
+  
+
+  
 
   // 5.2) subir no Drive (opcional, como você já tinha)
   let drive = null;
@@ -785,56 +800,67 @@ for (const p of (vendaResult.ListaPassagem || [])) {
     } catch(_) {}
   }
 
+
+    // montar item de bilhete para o webhook (um por passagem)
+bilhetesPayload.push({
+  numPassagem: p.NumPassagem || ticket.numPassagem,
+  chaveBPe:   p.ChaveBPe || ticket.chaveBPe || null,
+  origem:     p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destino:    p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  poltrona:   p.Poltrona || ticket.poltrona || null,
+  nomeCliente:p.NomeCliente || ticket.nomeCliente || null,
+  docCliente: p.DocCliente || ticket.docCliente || null,
+  valor:      p.ValorPgto ?? ticket.valor ?? null
+});
+
+// (mantenha seu arquivos.push(...) como já está)
+
   arquivos.push({
     numPassagem: ticket.numPassagem,
     pdfLocal: localUrl,                 // fallback local
     driveUrl: drive?.webViewLink || null,
     driveFileId: drive?.id || null
   });
+
+  
 }
+
 
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
-  // Preferência: e-mail do login (headers/body/session). Se não houver, usa o picker.
-  const getMail = v =>
-    (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+// extrai e-mail do login do mesmo jeito que o webhook usa
+const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+const loginEmail =
+  getMail(req?.user?.email) ||
+  getMail(req?.session?.user?.email) ||
+  getMail(req?.headers?.['x-user-email']) ||
+  getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+  getMail(req?.body?.userEmail) ||               // <<< ADICIONADO
+  getMail(req?.body?.user?.email) ||             // <<< ADICIONADO
+  null;
 
-  const loginEmail =
-    getMail(req?.user?.email) ||
-    getMail(req?.session?.user?.email) ||
-    getMail(req?.headers?.['x-user-email']) ||
-    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-    getMail(req?.body?.userEmail) ||
-    getMail(req?.body?.user?.email) ||
-    null;
+// PRIORIDADE: e-mail do login; se não houver, cai no picker
+const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
 
-  const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-  console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
+
+fallback: null,
+  });
 
   if (to) {
     const appName   = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
     const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
-    // Resumo da compra
+    // Dados resumidos da compra (ajuste conforme seu objeto "schedule"/req)
     const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
     const data = schedule?.date || '';
     const hora = schedule?.horaPartida || schedule?.departureTime || '';
-    const valorTotalBRL = (Number(payment?.transaction_amount || 0))
-      .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
-    const listaBilhetesHtml = (arquivos || []).map((a, i) => {
-      const linkAbs = (() => {
-        if (a.driveUrl) return a.driveUrl;
-        if (a.pdfLocal) {
-          try { return new URL(a.pdfLocal, `https://${req.headers.host}`).href; }
-          catch { return ''; }
-        }
-        return '';
-      })();
-      const linkHtml = linkAbs
-        ? `<div style="margin:2px 0"><a href="${linkAbs}" target="_blank" rel="noopener">Abrir bilhete ${i + 1}</a></div>`
-        : '';
+    const listaBilhetesHtml = arquivos.map((a,i) => {
+      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
+      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
       return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
     }).join('');
 
@@ -852,11 +878,11 @@ try {
       </div>`;
 
     const text =
-      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n` +
-      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n` +
-      `Bilhetes:\n` + (arquivos || []).map((a, i) => ` - Bilhete ${i + 1}: ${a.numPassagem}`).join('\n');
+      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
+      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
+      `Bilhetes:\n` + arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
 
-    // 1) Tentar SMTP (se disponível)
+    // 1) tentar SMTP (se configurado)
     let sent = false;
     try {
       const got = await ensureTransport();
@@ -865,35 +891,32 @@ try {
           from: `"${fromName}" <${fromEmail}>`,
           to,
           subject: `Seus bilhetes – ${appName}`,
-          html,
-          text,
+          html, text,
           attachments: (emailAttachments || []).map(a => ({
             filename: a.filename,
             content: a.buffer, // Buffer
           })),
         });
         sent = true;
-        console.log(`[Email] enviados ${emailAttachments?.length || 0} anexos para ${to} via ${got.mode}`);
+        console.log(`[Email] enviados ${emailAttachments.length} anexos para ${to} via ${got.mode}`);
       }
     } catch (e) {
       console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e);
     }
 
-    // 2) Fallback: Brevo API
+    // 2) fallback: Brevo API (HTTPS)
     if (!sent) {
       await sendViaBrevoApi({
         to,
         subject: `Seus bilhetes – ${appName}`,
-        html,
-        text,
-        fromEmail,
-        fromName,
+        html, text,
+        fromEmail, fromName,
         attachments: (emailAttachments || []).map(a => ({
           filename: a.filename,
           contentBase64: a.contentBase64, // base64
         })),
       });
-      console.log(`[Email] enviados ${emailAttachments?.length || 0} anexos para ${to} via Brevo API`);
+      console.log(`[Email] enviados ${emailAttachments.length} anexos para ${to} via Brevo API`);
     }
   } else {
     console.warn('[Email] comprador sem e-mail. Pulando envio.');
@@ -904,8 +927,9 @@ try {
 
 
 
-   /* 
 
+
+    
 // 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
   // 6.1) campos do login/contato (iguais aos do e-mail)
@@ -997,80 +1021,6 @@ const userEmail =
 }
 
 
-*/
-
-
-
-
-
-    
-
-    // 6) Webhook salvarBpe (payload completo)
-    const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
-    const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00');
-
-    const payloadWebhook = {
-      fonte: 'sitevendas',
-      userEmail,
-      userPhone,
-      idaVolta,
-      tipoPagamento,
-      formaPagamento,
-      dataViagem: ymdViagem,                   // YYYY-MM-DD
-      dataHora: joinDateTime(ymdViagem, hhmm), // YYYY-MM-DD HH:mm
-      mp: {
-        id: payment.id,
-        status: payment.status,
-        status_detail: payment.status_detail,
-        external_reference: payment.external_reference || null,
-        amount: payment.transaction_amount
-      },
-      viagem: {
-        idViagem: schedule.idViagem,
-        horaPartida: schedule.horaPartida,
-        idOrigem: schedule.idOrigem,
-        idDestino: schedule.idDestino
-      },
-
-
-bilhetes: (vendaResult.ListaPassagem || [])
-  .filter(p => p && p.NumPassagem) // <<< filtro
-  .map(p => {
-    const ymd = toYMD(p.DataViagem || ymdViagem);
-    const hh = hhmm;
-    return {
-      numPassagem: p.NumPassagem,
-      chaveBPe: p.ChaveBPe,
-      origem: p.Origem,
-      destino: p.Destino,
-      poltrona: p.Poltrona,
-      nomeCliente: p.NomeCliente,
-      docCliente: p.DocCliente,
-      valor: p.ValorPgto,
-      dataViagem: ymd,
-      dataHora: joinDateTime(ymd, hh),
-      idaVolta                                // <<< NOVO
-    };
-  }),
-
-
-      
-      arquivos
-    };
-
-    try {
-      const hook = await fetch('https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadWebhook),
-      });
-      console.log('[Webhook salvarBpe] status:', hook.status);
-    } catch (e) {
-      console.error('[Webhook salvarBpe] erro:', e?.message || e);
-    }
-
-
-
 
 
 
@@ -1082,6 +1032,8 @@ bilhetes: (vendaResult.ListaPassagem || [])
     return res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
   }
 });
+
+
 
 
 
