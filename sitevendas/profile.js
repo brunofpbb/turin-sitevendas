@@ -311,7 +311,7 @@ async function renderReservations() {
               </div>
             </div>
             <div class="actions" style="margin-top:10px">
-              <button class="btn btn-primary" data-act="do-cancel" data-id="${idCard}">Realizar cancelamento</button>
+              <button class="btn btn-primary" data-act="do-cancel" data-id="${idCard}" data-bilhete="${tk.ticketNumber || ''}">Realizar cancelamento</button>
               <button class="btn btn-ghost" data-act="close-preview">Voltar</button>
             </div>
           </div>
@@ -321,7 +321,8 @@ async function renderReservations() {
           ${!showPreview ? btnBilhete : ''}
           ${!showPreview ? `
             <button class="btn ${podeCancelar ? 'btn-danger' : 'btn-disabled'} btn-cancel"
-                    data-id="${idCard}" ${podeCancelar ? '' : 'disabled title="Só é permitido até 12h antes da partida"'}>
+              data-id="${idCard}" data-bilhete="${tk.ticketNumber || ''}"
+              ${podeCancelar ? '' : 'disabled title="Só é permitido até 12h antes da partida"'}>
               Cancelar
             </button>` : ''}
         </div>
@@ -344,16 +345,35 @@ async function renderReservations() {
       renderReservations();
     });
   });
-  container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const id = btn.getAttribute('data-id');
-      if (!confirm('Confirmar cancelamento desta viagem?')) return;
-      // aqui você pode chamar seu endpoint real de cancelamento, se houver
+container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    const num = (btn.getAttribute('data-bilhete') || '').trim();
+    if (!num) { alert('Não foi possível identificar o número do bilhete.'); return; }
+    if (!confirm('Confirmar cancelamento desta viagem?')) return;
+
+    btn.disabled = true; const old = btn.textContent; btn.textContent = 'Cancelando...';
+    try {
+      const r = await fetch('/api/cancel-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numeroPassagem: num, motivo: 'Solicitação do cliente via portal' })
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) throw new Error(j?.error || 'Falha no cancelamento');
+
+      alert(`Bilhete cancelado!\nEstorno solicitado: R$ ${Number(j.valorRefund).toFixed(2).replace('.',',')}.`);
       previewId = null;
       renderReservations();
-      alert('Cancelamento solicitado com sucesso. O reembolso será processado conforme as regras.');
-    });
+    } catch (e) {
+      alert('Não foi possível cancelar: ' + (e.message || 'Erro desconhecido'));
+      console.error('[cancel]', e);
+    } finally {
+      btn.disabled = false; btn.textContent = old;
+    }
   });
+});
+
+
 }
 
   // inicializa a tela
