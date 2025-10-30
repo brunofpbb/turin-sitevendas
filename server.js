@@ -6,6 +6,9 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { uploadPdfToDrive } = require('./drive');
+const fetch = require('node-fetch');                // se não existir ainda
+
+
 
 // === serviços de bilhete (PDF) ===
 const { mapVendaToTicket } = require('./services/ticket/mapper');
@@ -223,6 +226,62 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
   }
 });
 
+
+
+// === Google Sheets via Service Account ===
+function getSheets() {
+  const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
+  if (!key.client_email || !key.private_key) throw new Error('GDRIVE_SA_KEY ausente/ inválida');
+  const auth = new google.auth.JWT(
+    key.client_email, null, key.private_key,
+    ['https://www.googleapis.com/auth/spreadsheets']
+  );
+  return google.sheets({ version: 'v4', auth });
+}
+
+async function sheetsFindByBilhete(numPassagem) {
+  const sheets = getSheets();
+  const spreadsheetId = process.env.GSHEET_ID;
+  const tab = process.env.GSHEET_TAB_NAME || 'BPE';
+
+  const { data } = await sheets.spreadsheets.values.get({
+    spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE'
+  });
+
+  const rows = data.values || [];
+  const header = rows[0]?.map(v => String(v || '').trim()) || [];
+  const idx = (name) => header.findIndex(h => h.toLowerCase() === String(name).toLowerCase());
+  const idxNum = idx('NumPassagem');
+  if (idxNum < 0) throw new Error('Coluna "NumPassagem" não encontrada');
+
+  const rowIndex = rows.findIndex((r, i) => i>0 && String(r[idxNum]||'').trim() === String(numPassagem));
+  if (rowIndex < 0) throw new Error('Bilhete não encontrado');
+
+  return { spreadsheetId, tab, rows, header, rowIndex };
+}
+
+async function sheetsUpdateStatus(rowIndex, status) {
+  const sheets = getSheets();
+  const spreadsheetId = process.env.GSHEET_ID;
+  const tab = process.env.GSHEET_TAB_NAME || 'BPE';
+
+  const { data } = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${tab}!1:1` });
+  const header = data.values?.[0] || [];
+  const col = header.findIndex(h => String(h).trim() === 'Status');
+  if (col < 0) throw new Error('Coluna "Status" não encontrada');
+
+  const colA = String.fromCharCode(65 + col); // A=65
+  const a1 = `${tab}!${colA}${rowIndex+1}`;
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId, range: a1, valueInputOption: 'RAW', requestBody: { values: [[status]] }
+  });
+}
+
+
+
+
+
 /* ============================================================================
    Descobrir e-mail do cliente (prioriza login, inclui body.userEmail)
 ============================================================================ */
@@ -291,6 +350,78 @@ app.get('/api/_diag', (_req, res) => {
     public_key: process.env.MP_PUBLIC_KEY || null
   });
 });
+
+
+async function mpRefund({ paymentId, amount, idempotencyKey }) {
+  const url = `https://api.mercadopago.com/v1/payments/${paymentId}/refunds`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+      'X-Idempotency-Key': String(idempotencyKey || `cancel-${paymentId}-${amount}-${Date.now()}`)
+    },
+    body: JSON.stringify({ amount: Number(amount) })
+  });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) { const e = new Error(j?.message || 'Falha no estorno do Mercado Pago'); e.details=j; throw e; }
+  return j;
+}
+
+
+// === Cancelamento completo: Praxio → refund MP (95%) → Status "Cancelado" no Sheets ===
+app.post('/api/cancel-ticket', async (req, res) => {
+  try {
+    const numeroPassagem = String(req.body?.numeroPassagem || '').trim();
+    const motivo = req.body?.motivo || 'Solicitação do cliente via portal';
+    if (!numeroPassagem) return res.status(400).json({ ok:false, error:'numeroPassagem é obrigatório.' });
+
+    // 1) Lê a planilha para obter valor e id do pagamento
+    const { spreadsheetId, tab, rows, header, rowIndex } = await sheetsFindByBilhete(numeroPassagem);
+    const idx = (name) => header.findIndex(h => h.toLowerCase() === String(name).toLowerCase());
+    const row = rows[rowIndex];
+
+    const idxValor = idx('Valor');
+    const idxIdPg  = idx('idPagamento') !== -1 ? idx('idPagamento') : idx('IdPagamento');
+    const idxCorr  = idx('correlationID');
+
+    if (idxValor < 0 || idxIdPg < 0) throw new Error('Colunas Valor/idPagamento não encontradas na planilha');
+
+    // valor → número (suporta "6,60" ou 6.60)
+    const rawValor = String(row[idxValor] ?? '').replace(/\./g,'').replace(',', '.');
+    const valorOriginal = Number(rawValor || row[idxValor] || 0);
+    const valorRefund   = Math.max(0, Number((valorOriginal * 0.95).toFixed(2)));
+    const paymentId     = String(row[idxIdPg] ?? '').trim();
+    const correlationID = idxCorr >= 0 ? String(row[idxCorr] ?? '').trim() : null;
+
+    if (!paymentId) throw new Error('idPagamento vazio na planilha');
+
+    // 2) Praxio – verifica e grava
+    const IdSessaoOp = await praxioLogin();
+    const ver = await praxioVerificaDevolucao({ idSessao: IdSessaoOp, numPassagem: numeroPassagem, motivo });
+    const xmlPassagem = ver?.Xml?.Passagem || ver?.Xml?.['Passagem'];
+    if (!xmlPassagem) throw new Error('Retorno Praxio inválido (sem Xml.Passagem)');
+    const grava = await praxioGravaDevolucao({ idSessao: IdSessaoOp, xmlPassagem });
+
+    // 3) Mercado Pago – estorno parcial 95%
+    const refund = await mpRefund({ paymentId, amount: valorRefund, idempotencyKey: correlationID });
+
+    // 4) Atualiza planilha
+    await sheetsUpdateStatus(rowIndex, 'Cancelado');
+
+    return res.json({ ok:true, numeroPassagem, valorOriginal, valorRefund, praxio:grava, mp:refund });
+  } catch (e) {
+    const http = e?.code === 'PRAXIO_BLOQUEADO' ? 409 : 500;
+    return res.status(http).json({ ok:false, error: e.message || 'Falha no cancelamento', details: e.details||null });
+  }
+});
+
+
+
+
+
+
+
 
 /* =================== SMTP / Brevo =================== */
 function createSSL() {
@@ -495,6 +626,50 @@ async function praxioVendaPassagem(bodyVenda) {
   }
   return data;
 }
+
+
+async function praxioVerificaDevolucao({ idSessao, numPassagem, motivo }) {
+  const url = 'https://oci-parceiros2.praxioluna.com.br/Autumn/VendaPassagem/VerificaDevolucao';
+  const body = {
+    IdSessaoOp: idSessao,
+    FusoHorario: '-03:00',
+    IdEstabelecimento: String(process.env.PRAXIO_ID_ESTAB || '93'),
+    SerieBloco: String(process.env.PRAXIO_SERIE_BLOCO || '93'),
+    NumPassagem: String(numPassagem),
+    MotivoCancelamento: String(motivo || 'Cancelamento solicitado pelo cliente')
+  };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error('VerificaDevolucao falhou');
+  if (j?.IdErro) { const err = new Error(j?.Mensagem || 'Não é possível cancelar'); err.code='PRAXIO_BLOQUEADO'; throw err; }
+  return j;
+}
+
+async function praxioGravaDevolucao({ idSessao, xmlPassagem }) {
+  const url = 'https://oci-parceiros2.praxioluna.com.br/Autumn/VendaPassagem/GravaDevolucao';
+  const body = {
+    IdSessaoOp: idSessao,
+    IdEstabelecimentoDevolucao: String(xmlPassagem.IDEstabelecimento),
+    ValorVenda: String(xmlPassagem.ValorPago),
+    Passagem: {
+      IDEstabelecimento: String(xmlPassagem.IDEstabelecimento),
+      SerieBloco: String(xmlPassagem.SerieBloco),
+      NumeroPassagem: String(xmlPassagem.NumeroPassagem),
+      Poltrona: String(xmlPassagem.NumeroPoltrona),
+      ValorDevolucao: String(xmlPassagem.ValorPago),
+      IdCaixa: 0
+    }
+  };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error('GravaDevolucao falhou');
+  return j;
+}
+
+
+
+
+
 
 // Data com offset -03:00 (ex.: 2025-10-17T22:12:24-03:00)
 function nowWithTZOffsetISO(offsetMinutes = -(3 * 60)) {
