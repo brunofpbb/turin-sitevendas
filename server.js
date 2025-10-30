@@ -795,39 +795,46 @@ for (const p of (vendaResult.ListaPassagem || [])) {
 
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
-  const to = pickBuyerEmail({
-// extrai e-mail do login do mesmo jeito que o webhook usa
-const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-const loginEmail =
-  getMail(req?.user?.email) ||
-  getMail(req?.session?.user?.email) ||
-  getMail(req?.headers?.['x-user-email']) ||
-  getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-  getMail(req?.body?.userEmail) ||               // <<< ADICIONADO
-  getMail(req?.body?.user?.email) ||             // <<< ADICIONADO
-  null;
+  // Preferência: e-mail do login (headers/body/session). Se não houver, usa o picker.
+  const getMail = v =>
+    (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
 
-// PRIORIDADE: e-mail do login; se não houver, cai no picker
-const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
+  const loginEmail =
+    getMail(req?.user?.email) ||
+    getMail(req?.session?.user?.email) ||
+    getMail(req?.headers?.['x-user-email']) ||
+    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+    getMail(req?.body?.userEmail) ||
+    getMail(req?.body?.user?.email) ||
+    null;
 
-
-  
+  const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+  console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
 
   if (to) {
     const appName   = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
     const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
-    // Dados resumidos da compra (ajuste conforme seu objeto "schedule"/req)
+    // Resumo da compra
     const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
     const data = schedule?.date || '';
     const hora = schedule?.horaPartida || schedule?.departureTime || '';
-    const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    const valorTotalBRL = (Number(payment?.transaction_amount || 0))
+      .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    const listaBilhetesHtml = arquivos.map((a,i) => {
-      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
-      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+    const listaBilhetesHtml = (arquivos || []).map((a, i) => {
+      const linkAbs = (() => {
+        if (a.driveUrl) return a.driveUrl;
+        if (a.pdfLocal) {
+          try { return new URL(a.pdfLocal, `https://${req.headers.host}`).href; }
+          catch { return ''; }
+        }
+        return '';
+      })();
+      const linkHtml = linkAbs
+        ? `<div style="margin:2px 0"><a href="${linkAbs}" target="_blank" rel="noopener">Abrir bilhete ${i + 1}</a></div>`
+        : '';
       return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
     }).join('');
 
@@ -845,11 +852,11 @@ console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=',
       </div>`;
 
     const text =
-      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
-      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
-      `Bilhetes:\n` + arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
+      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n` +
+      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n` +
+      `Bilhetes:\n` + (arquivos || []).map((a, i) => ` - Bilhete ${i + 1}: ${a.numPassagem}`).join('\n');
 
-    // 1) tentar SMTP (se configurado)
+    // 1) Tentar SMTP (se disponível)
     let sent = false;
     try {
       const got = await ensureTransport();
@@ -858,32 +865,35 @@ console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=',
           from: `"${fromName}" <${fromEmail}>`,
           to,
           subject: `Seus bilhetes – ${appName}`,
-          html, text,
+          html,
+          text,
           attachments: (emailAttachments || []).map(a => ({
             filename: a.filename,
             content: a.buffer, // Buffer
           })),
         });
         sent = true;
-        console.log(`[Email] enviados ${emailAttachments.length} anexos para ${to} via ${got.mode}`);
+        console.log(`[Email] enviados ${emailAttachments?.length || 0} anexos para ${to} via ${got.mode}`);
       }
     } catch (e) {
       console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e);
     }
 
-    // 2) fallback: Brevo API (HTTPS)
+    // 2) Fallback: Brevo API
     if (!sent) {
       await sendViaBrevoApi({
         to,
         subject: `Seus bilhetes – ${appName}`,
-        html, text,
-        fromEmail, fromName,
+        html,
+        text,
+        fromEmail,
+        fromName,
         attachments: (emailAttachments || []).map(a => ({
           filename: a.filename,
           contentBase64: a.contentBase64, // base64
         })),
       });
-      console.log(`[Email] enviados ${emailAttachments.length} anexos para ${to} via Brevo API`);
+      console.log(`[Email] enviados ${emailAttachments?.length || 0} anexos para ${to} via Brevo API`);
     }
   } else {
     console.warn('[Email] comprador sem e-mail. Pulando envio.');
@@ -891,7 +901,6 @@ console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=',
 } catch (e) {
   console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
 }
-
 
 // 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
