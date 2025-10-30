@@ -13,7 +13,6 @@ const { uploadPdfToDrive } = require('./drive');
 const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], emailSent }
 const WEBHOOK_DEBOUNCE_MS = 3500;
 
-
 // Constrói a chave de agrupamento da compra
 function computeGroupId(req, payment, schedule) {
   // 1) se houver, o id do pagamento é o melhor agrupador
@@ -46,8 +45,6 @@ function computeGroupId(req, payment, schedule) {
 
   return `sched:${schedule?.idViagem || ''}|${ymd}|${hhmm}|${email}`;
 }
-
-
 
 
 // Enfileira/agrupa e dispara o webhook 1x por grupo
@@ -92,7 +89,6 @@ async function queueWebhookSend(groupId, fragment, hookUrl) {
   WEBHOOK_BUFFER.set(groupId, entry);
   return entry;
 }
-
 
 
 
@@ -797,8 +793,6 @@ for (const p of (vendaResult.ListaPassagem || [])) {
   });
 }
 
-    
-
 // 5.3) Enviar e-mail para o cliente com todos os bilhetes
 try {
   // Preferência: e-mail do login (headers/body/session). Se não houver, usa o picker.
@@ -904,16 +898,13 @@ try {
   } else {
     console.warn('[Email] comprador sem e-mail. Pulando envio.');
   }
-} 
-
-
-
-
-catch (e) {
+} catch (e) {
   console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
 }
 
-  
+
+
+    
 
 // 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
@@ -991,8 +982,7 @@ const userEmail =
       },
     },
     bilhetes,   // deste request
-    arquivos,    // destes PDFs
-    attachments: emailAttachments // <<<<< ADICIONE ESTA LINHA
+    arquivos    // destes PDFs
   };
 
   // 6.5) calcula a chave de agrupamento e enfileira envio
