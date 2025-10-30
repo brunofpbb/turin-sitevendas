@@ -135,6 +135,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
 
 
 /* =================== CSP (Bricks) =================== */
+/*
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
@@ -151,6 +152,9 @@ app.use((req, res, next) => {
   );
   next();
 });
+
+
+*/
 
 /* =================== Middlewares =================== */
 app.use(express.json({ limit: '2mb' }));
