@@ -904,7 +904,7 @@ try {
 
 
 
-    
+   /* 
 
 // 6) Webhook salvarBpe (agrupado por compra – 1 POST com todos os bilhetes)
 try {
@@ -997,14 +997,14 @@ const userEmail =
 }
 
 
-
+*/
 
 
 
 
 
     
-/*
+
     // 6) Webhook salvarBpe (payload completo)
     const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
     const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00');
@@ -1069,7 +1069,7 @@ bilhetes: (vendaResult.ListaPassagem || [])
       console.error('[Webhook salvarBpe] erro:', e?.message || e);
     }
 
-*/
+
 
 
 
