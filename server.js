@@ -21,140 +21,96 @@ const PORT = process.env.PORT || 8080;
    - Junta múltiplos requests da MESMA compra (ex.: 2 poltronas)
    - Dispara 1 e-mail (com todos os anexos) e 1 webhook (com todos os bilhetes)
 ============================================================================ */
-const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], attachments:[], emailSent }
-const WEBHOOK_DEBOUNCE_MS = 3500; // janela maior para consolidar 2+ requests
+// ==== Agrupador por compra (in-memory) ====
+// groupId -> { timer, base, bilhetes:[], arquivos:[], email:{to,html,text,attachments}, flushed }
+const AGGR = new Map();
+const AGGR_DEBOUNCE_MS = 1200;
 
 function computeGroupId(req, payment, schedule) {
-  // 1) id do pagamento é o melhor agrupador
-  if (payment?.id) return `pay:${payment.id}`;
-
-  // 2) chaves enviadas pelo front
-  const ref = (req?.body?.grupoId || req?.body?.referencia || payment?.external_reference || '').toString().trim();
-  if (ref) return `ref:${ref}`;
-
-  // 3) normaliza data/hora para consistência
-  const toYMD = (dateStr) => {
-    try {
-      if (!dateStr) return '';
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-      const m = String(dateStr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      return m ? `${m[3]}-${m[2]}-${m[1]}` : String(dateStr);
-    } catch { return String(dateStr || ''); }
-  };
-  const toHHMM = (h) => {
-    const s = String(h || '').replace(/\D/g, '');
-    const hh = (s.length >= 2 ? s.slice(0,2) : s.padStart(2,'0')) || '00';
-    const mm = (s.length >= 4 ? s.slice(2,4) : s.slice(2).padEnd(2,'0')) || '00';
-    return `${hh}:${mm}`;
-  };
-
-  const ymd  = toYMD(schedule?.date || schedule?.dataViagem || '');
-  const hhmm = toHHMM(schedule?.horaPartida || schedule?.departureTime || '');
-  const email = (req?.user?.email || req?.headers?.['x-user-email'] || req?.body?.userEmail || '').toLowerCase();
-
-  return `sched:${schedule?.idViagem || ''}|${ymd}|${hhmm}|${email}`;
+  // Tente sempre usar o id do pagamento. Se não houver, caia para referencia/grupoId etc.
+  return String(
+    payment?.id ||
+    req?.body?.grupoId ||
+    req?.body?.referencia ||
+    payment?.external_reference ||
+    req?.headers?.['x-idempotency-key'] ||
+    [schedule?.idViagem, schedule?.date || schedule?.dataViagem, schedule?.horaPartida].join('|')
+  );
 }
 
-async function queueWebhookSend(groupId, fragment, hookUrl) {
-  let entry = WEBHOOK_BUFFER.get(groupId);
-  if (!entry) entry = { timer: null, base: null, bilhetes: [], arquivos: [], attachments: [], emailSent: false };
+// Insere/atualiza o agregado e arma o flush
+async function queueUnifiedSend(groupId, fragment, hookUrl) {
+  let e = AGGR.get(groupId);
+  if (!e) e = { timer: null, base: null, bilhetes: [], arquivos: [], email: null, flushed: false };
 
-  // guarda base na 1ª vez
-  if (!entry.base) entry.base = fragment.base;
+  // guarda a base uma única vez
+  if (!e.base && fragment.base) e.base = fragment.base;
 
-  // acumula dados
-  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) entry.bilhetes.push(...fragment.bilhetes);
-  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) entry.arquivos.push(...fragment.arquivos);
-  if (Array.isArray(fragment.attachments) && fragment.attachments.length) entry.attachments.push(...fragment.attachments);
+  // acumula bilhetes e arquivos
+  if (Array.isArray(fragment.bilhetes) && fragment.bilhetes.length) e.bilhetes.push(...fragment.bilhetes);
+  if (Array.isArray(fragment.arquivos) && fragment.arquivos.length) e.arquivos.push(...fragment.arquivos);
 
-  // (re)inicia debounce
-  if (entry.timer) clearTimeout(entry.timer);
-  entry.timer = setTimeout(async () => {
+  // se chegou pacote de e-mail, mantenha o “melhor” (normalmente o último sobrescreve)
+  if (fragment.email) e.email = fragment.email;
+
+  // rearmar o debounce
+  if (e.timer) clearTimeout(e.timer);
+  e.timer = setTimeout(async () => {
     try {
-      // 1) Enviar E-MAIL (apenas 1x) com TODOS os anexos do grupo
-      if (!entry.emailSent) {
-        const to = entry.base?.userEmail || null;
-        if (to) {
-          const appName   = process.env.APP_NAME || 'Turin Transportes';
-          const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-          const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
-
-          const rota = `${entry.base?.viagem?.origemNome || ''} → ${entry.base?.viagem?.destinoNome || ''}`;
-          const data = entry.base?.dataViagem || '';
-          const hora = (entry.base?.viagem?.horaPartida || '').toString().slice(0,5);
-          const valorTotalBRL = (Number(entry.base?.mp?.amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-          const lista = entry.arquivos.map((a,i)=>{
-            const link = a.driveUrl || a.pdfLocal || '';
-            const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
-            return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
-          }).join('');
-
-          const html =
-            `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
-              <p>Olá,</p>
-              <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
-              <p><b>Rota:</b> ${rota}<br/>
-                 <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
-                 <b>Valor total:</b> ${valorTotalBRL}
-              </p>
-              <p><b>Bilhetes:</b></p>
-              <ul style="margin-top:8px">${lista}</ul>
-              <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
-            </div>`;
-
-          const text =
-            `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
-            `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
-            `Bilhetes:\n` + entry.arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
-
-          // tenta SMTP; se falhar, Brevo
-          let sent = false;
-          try {
-            const got = await ensureTransport();
-            if (got.transporter) {
-              await got.transporter.sendMail({
-                from: `"${fromName}" <${fromEmail}>`,
-                to, subject: `Seus bilhetes – ${appName}`, html, text,
-                attachments: entry.attachments.map(a => ({ filename: a.filename, content: a.buffer }))
-              });
-              sent = true;
-              console.log(`[Email(grouped)] enviados ${entry.attachments.length} anexos para ${to} via ${got.mode}`);
-            }
-          } catch (e) {
-            console.warn('[Email(grouped) SMTP] falhou, tentando Brevo...', e?.message || e);
-          }
-          if (!sent) {
-            await sendViaBrevoApi({
-              to, subject: `Seus bilhetes – ${appName}`, html, text, fromEmail, fromName,
-              attachments: entry.attachments.map(a => ({ filename: a.filename, contentBase64: a.contentBase64 }))
-            });
-            console.log(`[Email(grouped)] enviados ${entry.attachments.length} anexos para ${to} via Brevo API`);
-          }
-        } else {
-          console.warn('[Email(grouped)] userEmail ausente — e-mail não enviado.');
-        }
-        entry.emailSent = true;
-      }
-
-      // 2) Enviar WEBHOOK 1x com todos os bilhetes
-      const payload = { ...entry.base, bilhetes: entry.bilhetes, arquivos: entry.arquivos };
+      // 1) webhook único
+      const payload = { ...e.base, bilhetes: e.bilhetes, arquivos: e.arquivos };
       const resp = await fetch(hookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
         body: JSON.stringify(payload),
       });
-      const txt = await resp.text().catch(()=> '');
-      console.log('[Webhook salvarBpe] groupId=', groupId, 'status=', resp.status, 'bilhetes=', entry.bilhetes.length, '| body:', txt.slice(0,200));
-      WEBHOOK_BUFFER.delete(groupId);
-    } catch (err) {
-      console.error('[Webhook salvarBpe] groupId=', groupId, 'erro:', err?.message || err);
-      WEBHOOK_BUFFER.delete(groupId);
-    }
-  }, WEBHOOK_DEBOUNCE_MS);
+      console.log('[AGGR] webhook status=', resp.status, '| groupId=', groupId, '| itens=', e.bilhetes.length);
 
-  WEBHOOK_BUFFER.set(groupId, entry);
-  return entry;
+      // 2) e-mail único (se houver “to”)
+      if (e.email?.to) {
+        let sent = false;
+        try {
+          const got = await ensureTransport();
+          if (got.transporter) {
+            await got.transporter.sendMail({
+              from: `"${e.email.fromName}" <${e.email.fromEmail}>`,
+              to: e.email.to,
+              subject: e.email.subject,
+              html: e.email.html,
+              text: e.email.text,
+              attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, content: a.buffer })),
+            });
+            sent = true;
+            console.log('[AGGR] email via SMTP para', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+          }
+        } catch (err) {
+          console.warn('[AGGR] SMTP falhou, caindo p/ Brevo:', err?.message || err);
+        }
+        if (!sent) {
+          await sendViaBrevoApi({
+            to: e.email.to,
+            subject: e.email.subject,
+            html: e.email.html,
+            text: e.email.text,
+            fromEmail: e.email.fromEmail,
+            fromName: e.email.fromName,
+            attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, contentBase64: a.contentBase64 })),
+          });
+          console.log('[AGGR] email via Brevo para', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+        }
+      }
+    } catch (err) {
+      console.error('[AGGR] flush erro:', err?.message || err);
+    } finally {
+      e.flushed = true;
+      AGGR.delete(groupId);
+    }
+  }, AGGR_DEBOUNCE_MS);
+
+  AGGR.set(groupId, e);
+  return e;
 }
+
 
 /* ============================================================================
    Google Sheets (consulta por email) – leitura (mantido)
@@ -827,106 +783,145 @@ app.post('/api/praxio/vender', async (req, res) => {
       });
     }
 
-    // 5.3 Envio imediato de e-mail — DESATIVADO (vamos enviar no agrupador)
-    const SEND_IMMEDIATE_EMAIL = false;
-    if (SEND_IMMEDIATE_EMAIL) {
-      try {
-        const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-        const loginEmail =
-          getMail(req?.user?.email) ||
-          getMail(req?.session?.user?.email) ||
-          getMail(req?.headers?.['x-user-email']) ||
-          getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-          getMail(req?.body?.userEmail) ||
-          getMail(req?.body?.user?.email) ||
-          null;
-        const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-        console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
-        if (to) {
-          // ... (enviar como antes)
-        }
-      } catch (e) {
-        console.error('[Email] falha ao enviar bilhetes:', e?.message || e);
+    // 5.3) Preparar pacote de e-mail (NÃO envia agora; vai no agregador)
+let emailFragment = null;
+try {
+  // pega o e-mail do login com alta prioridade
+  const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+  const loginEmail =
+    getMail(req?.user?.email) ||
+    getMail(req?.session?.user?.email) ||
+    getMail(req?.headers?.['x-user-email']) ||
+    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+    null;
+
+  const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+  if (to) {
+    const appName   = process.env.APP_NAME || 'Turin Transportes';
+    const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+    const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
+    const data = schedule?.date || '';
+    const hora = schedule?.horaPartida || schedule?.departureTime || '';
+    const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+    const listaBilhetesHtml = arquivos.map((a,i) => {
+      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
+      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+      return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
+    }).join('');
+
+    const html =
+      `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+        <p>Olá,</p>
+        <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+        <p><b>Rota:</b> ${rota}<br/>
+           <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
+           <b>Valor total:</b> ${valorTotalBRL}
+        </p>
+        <p><b>Bilhetes:</b></p>
+        <ul style="margin-top:8px">${listaBilhetesHtml}</ul>
+        <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+      </div>`;
+
+    const text =
+      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes anexos.\n\n`+
+      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${valorTotalBRL}\n`+
+      `Bilhetes:\n` + arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
+
+    emailFragment = {
+      email: {
+        to, fromEmail, fromName, subject: `Seus bilhetes – ${appName}`,
+        html, text,
+        attachments: emailAttachments // buffers + base64 já prontos
       }
-    }
+    };
+  } else {
+    console.warn('[Email] comprador sem e-mail. Será enviado apenas o webhook.');
+  }
+} catch (e) {
+  console.error('[Email] preparação falhou:', e?.message || e);
+}
 
-    // 6) Webhook + E-mail via AGRUPADOR (POST único por compra)
-    try {
-      const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-      const userEmailFinal =
-        getMail(req?.user?.email) ||
-        getMail(req?.session?.user?.email) ||
-        getMail(req?.headers?.['x-user-email']) ||
-        getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-        getMail(req?.body?.userEmail) ||
-        getMail(req?.body?.user?.email) ||
-        null;
 
-      const toYMD = (isoOrBr) => {
-        try {
-          if (!isoOrBr) return '';
-          if (/^\d{4}-\d{2}-\d{2}$/.test(isoOrBr)) return isoOrBr;
-          const m = String(isoOrBr).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-          return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
-        } catch { return ''; }
-      };
-      const joinDateTime = (d, hm) => (d && hm) ? `${d} ${hm}` : (d || hm || '');
-      const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
-      const hhmm = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
+  // 6) Webhook + E-mail via agregador (1 POST e 1 e-mail por compra)
+try {
+  const getMail = v => (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
+  const userEmail =
+    getMail(req?.user?.email) ||
+    getMail(req?.session?.user?.email) ||
+    getMail(req?.headers?.['x-user-email']) ||
+    getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
+    null;
 
-      const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
-        ? bilhetesPayload
-        : (vendaResult.ListaPassagem || []).map(p => ({
-            numPassagem: p.NumPassagem,
-            chaveBPe:    p.ChaveBPe || null,
-            origem:      p.Origem,
-            destino:     p.Destino,
-            poltrona:    p.Poltrona,
-            nomeCliente: p.NomeCliente,
-            docCliente:  p.DocCliente,
-            valor:       p.ValorPgto
-          }));
+  const userPhone =
+    req?.user?.phone || req?.session?.user?.phone || req?.headers?.['x-user-phone'] || req?.body?.loginPhone || null;
 
-      const fragment = {
-        base: {
-          fonte: 'sitevendas',
-          userEmail: userEmailFinal,
-          userPhone: req?.user?.phone || req?.session?.user?.phone || req?.headers?.['x-user-phone'] || req?.body?.loginPhone || null,
-          idaVolta:       req?.body?.idaVolta ?? null,
-          tipoPagamento:  req?.body?.tipoPagamento ?? null,
-          formaPagamento: req?.body?.formaPagamento ?? null,
-          dataViagem: ymdViagem,
-          dataHora:   joinDateTime(ymdViagem, hhmm),
-          mp: {
-            id: payment?.id,
-            status: payment?.status,
-            status_detail: payment?.status_detail,
-            external_reference: payment?.external_reference || null,
-            amount: payment?.transaction_amount
-          },
-          viagem: {
-            idViagem:    schedule?.idViagem,
-            horaPartida: schedule?.horaPartida || schedule?.departureTime,
-            idOrigem:    schedule?.idOrigem   || schedule?.originId,
-            idDestino:   schedule?.idDestino  || schedule?.destinationId,
-            origemNome:  schedule?.originName || schedule?.origem,
-            destinoNome: schedule?.destinationName || schedule?.destino,
-          },
-        },
-        bilhetes,
-        arquivos,
-        attachments: emailAttachments,
-      };
+  const toYMD = (v) => {
+    if (!v) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    const m = String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+  };
+  const joinDateTime = (d, hm) => (d && hm) ? `${d} ${String(hm).slice(0,5)}` : (d || hm || '');
 
-      const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
-        || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+  const ymdViagem = toYMD(schedule?.date || schedule?.dataViagem || '');
+  const hhmm      = String(schedule?.horaPartida || schedule?.departureTime || '00:00').slice(0,5);
 
-      const groupId = computeGroupId(req, payment, schedule);
-      await queueWebhookSend(groupId, fragment, hookUrl);
-      console.log('[Webhook salvarBpe] agrupado: groupId=', groupId, 'req-bilhetes=', bilhetes.length, 'userEmail=', userEmailFinal || '(nenhum)');
-    } catch (e) {
-      console.error('[Webhook salvarBpe] erro:', e?.message || e);
-    }
+  const bilhetes = (Array.isArray(bilhetesPayload) && bilhetesPayload.length)
+    ? bilhetesPayload
+    : (vendaResult.ListaPassagem || []).map(p => ({
+        numPassagem: p.NumPassagem,
+        chaveBPe:    p.ChaveBPe || null,
+        origem:      p.Origem,
+        destino:     p.Destino,
+        poltrona:    p.Poltrona,
+        nomeCliente: p.NomeCliente,
+        docCliente:  p.DocCliente,
+        valor:       p.ValorPgto
+      }));
+
+  const fragment = {
+    base: {
+      fonte: 'sitevendas',
+      userEmail,
+      userPhone,
+      idaVolta:       req?.body?.idaVolta ?? null,
+      tipoPagamento:  req?.body?.tipoPagamento ?? null,
+      formaPagamento: req?.body?.formaPagamento ?? null,
+      dataViagem: ymdViagem,
+      dataHora:   joinDateTime(ymdViagem, hhmm),
+      mp: {
+        id: payment?.id,
+        status: payment?.status,
+        status_detail: payment?.status_detail,
+        external_reference: payment?.external_reference || null,
+        amount: payment?.transaction_amount
+      },
+      viagem: {
+        idViagem:    schedule?.idViagem,
+        horaPartida: schedule?.horaPartida || schedule?.departureTime,
+        idOrigem:    schedule?.idOrigem   || schedule?.originId,
+        idDestino:   schedule?.idDestino  || schedule?.destinationId,
+        origemNome:  schedule?.originName || schedule?.origem,
+        destinoNome: schedule?.destinationName || schedule?.destino,
+      },
+    },
+    bilhetes,
+    arquivos,
+    ...(emailFragment || {}) // junta dados do e-mail aqui
+  };
+
+  const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
+    || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+
+  const groupId = computeGroupId(req, payment, schedule);
+  await queueUnifiedSend(groupId, fragment, hookUrl);
+  console.log('[AGGR] queued groupId=', groupId, '| bilhetes+=', bilhetes.length, '| emailTo=', (emailFragment?.email?.to || '(nenhum)'));
+} catch (e) {
+  console.error('[AGGR] queue erro:', e?.message || e);
+}
 
     // 7) Retorno para o front
     return res.json({ ok: true, venda: vendaResult, arquivos });
