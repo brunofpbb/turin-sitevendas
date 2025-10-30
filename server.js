@@ -11,7 +11,7 @@ const { uploadPdfToDrive } = require('./drive');
 
 // ==== Agrupador de webhooks por compra (in-memory) ====
 const WEBHOOK_BUFFER = new Map(); // groupId -> { timer, base, bilhetes:[], arquivos:[], emailSent }
-const WEBHOOK_DEBOUNCE_MS = 1200;
+const WEBHOOK_DEBOUNCE_MS = 3500;
 
 // Constrói a chave de agrupamento da compra
 function computeGroupId(req, payment, schedule) {
