@@ -812,7 +812,7 @@ const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: n
 console.log('[Email] destinatario (login→fallback):', to, '| body.userEmail=', req?.body?.userEmail || '(vazio)');
 
 
-  });
+  
 
   if (to) {
     const appName   = process.env.APP_NAME || 'Turin Transportes';
