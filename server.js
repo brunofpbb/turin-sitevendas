@@ -256,7 +256,7 @@ async function sheetsFindByBilhete(numPassagem) {
  const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
 
   const { data } = await sheets.spreadsheets.values.get({
-   spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE'
+   spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE',
    spreadsheetId,
    range: `${tab}!A:Z`,
    valueRenderOption: 'UNFORMATTED_VALUE'
