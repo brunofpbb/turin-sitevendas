@@ -352,24 +352,50 @@ container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
     if (!confirm('Confirmar cancelamento desta viagem?')) return;
 
     btn.disabled = true; const old = btn.textContent; btn.textContent = 'Cancelando...';
-    try {
-      const r = await fetch('/api/cancel-ticket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ numeroPassagem: num, motivo: 'Solicitação do cliente via portal' })
-      });
-      const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.error || 'Falha no cancelamento');
+   try {
+  const r = await fetch('/api/cancel-ticket', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      numeroPassagem: num,
+      motivo: 'Solicitação do cliente via portal'
+    })
+  });
 
-      alert(`Bilhete cancelado!\nEstorno solicitado: R$ ${Number(j.valorRefund).toFixed(2).replace('.',',')}.`);
-      previewId = null;
-      renderReservations();
-    } catch (e) {
-      alert('Não foi possível cancelar: ' + (e.message || 'Erro desconhecido'));
-      console.error('[cancel]', e);
-    } finally {
-      btn.disabled = false; btn.textContent = old;
+  // tenta JSON; se não for JSON, tenta texto só pra diagnóstico
+  let j = null;
+  const ct = r.headers.get('content-type') || '';
+  try {
+    if (ct.includes('application/json')) j = await r.json();
+    else {
+      const txt = await r.text().catch(() => '');
+      j = txt ? { message: txt } : null;
     }
+  } catch (_) { j = null; }
+
+  if (!r.ok) {
+    const msg = j?.error || j?.message || `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  if (!j?.ok) throw new Error(j?.error || 'Falha no cancelamento');
+
+  const valorRefund = Number(j.valorRefund ?? 0);
+  alert(
+    `Bilhete cancelado!\nEstorno solicitado: R$ ${valorRefund
+      .toFixed(2)
+      .replace('.', ',')}.`
+  );
+
+  previewId = null;
+  renderReservations();
+} catch (e) {
+  alert('Não foi possível cancelar: ' + (e.message || 'Erro desconhecido'));
+  console.error('[cancel]', e);
+} finally {
+  btn.disabled = false;
+  btn.textContent = old;
+}
+
   });
 });
 
