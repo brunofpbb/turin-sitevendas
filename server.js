@@ -249,30 +249,30 @@ function getSheets() {
 
 async function sheetsFindByBilhete(numPassagem) {
   const sheets = getSheets();
- const spreadsheetId = process.env.GSHEET_ID || process.env.SHEETS_BPE_ID; // <- usa sua var já existente
- // const tab = process.env.GSHEET_TAB_NAME || 'BPE'; 
- // se tiver SHEETS_BPE_RANGE="BPE!A:AF", tira o nome da aba antes do "!"
- const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
- const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
+  const spreadsheetId = process.env.GSHEET_ID || process.env.SHEETS_BPE_ID; // usa o que você já tem
+  // se houver SHEETS_BPE_RANGE="BPE!A:AG", aproveita a aba; senão assume 'BPE'
+  const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
+  const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
 
   const { data } = await sheets.spreadsheets.values.get({
-   spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE',
-   spreadsheetId,
-   range: `${tab}!A:Z`,
-   valueRenderOption: 'UNFORMATTED_VALUE'
+    spreadsheetId,
+    range: `${tab}!A:AG`,                   // <- seu range
+    valueRenderOption: 'UNFORMATTED_VALUE'
   });
 
   const rows = data.values || [];
-  const header = rows[0]?.map(v => String(v || '').trim()) || [];
-  const idx = (name) => header.findIndex(h => h.toLowerCase() === String(name).toLowerCase());
-  const idxNum = idx('NumPassagem');
+  if (rows.length === 0) throw new Error('Aba vazia no Sheets');
+
+  const header = rows[0].map(v => String(v || '').trim());
+  const idxNum = header.findIndex(h => h.toLowerCase() === 'numpassagem');
   if (idxNum < 0) throw new Error('Coluna "NumPassagem" não encontrada');
 
-  const rowIndex = rows.findIndex((r, i) => i>0 && String(r[idxNum]||'').trim() === String(numPassagem));
+  const rowIndex = rows.findIndex((r, i) => i > 0 && String(r[idxNum] || '').trim() === String(numPassagem));
   if (rowIndex < 0) throw new Error('Bilhete não encontrado');
 
-  return { spreadsheetId, tab, rows, header, rowIndex };
+  return { rows, header, rowIndex };
 }
+
 
 
 async function sheetsUpdateStatus(rowIndex, status) {
@@ -387,50 +387,127 @@ async function mpRefund({ paymentId, amount, idempotencyKey }) {
 // === Cancelamento completo: Praxio → refund MP (95%) → Status "Cancelado" no Sheets ===
 app.post('/api/cancel-ticket', async (req, res) => {
   try {
-    console.log('[cancel-ticket] body=', req.body); 
+    console.log('[cancel-ticket] body=', req.body);
+
     const numeroPassagem = String(req.body?.numeroPassagem || '').trim();
     const motivo = req.body?.motivo || 'Solicitação do cliente via portal';
-    if (!numeroPassagem) return res.status(400).json({ ok:false, error:'numeroPassagem é obrigatório.' });
+    if (!numeroPassagem) {
+      return res.status(400).json({ ok: false, error: 'numeroPassagem é obrigatório.' });
+    }
 
     // 1) Lê a planilha para obter valor e id do pagamento
-    const { spreadsheetId, tab, rows, header, rowIndex } = await sheetsFindByBilhete(numeroPassagem);
-    const idx = (name) => header.findIndex(h => h.toLowerCase() === String(name).toLowerCase());
+    const found = await sheetsFindByBilhete(numeroPassagem);
+    // compatível com ambas assinaturas (com/sem spreadsheetId)
+    const rows   = found.rows   || found?.data?.values || [];
+    const header = found.header || rows[0] || [];
+    const rowIndex = found.rowIndex;
+
+    if (!rows.length || rowIndex == null || rowIndex < 0) {
+      return res.status(404).json({ ok: false, error: 'Bilhete não encontrado na planilha.' });
+    }
     const row = rows[rowIndex];
 
-    const idxValor = idx('Valor');
-    const idxIdPg  = idx('idPagamento') !== -1 ? idx('idPagamento') : idx('IdPagamento');
-    const idxCorr  = idx('correlationID');
+    // normaliza cabeçalhos para comparação
+    const norm = (s) =>
+      String(s || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // tira acento
+        .replace(/[^a-z0-9]/gi, '')                      // tira espaços/_/-
+        .toLowerCase();
 
-    if (idxValor < 0 || idxIdPg < 0) throw new Error('Colunas Valor/idPagamento não encontradas na planilha');
+    const hnorm = header.map(norm);
+    const findCol = (cands) => {
+      for (const c of cands) {
+        const i = hnorm.findIndex((h) => h === norm(c));
+        if (i !== -1) return i;
+      }
+      return -1;
+    };
 
-    // valor → número (suporta "6,60" ou 6.60)
-    const rawValor = String(row[idxValor] ?? '').replace(/\./g,'').replace(',', '.');
-    const valorOriginal = Number(rawValor || row[idxValor] || 0);
-    const valorRefund   = Math.max(0, Number((valorOriginal * 0.95).toFixed(2)));
-    const paymentId     = String(row[idxIdPg] ?? '').trim();
-    const correlationID = idxCorr >= 0 ? String(row[idxCorr] ?? '').trim() : null;
+    // mapeia colunas (seu header informado)
+    const idxValor = findCol(['Valor','ValorPago','ValorTotal','ValorTotalPago','Valor Total Pago']);
+    const idxIdPg  = findCol(['idPagamento','paymentId','idpagamento','idpagamentomp','id pagamento']);
+    const idxCorr  = findCol(['correlationID','x-idempotency-key','idempotency','idempotencykey']);
 
-    if (!paymentId) throw new Error('idPagamento vazio na planilha');
+    if (idxValor === -1 || idxIdPg === -1) {
+      console.error('[cancel-ticket] Header lido:', header);
+      throw new Error('Colunas Valor/idPagamento não encontradas na planilha');
+    }
+
+    // Valor → número (aceita 91.00, 91,00, "R$ 91,00")
+    let valorOriginal = row[idxValor];
+    if (typeof valorOriginal !== 'number') {
+      const raw = String(valorOriginal ?? '')
+        .replace(/[R$\s]/g, '')
+        .replace(/\./g, '') // remove milhar
+        .replace(',', '.'); // vírgula → ponto
+      valorOriginal = Number(raw || 0);
+    }
+    if (!isFinite(valorOriginal) || valorOriginal <= 0) {
+      throw new Error('Valor do bilhete inválido na planilha');
+    }
+
+    const valorRefund = Math.max(0, Number((valorOriginal * 0.95).toFixed(2)));
+
+    // idPagamento pode ter vindo número; garante string sem casas decimais
+    let paymentId = row[idxIdPg];
+    paymentId =
+      typeof paymentId === 'number'
+        ? String(Math.trunc(paymentId))
+        : String(paymentId || '').trim();
+
+    if (!paymentId) {
+      throw new Error('idPagamento vazio na planilha');
+    }
+
+    const correlationID = idxCorr !== -1 ? String(row[idxCorr] ?? '').trim() : null;
 
     // 2) Praxio – verifica e grava
     const IdSessaoOp = await praxioLogin();
-    const ver = await praxioVerificaDevolucao({ idSessao: IdSessaoOp, numPassagem: numeroPassagem, motivo });
+    const ver = await praxioVerificaDevolucao({
+      idSessao: IdSessaoOp,
+      numPassagem: numeroPassagem,
+      motivo,
+    });
     const xmlPassagem = ver?.Xml?.Passagem || ver?.Xml?.['Passagem'];
     if (!xmlPassagem) throw new Error('Retorno Praxio inválido (sem Xml.Passagem)');
+
+    // se por algum motivo vier IdErro sem exception:
+    if (ver?.IdErro) {
+      return res.status(409).json({
+        ok: false,
+        error: ver?.Mensagem || 'Cancelamento não permitido pela Praxio',
+      });
+    }
+
     const grava = await praxioGravaDevolucao({ idSessao: IdSessaoOp, xmlPassagem });
 
     // 3) Mercado Pago – estorno parcial 95%
-    const refund = await mpRefund({ paymentId, amount: valorRefund, idempotencyKey: correlationID });
+    const refund = await mpRefund({
+      paymentId,
+      amount: valorRefund,
+      idempotencyKey: correlationID,
+    });
 
     // 4) Atualiza planilha
     await sheetsUpdateStatus(rowIndex, 'Cancelado');
 
-    return res.json({ ok:true, numeroPassagem, valorOriginal, valorRefund, praxio:grava, mp:refund });
+    return res.json({
+      ok: true,
+      numeroPassagem,
+      valorOriginal,
+      valorRefund,
+      praxio: grava,
+      mp: refund,
+    });
   } catch (e) {
     const http = e?.code === 'PRAXIO_BLOQUEADO' ? 409 : 500;
-    return res.status(http).json({ ok:false, error: e.message || 'Falha no cancelamento', details: e.details||null });
+    console.error('[cancel-ticket] erro:', e);
+    return res
+      .status(http)
+      .json({ ok: false, error: e.message || 'Falha no cancelamento', details: e.details || null });
   }
 });
+
 
 
 
