@@ -292,7 +292,8 @@ async function renderReservations() {
       <div class="reserva" data-id="${idCard}">
         <div><b>${tk.origem}</b> → <b>${tk.destino}</b> <span class="badge">${way}</span></div>
         <div>Data: <b>${dataBR}</b> &nbsp; Saída: <b>${tk.hora || '—'}</b> &nbsp; Valor Total Pago: <b>${fmtBRL(valor)}</b></div>
-        <div>Poltrona: <b>${tk.seat || '—'}</b> &nbsp;&nbsp; Passageiro: <b>${tk.passageiro || '—'}</b> &nbsp;&nbsp; Status: <b>${tk.status}</b></div>
+        
+        <div>Poltrona: <b>${tk.seat || '—'}</b> &nbsp;&nbsp; Passageiro: <b>${tk.passageiro || '—'}</b> &nbsp;&nbsp; Status: <b>${isCanceled ? 'Cancelado' : (tk.status || '—')}</b></div>
         <div>Bilhete nº: <b>${tk.ticketNumber || '—'}</b></div>
 
         ${showPreview ? `
@@ -320,11 +321,11 @@ async function renderReservations() {
         <div class="actions">
           ${!showPreview ? btnBilhete : ''}
           ${!showPreview ? `
-            <button class="btn ${podeCancelar ? 'btn-danger' : 'btn-disabled'} btn-cancel"
-              data-id="${idCard}" data-bilhete="${tk.ticketNumber || ''}"
-              ${podeCancelar ? '' : 'disabled title="Só é permitido até 12h antes da partida"'}>
-              Cancelar
-            </button>` : ''}
+               <button class="btn ${podeCancelar ? 'btn-danger' : 'btn-disabled'} btn-cancel"
+               data-id="${idCard}" data-bilhete="${tk.ticketNumber || ''}"
+               ${podeCancelar ? '' : 'disabled title="${isCanceled ? 'Bilhete já cancelado' : 'Só é permitido até 12h antes da partida'}"'}>
+               Cancelar
+               </button>` : ''}
         </div>
       </div>
     `;
@@ -385,7 +386,8 @@ container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
       .toFixed(2)
       .replace('.', ',')}.`
   );
-
+     
+  cancelledSet.add(num);
   previewId = null;
   renderReservations();
 } catch (e) {
