@@ -184,6 +184,8 @@ function samePlace(a, b) {
     return out;
   }
 
+ 
+
 // ===== Render: 1 card por BILHETE =====
 async function renderReservations() {
   const container =
@@ -282,8 +284,16 @@ async function renderReservations() {
     const multa = +(valor * 0.05).toFixed(2);
     const reembolso = +(valor - multa).toFixed(2);
 
-    const podeCancelar = mayCancel({ date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora });
+    // const podeCancelar = mayCancel({ date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora });
+    const isCanceled = cancelledSet.has(tk.ticketNumber) ||
+        String(tk.status || '').toLowerCase() === 'cancelado';
 
+    const podeCancelar = !isCanceled && mayCancel({
+        date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora
+    });
+
+
+    
     const btnBilhete = tk.url
       ? `<button class="btn btn-success" onclick="window.open('${tk.url}','_blank')">Ver Bilhete</button>`
       : `<button class="btn btn-secondary" disabled>Ver Bilhete</button>`;
@@ -321,11 +331,17 @@ async function renderReservations() {
         <div class="actions">
           ${!showPreview ? btnBilhete : ''}
           ${!showPreview ? `
-               <button class="btn ${podeCancelar ? 'btn-danger' : 'btn-disabled'} btn-cancel"
-               data-id="${idCard}" data-bilhete="${tk.ticketNumber || ''}"
-               ${podeCancelar ? '' : 'disabled title="${isCanceled ? 'Bilhete já cancelado' : 'Só é permitido até 12h antes da partida'}"'}>
-               Cancelar
-               </button>` : ''}
+              <button
+                class="btn ${podeCancelar ? 'btn-danger' : 'btn-disabled'} btn-cancel"
+                data-id="${idCard}"
+                data-bilhete="${tk.ticketNumber || ''}"
+                ${podeCancelar ? '' :
+                `disabled title="${isCanceled
+                ? 'Bilhete já cancelado'
+                : 'Só é permitido até 12h antes da partida'}"`}
+                >Cancelar</button>
+          ` : ''}
+
         </div>
       </div>
     `;
@@ -382,7 +398,7 @@ container.querySelectorAll('[data-act="do-cancel"]').forEach(btn=>{
 
   const valorRefund = Number(j.valorRefund ?? 0);
   alert(
-    `Bilhete cancelado!\nEstorno solicitado: R$ ${valorRefund
+    `Bilhete cancelado com sucesso!\nEstorno encaminhado ao Banco no valor de R$ ${valorRefund
       .toFixed(2)
       .replace('.', ',')}.`
   );
