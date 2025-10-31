@@ -250,7 +250,7 @@ function getSheets() {
 async function sheetsFindByBilhete(numPassagem) {
   const sheets = getSheets();
  const spreadsheetId = process.env.GSHEET_ID || process.env.SHEETS_BPE_ID; // <- usa sua var já existente
- const tab = process.env.GSHEET_TAB_NAME || 'BPE'; 
+ // const tab = process.env.GSHEET_TAB_NAME || 'BPE'; 
  // se tiver SHEETS_BPE_RANGE="BPE!A:AF", tira o nome da aba antes do "!"
  const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
  const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
