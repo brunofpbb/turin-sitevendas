@@ -384,6 +384,113 @@ async function mpRefund({ paymentId, amount, idempotencyKey }) {
 }
 
 
+// util de dinheiro robusto: "91.00", "91,00", "1.234,56", "R$ 6,60" → 2 casas
+function parseMoneyBR(val) {
+  if (typeof val === 'number') return +val.toFixed(2);
+  let s = String(val ?? '').trim();
+  if (!s) return 0;
+  s = s.replace(/[R$\s]/g, '');
+  const hasDot = s.includes('.');
+  const hasComma = s.includes(',');
+
+  if (hasDot && hasComma) {
+    // padrão brasileiro: milhar com ponto, decimal com vírgula
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma && !hasDot) {
+    // só vírgula → decimal
+    s = s.replace(',', '.');
+  } else {
+    // só ponto → já decimal (não remover)
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? +n.toFixed(2) : 0;
+}
+
+// MP helpers
+async function mpGetPayment(paymentId) {
+  const r = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const e = new Error(j?.message || `Pagamento ${paymentId} não encontrado`);
+    e.details = j;
+    throw e;
+  }
+  return j;
+}
+
+async function mpRefund({ paymentId, amount, idempotencyKey }) {
+  const url = `https://api.mercadopago.com/v1/payments/${paymentId}/refunds`;
+  const body = { amount: +Number(amount).toFixed(2) };
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+      'X-Idempotency-Key': String(idempotencyKey || `cancel-${paymentId}-${body.amount}-${Date.now()}`)
+    },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j?.message || 'Falha no estorno do Mercado Pago'); e.details = j; throw e; }
+  return j;
+}
+
+// === Cancelamento completo: Praxio → refund MP (95%) → Status "Cancelado" no Sheets ===
+// util de dinheiro robusto: "91.00", "91,00", "1.234,56", "R$ 6,60" → 2 casas
+function parseMoneyBR(val) {
+  if (typeof val === 'number') return +val.toFixed(2);
+  let s = String(val ?? '').trim();
+  if (!s) return 0;
+  s = s.replace(/[R$\s]/g, '');
+  const hasDot = s.includes('.');
+  const hasComma = s.includes(',');
+
+  if (hasDot && hasComma) {
+    // padrão brasileiro: milhar com ponto, decimal com vírgula
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma && !hasDot) {
+    // só vírgula → decimal
+    s = s.replace(',', '.');
+  } else {
+    // só ponto → já decimal (não remover)
+  }
+  const n = Number(s);
+  return Number.isFinite(n) ? +n.toFixed(2) : 0;
+}
+
+// MP helpers
+async function mpGetPayment(paymentId) {
+  const r = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` }
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const e = new Error(j?.message || `Pagamento ${paymentId} não encontrado`);
+    e.details = j;
+    throw e;
+  }
+  return j;
+}
+
+async function mpRefund({ paymentId, amount, idempotencyKey }) {
+  const url = `https://api.mercadopago.com/v1/payments/${paymentId}/refunds`;
+  const body = { amount: +Number(amount).toFixed(2) };
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+      'X-Idempotency-Key': String(idempotencyKey || `cancel-${paymentId}-${body.amount}-${Date.now()}`)
+    },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j?.message || 'Falha no estorno do Mercado Pago'); e.details = j; throw e; }
+  return j;
+}
+
 // === Cancelamento completo: Praxio → refund MP (95%) → Status "Cancelado" no Sheets ===
 app.post('/api/cancel-ticket', async (req, res) => {
   try {
@@ -397,8 +504,7 @@ app.post('/api/cancel-ticket', async (req, res) => {
 
     // 1) Lê a planilha para obter valor e id do pagamento
     const found = await sheetsFindByBilhete(numeroPassagem);
-    // compatível com ambas assinaturas (com/sem spreadsheetId)
-    const rows   = found.rows   || found?.data?.values || [];
+    const rows = found.rows || [];
     const header = found.header || rows[0] || [];
     const rowIndex = found.rowIndex;
 
@@ -407,12 +513,9 @@ app.post('/api/cancel-ticket', async (req, res) => {
     }
     const row = rows[rowIndex];
 
-    // normaliza cabeçalhos para comparação
-    const norm = (s) =>
-      String(s || '')
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // tira acento
-        .replace(/[^a-z0-9]/gi, '')                      // tira espaços/_/-
-        .toLowerCase();
+    const norm = (s) => String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/gi, '').toLowerCase();
 
     const hnorm = header.map(norm);
     const findCol = (cands) => {
@@ -423,7 +526,7 @@ app.post('/api/cancel-ticket', async (req, res) => {
       return -1;
     };
 
-    // mapeia colunas (seu header informado)
+    // seus headers:
     const idxValor = findCol(['Valor','ValorPago','ValorTotal','ValorTotalPago','Valor Total Pago']);
     const idxIdPg  = findCol(['idPagamento','paymentId','idpagamento','idpagamentomp','id pagamento']);
     const idxCorr  = findCol(['correlationID','x-idempotency-key','idempotency','idempotencykey']);
@@ -433,35 +536,22 @@ app.post('/api/cancel-ticket', async (req, res) => {
       throw new Error('Colunas Valor/idPagamento não encontradas na planilha');
     }
 
-    // Valor → número (aceita 91.00, 91,00, "R$ 91,00")
-    let valorOriginal = row[idxValor];
-    if (typeof valorOriginal !== 'number') {
-      const raw = String(valorOriginal ?? '')
-        .replace(/[R$\s]/g, '')
-        .replace(/\./g, '') // remove milhar
-        .replace(',', '.'); // vírgula → ponto
-      valorOriginal = Number(raw || 0);
-    }
+    const valorOriginal = parseMoneyBR(row[idxValor]);
     if (!isFinite(valorOriginal) || valorOriginal <= 0) {
       throw new Error('Valor do bilhete inválido na planilha');
     }
+    const valorRefundDesejado = +Number(valorOriginal * 0.95).toFixed(2);
 
-    const valorRefund = Math.max(0, Number((valorOriginal * 0.95).toFixed(2)));
-
-    // idPagamento pode ter vindo número; garante string sem casas decimais
+    // idPagamento pode vir número; normaliza
     let paymentId = row[idxIdPg];
-    paymentId =
-      typeof paymentId === 'number'
-        ? String(Math.trunc(paymentId))
-        : String(paymentId || '').trim();
-
-    if (!paymentId) {
-      throw new Error('idPagamento vazio na planilha');
-    }
+    paymentId = (typeof paymentId === 'number')
+      ? String(Math.trunc(paymentId))
+      : String(paymentId || '').trim();
+    if (!paymentId) throw new Error('idPagamento vazio na planilha');
 
     const correlationID = idxCorr !== -1 ? String(row[idxCorr] ?? '').trim() : null;
 
-    // 2) Praxio – verifica e grava
+    // 2) Praxio – verifica e grava (seu fluxo)
     const IdSessaoOp = await praxioLogin();
     const ver = await praxioVerificaDevolucao({
       idSessao: IdSessaoOp,
@@ -470,23 +560,57 @@ app.post('/api/cancel-ticket', async (req, res) => {
     });
     const xmlPassagem = ver?.Xml?.Passagem || ver?.Xml?.['Passagem'];
     if (!xmlPassagem) throw new Error('Retorno Praxio inválido (sem Xml.Passagem)');
-
-    // se por algum motivo vier IdErro sem exception:
     if (ver?.IdErro) {
       return res.status(409).json({
         ok: false,
         error: ver?.Mensagem || 'Cancelamento não permitido pela Praxio',
       });
     }
-
     const grava = await praxioGravaDevolucao({ idSessao: IdSessaoOp, xmlPassagem });
 
-    // 3) Mercado Pago – estorno parcial 95%
-    const refund = await mpRefund({
-      paymentId,
-      amount: valorRefund,
-      idempotencyKey: correlationID,
-    });
+    // 3) MP – valida quanto ainda é reembolsável e estorna até o disponível
+    const pay = await mpGetPayment(paymentId);
+    const total = +Number(pay.transaction_amount || 0).toFixed(2);
+    const refundedSoFar = Array.isArray(pay.refunds)
+      ? +pay.refunds.reduce((a, r) => a + (+Number(r.amount || 0).toFixed(2)), 0).toFixed(2)
+      : 0;
+    const disponivel = Math.max(0, +Number(total - refundedSoFar).toFixed(2));
+
+    if (disponivel <= 0) {
+      return res.json({
+        ok: true,
+        numeroPassagem,
+        valorOriginal,
+        valorRefund: 0,
+        praxio: grava,
+        mp: { note: 'Nada a estornar no MP (já reembolsado anteriormente).' }
+      });
+    }
+
+    const valorRefund = Math.min(valorRefundDesejado, disponivel);
+    if (valorRefund <= 0) {
+      return res.json({
+        ok: true,
+        numeroPassagem,
+        valorOriginal,
+        valorRefund: 0,
+        praxio: grava,
+        mp: { note: 'Valor a estornar calculado como 0.' }
+      });
+    }
+
+    let refund;
+    try {
+      refund = await mpRefund({
+        paymentId,
+        amount: valorRefund,
+        idempotencyKey: correlationID
+      });
+    } catch (err) {
+      // Melhor mensagem para o front (inclui detalhe do MP)
+      const det = err?.details?.cause?.[0]?.description || err?.details?.message || err?.message;
+      throw new Error(det || 'Falha ao estornar no Mercado Pago');
+    }
 
     // 4) Atualiza planilha
     await sheetsUpdateStatus(rowIndex, 'Cancelado');
@@ -498,6 +622,9 @@ app.post('/api/cancel-ticket', async (req, res) => {
       valorRefund,
       praxio: grava,
       mp: refund,
+      note: (valorRefund < valorRefundDesejado)
+        ? `Estorno parcial: solicitado 95% (${valorRefundDesejado.toFixed(2)}), disponível ${disponivel.toFixed(2)}.`
+        : undefined
     });
   } catch (e) {
     const http = e?.code === 'PRAXIO_BLOQUEADO' ? 409 : 500;
@@ -507,7 +634,6 @@ app.post('/api/cancel-ticket', async (req, res) => {
       .json({ ok: false, error: e.message || 'Falha no cancelamento', details: e.details || null });
   }
 });
-
 
 
 
