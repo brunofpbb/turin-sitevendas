@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 const listEl = document.getElementById('trips-list'); // opcional; não bloquear se não existir
-
+const cancelledSet = new Set();
 
   // usado para abrir/fechar o preview de cancelamento
   let previewId = null;
