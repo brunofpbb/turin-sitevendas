@@ -7,6 +7,13 @@ const fs = require('fs');
 const nodemailer = require('nodemailer');
 const { uploadPdfToDrive } = require('./drive');
 const fetch = require('node-fetch');                // se não existir ainda
+function fetchWithTimeout(url, opts = {}, ms = 10000) {
+  const ac = new AbortController();
+  const id = setTimeout(() => ac.abort(), ms);
+  return fetch(url, { ...opts, signal: ac.signal })
+    .finally(() => clearTimeout(id));
+}
+
 
 
 
@@ -15,6 +22,7 @@ const { mapVendaToTicket } = require('./services/ticket/mapper');
 const { generateTicketPdf } = require('./services/ticket/pdf');
 
 const app = express();
+app.use(express.json({ limit: '2mb' }));
 const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
@@ -241,11 +249,18 @@ function getSheets() {
 
 async function sheetsFindByBilhete(numPassagem) {
   const sheets = getSheets();
-  const spreadsheetId = process.env.GSHEET_ID;
-  const tab = process.env.GSHEET_TAB_NAME || 'BPE';
+- const spreadsheetId = process.env.GSHEET_ID;
+- const tab = process.env.GSHEET_TAB_NAME || 'BPE';
++ const spreadsheetId = process.env.GSHEET_ID || process.env.SHEETS_BPE_ID; // <- usa sua var já existente
++ // se tiver SHEETS_BPE_RANGE="BPE!A:AF", tira o nome da aba antes do "!"
++ const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
++ const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
 
   const { data } = await sheets.spreadsheets.values.get({
-    spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE'
+-   spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE'
++   spreadsheetId,
++   range: `${tab}!A:Z`,
++   valueRenderOption: 'UNFORMATTED_VALUE'
   });
 
   const rows = data.values || [];
@@ -259,6 +274,7 @@ async function sheetsFindByBilhete(numPassagem) {
 
   return { spreadsheetId, tab, rows, header, rowIndex };
 }
+
 
 async function sheetsUpdateStatus(rowIndex, status) {
   const sheets = getSheets();
@@ -329,7 +345,7 @@ app.use((req, res, next) => {
 });
 
 /* =================== Middlewares =================== */
-app.use(express.json({ limit: '2mb' }));
+
 app.use(express.static(PUBLIC_DIR));
 app.use('/img', express.static(path.join(__dirname, 'img')));
 
@@ -372,6 +388,7 @@ async function mpRefund({ paymentId, amount, idempotencyKey }) {
 // === Cancelamento completo: Praxio → refund MP (95%) → Status "Cancelado" no Sheets ===
 app.post('/api/cancel-ticket', async (req, res) => {
   try {
+    console.log('[cancel-ticket] body=', req.body); 
     const numeroPassagem = String(req.body?.numeroPassagem || '').trim();
     const motivo = req.body?.motivo || 'Solicitação do cliente via portal';
     if (!numeroPassagem) return res.status(400).json({ ok:false, error:'numeroPassagem é obrigatório.' });
@@ -638,7 +655,7 @@ async function praxioVerificaDevolucao({ idSessao, numPassagem, motivo }) {
     NumPassagem: String(numPassagem),
     MotivoCancelamento: String(motivo || 'Cancelamento solicitado pelo cliente')
   };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const r = await fetchWithTimeout(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }, 10000);
   const j = await r.json();
   if (!r.ok) throw new Error('VerificaDevolucao falhou');
   if (j?.IdErro) { const err = new Error(j?.Mensagem || 'Não é possível cancelar'); err.code='PRAXIO_BLOQUEADO'; throw err; }
@@ -660,7 +677,7 @@ async function praxioGravaDevolucao({ idSessao, xmlPassagem }) {
       IdCaixa: 0
     }
   };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const r = await fetchWithTimeout(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }, 10000);
   const j = await r.json();
   if (!r.ok) throw new Error('GravaDevolucao falhou');
   return j;
