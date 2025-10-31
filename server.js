@@ -35,7 +35,7 @@ const PORT = process.env.PORT || 8080;
 // ==== Agrupador por compra (in-memory) ====
 // groupId -> { timer, base, bilhetes:[], arquivos:[], email:{to,html,text,attachments}, flushed }
 const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 1200;
+const AGGR_DEBOUNCE_MS = 1500;
 
 function computeGroupId(req, payment, schedule) {
   // Tente sempre usar o id do pagamento. Se não houver, caia para referencia/grupoId etc.
