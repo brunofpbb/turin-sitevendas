@@ -247,7 +247,7 @@ app.get('/api/sheets/bpe-by-email', async (req, res) => {
   );
   return google.sheets({ version: 'v4', auth });
 }*/
-
+/*
 // === Google Sheets via Service Account ===
 function getSheets() {
   const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
@@ -319,6 +319,13 @@ async function sheetsUpdateStatus(rowIndex, status) {
   });
 }
 
+*/
+
+
+/*
+
+
+
 
 async function sheetsFindByBilhete(numPassagem) {
   const sheets = getSheets();
@@ -365,6 +372,89 @@ async function sheetsUpdateStatus(rowIndex, status) {
     spreadsheetId, range: a1, valueInputOption: 'RAW', requestBody: { values: [[status]] }
   });
 }
+
+
+*/
+
+
+
+
+function getSheets() {
+  const key = JSON.parse(process.env.GDRIVE_SA_KEY || '{}');
+  if (!key.client_email || !key.private_key) throw new Error('GDRIVE_SA_KEY ausente/ inválida');
+  const auth = new google.auth.JWT(
+    key.client_email, null, key.private_key,
+    ['https://www.googleapis.com/auth/spreadsheets']
+  );
+  return google.sheets({ version: 'v4', auth });
+}
+
+function resolveSheetEnv() {
+  const spreadsheetId = process.env.SHEETS_BPE_ID; // <- usa só o que você já tem
+  if (!spreadsheetId) throw new Error('SHEETS_BPE_ID não definido no ambiente');
+
+  // se vier "BPE!A:AG", extrai "BPE"
+  const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
+  const tab = guessedTab || 'BPE';
+  const range = `${tab}!A:AG`; // sua aba usa A:AG
+  return { spreadsheetId, tab, range };
+}
+
+async function sheetsFindByBilhete(numPassagem) {
+  const sheets = getSheets();
+  const { spreadsheetId, range, tab } = resolveSheetEnv();
+
+  const { data } = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+    valueRenderOption: 'UNFORMATTED_VALUE',
+  });
+
+  const rows = data.values || [];
+  if (!rows.length) throw new Error('Aba vazia no Sheets');
+
+  const header = rows[0].map(v => String(v || '').trim());
+  const colNum = header.findIndex(h => h.toLowerCase() === 'numpassagem');
+  if (colNum < 0) throw new Error('Coluna "NumPassagem" não encontrada');
+
+  const rowIndex = rows.findIndex((r, i) => i > 0 && String(r[colNum] || '').trim() === String(numPassagem));
+  if (rowIndex < 0) throw new Error('Bilhete não encontrado');
+
+  return { spreadsheetId, tab, rows, header, rowIndex };
+}
+
+async function sheetsUpdateStatus(rowIndex, status) {
+  const sheets = getSheets();
+  const { spreadsheetId, tab } = resolveSheetEnv();
+
+  const { data } = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${tab}!1:1`
+  });
+  const header = data.values?.[0] || [];
+  const col = header.findIndex(h => String(h).trim().toLowerCase() === 'status');
+  if (col < 0) throw new Error('Coluna "Status" não encontrada');
+
+  const colA = String.fromCharCode(65 + col);
+  const a1 = `${tab}!${colA}${rowIndex + 1}`;
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: a1,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[status]] }
+  });
+}
+
+
+
+
+
+
+
+
+
+
 
 
 
