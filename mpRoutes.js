@@ -74,7 +74,7 @@ router.post('/pay', async (req, res) => {
       description,
       external_reference,                 // <<< importante
       payer: {
-        email: /*payerIn.email*/ 'teste01@teste.com' || '',                                                 // respeita email do front
+        email: payerIn.email /*teste01@teste.com*/ || '',                                                 // respeita email do front
         identification: payerIn?.identification?.number
           ? { type: payerIn.identification.type || 'CPF', number: payerIn.identification.number }
           : undefined
