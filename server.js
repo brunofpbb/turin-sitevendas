@@ -249,18 +249,18 @@ function getSheets() {
 
 async function sheetsFindByBilhete(numPassagem) {
   const sheets = getSheets();
-- const spreadsheetId = process.env.GSHEET_ID;
-- const tab = process.env.GSHEET_TAB_NAME || 'BPE';
-+ const spreadsheetId = process.env.GSHEET_ID || process.env.SHEETS_BPE_ID; // <- usa sua var já existente
-+ // se tiver SHEETS_BPE_RANGE="BPE!A:AF", tira o nome da aba antes do "!"
-+ const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
-+ const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
+ const spreadsheetId = process.env.GSHEET_ID;
+ const tab = process.env.GSHEET_TAB_NAME || 'BPE';
+ const spreadsheetId = process.env.GSHEET_ID || process.env.SHEETS_BPE_ID; // <- usa sua var já existente
+ // se tiver SHEETS_BPE_RANGE="BPE!A:AF", tira o nome da aba antes do "!"
+ const guessedTab = (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || '';
+ const tab = process.env.GSHEET_TAB_NAME || guessedTab || 'BPE';
 
   const { data } = await sheets.spreadsheets.values.get({
--   spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE'
-+   spreadsheetId,
-+   range: `${tab}!A:Z`,
-+   valueRenderOption: 'UNFORMATTED_VALUE'
+   spreadsheetId, range: `${tab}!A:Z`, valueRenderOption: 'UNFORMATTED_VALUE'
+   spreadsheetId,
+   range: `${tab}!A:Z`,
+   valueRenderOption: 'UNFORMATTED_VALUE'
   });
 
   const rows = data.values || [];
