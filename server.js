@@ -72,6 +72,8 @@ function dedupArquivos(arr=[]) {
   });
 }
 
+
+/*
 async function queueUnifiedSend(groupId, fragment, hookUrl) {
   let e = AGGR.get(groupId);
   if (!e) e = { timer:null, startedAt:Date.now(), base:null, bilhetes:[], arquivos:[], email:null, expected:0, flushed:false };
@@ -161,6 +163,132 @@ async function queueUnifiedSend(groupId, fragment, hookUrl) {
   AGGR.set(groupId, e);
   return e;
 }
+
+*/
+
+
+// ==== Agregador por compra (webhook + e-mail + Sheets) ====
+// groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], email, expected, flushed }
+const AGGR = new Map();
+const AGGR_DEBOUNCE_MS = 5000;   // espera mínima pra juntar múltiplos requests
+const AGGR_MAX_WAIT_MS = 25000;  // fail-safe máximo
+
+async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/undefined */) {
+  let e = AGGR.get(groupId);
+  if (!e) e = { timer:null, startedAt:Date.now(), base:null, bilhetes:[], arquivos:[], email:null, expected:0, flushed:false };
+
+  // merge base
+  e.base = { ...(e.base || {}), ...(fragment.base || {}) };
+
+  // maior expected informado por qualquer request
+  if (fragment.expected && fragment.expected > (e.expected||0)) e.expected = fragment.expected;
+
+  // acumula deduplicando
+  if (Array.isArray(fragment.bilhetes)) e.bilhetes.push(...fragment.bilhetes);
+  if (Array.isArray(fragment.arquivos)) e.arquivos.push(...fragment.arquivos);
+  e.bilhetes = dedupBilhetes(e.bilhetes);
+  e.arquivos = dedupArquivos(e.arquivos);
+
+  // pacote de e-mail mais recente vence
+  if (fragment.email) e.email = fragment.email;
+
+  const doFlush = async () => {
+    if (e.flushed) return;
+    e.flushed = true;
+
+    const payload = { ...e.base, bilhetes: e.bilhetes, arquivos: e.arquivos };
+
+    try {
+      // 1) Google Sheets direto (uma linha por bilhete)
+      try {
+        await sheetsAppendBpeRowsDirect({ base: payload, bilhetes: e.bilhetes, arquivos: e.arquivos });
+        console.log('[AGGR][Sheets] append ok | groupId=', groupId, '| linhas=', e.bilhetes.length);
+      } catch (err) {
+        console.error('[AGGR][Sheets] append erro:', err?.message || err);
+      }
+
+      // 2) Webhook (opcional)
+      if (hookUrl) {
+        try {
+          const resp = await fetch(hookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
+            body: JSON.stringify(payload),
+          });
+          console.log('[AGGR][Webhook] status=', resp.status, '| groupId=', groupId, '| bilhetes=', e.bilhetes.length);
+        } catch (err) {
+          console.error('[AGGR][Webhook] falhou:', err?.message || err);
+        }
+      } else {
+        console.log('[AGGR][Webhook] pulado (sem URL)');
+      }
+
+      // 3) E-mail único com todos os anexos
+      if (e.email?.to) {
+        let sent = false;
+        try {
+          const got = await ensureTransport();
+          if (got.transporter) {
+            await got.transporter.sendMail({
+              from: `"${e.email.fromName}" <${e.email.fromEmail}>`,
+              to: e.email.to,
+              subject: e.email.subject,
+              html: e.email.html,
+              text: e.email.text,
+              attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, content: a.buffer })),
+            });
+            sent = true;
+            console.log('[AGGR][Email][SMTP] to=', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+          }
+        } catch (err) {
+          console.warn('[AGGR][Email] SMTP falhou, tentando Brevo…', err?.message || err);
+        }
+
+        if (!sent) {
+          try {
+            await sendViaBrevoApi({
+              to: e.email.to,
+              subject: e.email.subject,
+              html: e.email.html,
+              text: e.email.text,
+              fromEmail: e.email.fromEmail,
+              fromName: e.email.fromName,
+              attachments: (e.email.attachments || []).map(a => ({
+                filename: a.filename,
+                contentBase64: a.contentBase64,
+              })),
+            });
+            console.log('[AGGR][Email][Brevo] to=', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+          } catch (err) {
+            console.error('[AGGR][Email] Brevo falhou:', err?.message || err);
+          }
+        }
+      } else {
+        console.log('[AGGR][Email] sem destinatário; não enviado.');
+      }
+    } finally {
+      AGGR.delete(groupId);
+    }
+  };
+
+  // Regra de disparo:
+  // ► SEMPRE debounçar (evita 1 e-mail por request quando o front chama por poltrona)
+  if (e.timer) clearTimeout(e.timer);
+  const waited = Date.now() - e.startedAt;
+  e.timer = setTimeout(doFlush, Math.max(AGGR_DEBOUNCE_MS - Math.min(waited, AGGR_DEBOUNCE_MS - 200), 200));
+
+  // Fail-safe: se passar do MAX_WAIT, dispara mesmo assim
+  if (waited > AGGR_MAX_WAIT_MS) {
+    clearTimeout(e.timer);
+    e.timer = setTimeout(doFlush, 200);
+  }
+
+  AGGR.set(groupId, e);
+  return e;
+}
+
+
+
 
 
 
@@ -1806,7 +1934,7 @@ try {
     expected: expectedCount
   };
 
-  const hookUrl = process.env.WEBHOOK_SALVAR_BPE_URL
+  const hookUrl = (process.env.WEBHOOK_SALVAR_BPE_URL || '').trim() || null;
     || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
 
   // 👉 Garanta que computeGroupId gere a mesma chave para todos os bilhetes da compra
