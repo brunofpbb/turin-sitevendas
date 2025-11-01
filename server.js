@@ -34,9 +34,9 @@ const PORT = process.env.PORT || 8080;
 ============================================================================ */
 // ==== Agregador por compra (webhook + e-mail) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], email, expected, flushed }
-const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 12000;   // espera para juntar requests lentos
-const AGGR_MAX_WAIT_MS = 25000;   // fail-safe: máximo de espera
+//const AGGR = new Map();
+//const AGGR_DEBOUNCE_MS = 12000;   // espera para juntar requests lentos
+//const AGGR_MAX_WAIT_MS = 25000;   // fail-safe: máximo de espera
 
 function computeGroupId(req, payment, schedule) {
   // use SEMPRE o id do pagamento; 100% estável
