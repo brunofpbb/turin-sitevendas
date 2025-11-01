@@ -1935,7 +1935,7 @@ try {
   };
 
   const hookUrl = (process.env.WEBHOOK_SALVAR_BPE_URL || '').trim() || null;
-    || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
+  //  || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
 
   // 👉 Garanta que computeGroupId gere a mesma chave para todos os bilhetes da compra
   //    (ex.: payment.external_reference || payment.id)
