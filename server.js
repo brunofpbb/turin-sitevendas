@@ -37,7 +37,7 @@ const PORT = process.env.PORT || 8080;
 //const AGGR = new Map();
 //const AGGR_DEBOUNCE_MS = 12000;   // espera para juntar requests lentos
 //const AGGR_MAX_WAIT_MS = 25000;   // fail-safe: máximo de espera
-
+/*
 function computeGroupId(req, payment, schedule) {
   // use SEMPRE o id do pagamento; 100% estável
   if (payment?.id) return String(payment.id);
@@ -73,7 +73,7 @@ function dedupArquivos(arr=[]) {
 }
 
 
-/*
+
 async function queueUnifiedSend(groupId, fragment, hookUrl) {
   let e = AGGR.get(groupId);
   if (!e) e = { timer:null, startedAt:Date.now(), base:null, bilhetes:[], arquivos:[], email:null, expected:0, flushed:false };
