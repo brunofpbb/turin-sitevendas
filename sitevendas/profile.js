@@ -212,11 +212,21 @@ async function renderReservations() {
           const horaFromDateTime = (s.dateTime && s.dateTime.includes(' '))
             ? s.dateTime.split(' ')[1]
             : '';
-
+        /*
           // status “Pago” quando statusPagamento = approved ou status = Emitido
           const st = (String(s.statusPagamento || '').toLowerCase() === 'approved' ||
                       String(s.status || '').toLowerCase() === 'emitido')
-                      ? 'Pago' : (s.status || '—');
+                      ? 'Pago' : (s.status || '—');        */
+
+          // Status vem EXCLUSIVAMENTE da coluna O ("Status") do Sheets
+const statusSheetRaw = String(s.status ?? s.Status ?? '').trim();
+const statusSheet = statusSheetRaw.toLowerCase();
+
+const st =
+  statusSheet === 'cancelado' ? 'Cancelado' :
+  statusSheet === 'emitido'   ? 'Emitido'   :
+  (statusSheetRaw || '—');
+
 
           localTickets.push({
             origem:       s.origin || s.origem || '',
@@ -285,12 +295,13 @@ async function renderReservations() {
     const reembolso = +(valor - multa).toFixed(2);
 
     // const podeCancelar = mayCancel({ date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora });
-    const isCanceled = cancelledSet.has(tk.ticketNumber) ||
-        String(tk.status || '').toLowerCase() === 'cancelado';
+const isCanceled = cancelledSet.has(tk.ticketNumber) ||
+                   String(tk.status || '').toLowerCase() === 'cancelado';
 
-    const podeCancelar = !isCanceled && mayCancel({
-        date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora
-    });
+const podeCancelar = !isCanceled && mayCancel({
+  date: tk.data, dataViagem: tk.data, departureTime: tk.hora, horaPartida: tk.hora
+});
+
 
 
     
