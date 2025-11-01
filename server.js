@@ -160,6 +160,72 @@ async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/unde
         console.log('[AGGR][Webhook] pulado (sem URL)');
       }
 
+      
+      // 3) E-mail único com todos os anexos (reconstrói a lista com e.arquivos)
+if (e.email?.to) {
+  // Regerar a lista/links usando TODOS os arquivos agregados
+  const listaHtml = (e.arquivos || []).map((a, i) => {
+    const link = a.driveUrl || a.pdfLocal || '';
+    const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+    return `<li>Bilhete nº <b>${a.numPassagem || ''}</b>${linkHtml}</li>`;
+  }).join('');
+
+  // Substitui só o bloco de lista, preservando o resto do HTML/Text
+  const html = (e.email.html || '')
+    .replace(/<ul[^>]*>[\s\S]*<\/ul>/, `<ul style="margin-top:8px">${listaHtml}</ul>`);
+  const text = (e.email.text || '')
+    .replace(/Bilhetes:\n[\s\S]*$/, 'Bilhetes:\n' + (e.arquivos || [])
+      .map((a, i) => ` - Bilhete ${i+1}: ${a.numPassagem || ''}`).join('\n'));
+
+  let sent = false;
+  try {
+    const got = await ensureTransport();
+    if (got.transporter) {
+      await got.transporter.sendMail({
+        from: `"${e.email.fromName}" <${e.email.fromEmail}>`,
+        to: e.email.to,
+        subject: e.email.subject,
+        html,
+        text,
+        attachments: (e.email.attachments || []).map(a => ({
+          filename: a.filename,
+          content: a.buffer
+        })),
+      });
+      sent = true;
+      console.log('[AGGR][Email][SMTP] to=', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+    }
+  } catch (err) {
+    console.warn('[AGGR][Email] SMTP falhou, tentando Brevo…', err?.message || err);
+  }
+
+  if (!sent) {
+    try {
+      await sendViaBrevoApi({
+        to: e.email.to,
+        subject: e.email.subject,
+        html,
+        text,
+        fromEmail: e.email.fromEmail,
+        fromName: e.email.fromName,
+        attachments: (e.email.attachments || []).map(a => ({
+          filename: a.filename,
+          contentBase64: a.contentBase64,
+        })),
+      });
+      console.log('[AGGR][Email][Brevo] to=', e.email.to, '| anexos=', (e.email.attachments||[]).length);
+    } catch (err) {
+      console.error('[AGGR][Email] Brevo falhou:', err?.message || err);
+    }
+  }
+} else {
+  console.log('[AGGR][Email] sem destinatário; não enviado.');
+}
+
+      
+      
+      
+      /*
       // 3) E-mail único com todos os anexos
       if (e.email?.to) {
         let sent = false;
@@ -203,6 +269,9 @@ async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/unde
       } else {
         console.log('[AGGR][Email] sem destinatário; não enviado.');
       }
+
+
+      */
     } finally {
       AGGR.delete(groupId);
     }
@@ -278,6 +347,77 @@ async function sheetsAppendBpeRowsDirect(agg) {
   const base = agg.base || {};
   const mp   = base.mp || {};
 
+  const fee0 = (mp.fee_details && mp.fee_details[0]?.amount) || '';
+  const net  = (mp.transaction_details && mp.transaction_details.net_received_amount) || '';
+
+  const rows = b.map((bil) => ([
+    nowSP(),                                        // Data/horaSolicitação
+    bil.nomeCliente || '',                          // Nome
+    base.userPhone ? `55${String(base.userPhone).replace(/\D/g,'')}` : '', // Telefone
+    base.userEmail || '',                           // E-mail
+    bil.docCliente || '',                           // CPF
+    Number(bil.valor || 0).toFixed(2),              // Valor
+    '2',                                            // ValorConveniencia
+    fee0,                                           // ComissaoMP
+    net,                                            // ValorLiquido
+    bil.numPassagem || '',                          // NumPassagem
+    '93',                                           // SeriePassagem
+    base.mp?.status || '',                          // StatusPagamento
+    'Emitido',                                      // Status
+    '',                                             // ValorDevolucao
+    base.idaVolta || 'ida',                         // Sentido
+    toISO3(base.dataHora || ''),                    // Data/hora_Pagamento
+    '', '',                                         // NomePagador, CPF_Pagador
+    String(mp.id || ''),                            // ID_Transação
+    base.tipoPagamento || '',                       // TipoPagamento
+    '', '',                                         // correlationID, idURL
+    mp.external_reference || '',                    // Referencia
+    base.formaPagamento || '',                      // Forma_Pagamento
+    '',                                             // idUser
+    base.dataViagem || '',                          // Data_Viagem
+    base.dataHora || '',                            // Data_Hora
+    bil.origem || base.viagem?.origemNome || '',    // Origem
+    bil.destino || base.viagem?.destinoNome || '',  // Destino
+    '',                                             // Identificador
+    String(mp.id || ''),                            // idPagamento
+    (agg.arquivos.find(a => a.numPassagem === bil.numPassagem)?.driveUrl) || '', // LinkBPE
+    String(bil.poltrona || '')                      // poltrona
+  ]));
+
+  if (!rows.length) {
+    console.log('[Sheets] nada para inserir (0 linhas)');
+    return;
+  }
+
+  console.debug('[Sheets] append request', {
+    spreadsheetId, range, linhas: rows.length,
+    bilhetes: b.map(x => x.numPassagem)
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values: rows }
+  });
+
+  console.log('[Sheets] append ok:', rows.length, 'linhas');
+}
+
+
+
+/*
+
+async function sheetsAppendBpeRowsDirect(agg) {
+  const sheets = await sheetsAuthRW();
+  const spreadsheetId = process.env.SHEETS_BPE_ID;
+  const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
+
+  const b = agg.bilhetes || [];
+  const base = agg.base || {};
+  const mp   = base.mp || {};
+
   // tenta extrair comissão e líquido do objeto de pagamento (quando presente)
   // (ajuste chaves conforme resposta do MP)
   const fee0 = (mp.fee_details && mp.fee_details[0]?.amount) || '';
@@ -330,6 +470,8 @@ async function sheetsAppendBpeRowsDirect(agg) {
 
   console.log('[Sheets] append ok:', rows.length, 'linhas');
 }
+
+*/
 
 
 // normaliza texto: minúsculo, sem acento e sem sinais
@@ -1543,7 +1685,7 @@ try {
   //    (ex.: payment.external_reference || payment.id)
  // const groupId = computeGroupId(req, payment, schedule);
   const groupId = computeGroupId(req, payment, schedule);
-await queueUnifiedSend(groupId, fragment, hookUrl);
+// await queueUnifiedSend(groupId, fragment, hookUrl);
 console.log('[AGGR] queued groupId=', groupId,
             '| bilhetes+=', bilhetes.length,
             '| expected=', expectedCount,
