@@ -38,6 +38,50 @@ const PORT = process.env.PORT || 8080;
 //const AGGR_DEBOUNCE_MS = 12000;   // espera para juntar requests lentos
 //const AGGR_MAX_WAIT_MS = 25000;   // fail-safe: máximo de espera
 
+// === Helpers para agregação ===
+
+// Usa um identificador 100% estável: id do pagamento do MP.
+// Cai para external_reference; se não existir, usa uma assinatura de viagem.
+function computeGroupId(req, payment, schedule) {
+  if (payment?.id) return String(payment.id);
+  if (payment?.external_reference) return String(payment.external_reference);
+  if (req?.body?.grupoId) return String(req.body.grupoId);
+  if (req?.body?.referencia) return String(req.body.referencia);
+  return [
+    schedule?.idViagem || '',
+    schedule?.date || schedule?.dataViagem || '',
+    schedule?.horaPartida || ''
+  ].join('|');
+}
+
+// Remove bilhetes duplicados (mesmo nº/mesma chave BPe)
+function dedupBilhetes(arr = []) {
+  const seen = new Set();
+  return arr.filter(b => {
+    const k = `${b?.numPassagem || ''}|${b?.chaveBPe || ''}`;
+    if (!k.trim() || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+// Remove anexos/arquivos duplicados (mesmo fileId ou mesmo nº/caminho)
+function dedupArquivos(arr = []) {
+  const seen = new Set();
+  return arr.filter(a => {
+    const k = `${a?.driveFileId || ''}|${a?.numPassagem || ''}|${a?.pdfLocal || ''}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+
+
+
+
+
+/*
 function computeGroupId(req, payment, schedule) {
   // use SEMPRE o id do pagamento; 100% estável
   if (payment?.id) return String(payment.id);
@@ -71,7 +115,7 @@ function dedupArquivos(arr=[]) {
     return true;
   });
 }
-
+*/
 /*
 
 async function queueUnifiedSend(groupId, fragment, hookUrl) {
@@ -202,7 +246,40 @@ async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/unde
       // 1) Google Sheets direto (uma linha por bilhete)
       try {
         await sheetsAppendBpeRowsDirect({ base: payload, bilhetes: e.bilhetes, arquivos: e.arquivos });
-        console.log('[AGGR][Sheets] append ok | groupId=', groupId, '| linhas=', e.bilhetes.length);
+     //   console.log('[AGGR][Sheets] append ok | groupId=', groupId, '| linhas=', e.bilhetes.length);
+          // ...
+  if (!rows.length) {
+    console.log('[Sheets] nada para inserir (0 linhas)');
+    return;
+  }
+
+  console.debug('[Sheets] append request', {
+    spreadsheetId,
+    range,
+    linhas: rows.length
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values: rows }
+  });
+
+  console.log('[Sheets] append ok:', rows.length, 'linhas',
+              '| planilha=', spreadsheetId, '| range=', range);
+
+
+
+
+
+
+
+
+
+
+        
       } catch (err) {
         console.error('[AGGR][Sheets] append erro:', err?.message || err);
       }
@@ -1939,7 +2016,14 @@ try {
 
   // 👉 Garanta que computeGroupId gere a mesma chave para todos os bilhetes da compra
   //    (ex.: payment.external_reference || payment.id)
+ // const groupId = computeGroupId(req, payment, schedule);
   const groupId = computeGroupId(req, payment, schedule);
+await queueUnifiedSend(groupId, fragment, hookUrl);
+console.log('[AGGR] queued groupId=', groupId,
+            '| bilhetes+=', bilhetes.length,
+            '| expected=', expectedCount,
+            '| emailTo=', (emailFragment?.email?.to || '(nenhum)'));
+
 
   // 👉 Apenas UMA chamada: o agregador junta tudo e dispara 1 webhook + 1 e-mail
   await queueUnifiedSend(groupId, fragment, hookUrl);
