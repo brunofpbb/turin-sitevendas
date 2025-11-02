@@ -42,7 +42,7 @@ const PORT = process.env.PORT || 8080;
 
 // Usa um identificador 100% estável: id do pagamento do MP.
 // Cai para external_reference; se não existir, usa uma assinatura de viagem.
-function computeGroupId(req, payment, schedule) {
+/*function computeGroupId(req, payment, schedule) {
   if (payment?.id) return String(payment.id);
   if (payment?.external_reference) return String(payment.external_reference);
   if (req?.body?.grupoId) return String(req.body.grupoId);
@@ -52,7 +52,39 @@ function computeGroupId(req, payment, schedule) {
     schedule?.date || schedule?.dataViagem || '',
     schedule?.horaPartida || ''
   ].join('|');
+}*/
+
+
+// === Normalizador de e-mail (login tem prioridade)
+function getLoginEmail(req){
+  const isMail = v => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v));
+  const get = v => isMail(v) ? String(v).trim() : null;
+  return (
+    get(req?.user?.email) ||
+    get(req?.session?.user?.email) ||
+    get(req?.headers?.['x-user-email']) ||
+    get(req?.body?.loginEmail || req?.body?.emailLogin) ||
+    null
+  );
 }
+
+// === ID de grupo (idempotência por compra)
+function computeGroupId(req, payment, schedule){
+  return (
+    req?.body?.grupoId ||
+    req?.body?.referencia ||
+    payment?.external_reference ||
+    req?.headers?.['x-idempotency-key'] ||
+    // fallback
+    [
+      schedule?.idViagem,
+      schedule?.date || schedule?.dataViagem,
+      schedule?.horaPartida,
+      (req?.user?.email || req?.headers?.['x-user-email'] || '')
+    ].join('|')
+  );
+}
+
 
 // Remove bilhetes duplicados (mesmo nº/mesma chave BPe)
 function dedupBilhetes(arr = []) {
@@ -131,7 +163,7 @@ async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/unde
     spreadsheetId,
     range,
     valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
+    insertDataOption: 'ROWS',
     requestBody: { values: rows }
   });
 
@@ -323,21 +355,116 @@ async function sheetsAuthRW() {
   return google.sheets({ version: 'v4', auth });
 }
 
-// Formata “agora” em São Paulo: dd/MM/yyyy HH:mm:ss
-function nowSP() {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat('pt-BR', {
+// === Tempo SP
+const nowSP = () => {
+  const z = new Date();
+  const fmt = new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     year:'numeric', month:'2-digit', day:'2-digit',
     hour:'2-digit', minute:'2-digit', second:'2-digit',
     hour12:false
-  }).formatToParts(now).reduce((a,p)=> (a[p.type]=p.value,a),{});
-  return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
-}
+  }).formatToParts(z).reduce((a,p)=> (a[p.type]=p.value,a),{});
+  return `${fmt.day}/${fmt.month}/${fmt.year} ${fmt.hour}:${fmt.minute}:${fmt.second}`;
+};
 
 // Converte “2025-11-03 10:48” -> “2025-11-03T10:48-03:00”
 const toISO3 = (s) => s ? (s.replace(' ', 'T') + '-03:00') : '';
 
+
+
+async function sheetsAppendBilhetes({
+  spreadsheetId,
+  range = 'BPE!A:AG',          // ajuste se seu gid/range for outro
+  bilhetes,                    // array de bilhetes [{...}]
+  schedule,                    // origem/destino/data/hora
+  payment,                     // objeto do MP já revalidado
+  userEmail,
+  userPhone
+}) {
+  try {
+    const sheets = await sheetsAuth();
+
+    // campos do MP usados pela sua planilha
+    const fee = (payment?.fee_details?.[0]?.amount ?? 0);
+    const net = (payment?.transaction_details?.net_received_amount ?? 0);
+    const chargesId = (payment?.charges_details?.[0]?.id ?? '');
+    const dateApprovedISO = payment?.date_approved || null; // ISO UTC
+    // Data/hora pagamento em formato da sua planilha (sv-SE + sufixo -03:00)
+    const pagoSP = dateApprovedISO
+      ? (new Date(dateApprovedISO)).toLocaleString('sv-SE', { timeZone:'America/Sao_Paulo', hour12:false }).replace(' ','T') + '-03:00'
+      : '';
+
+    const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'...
+    const forma = tipo === 'pix' ? 'PIX'
+                : tipo === 'debit_card' ? 'Cartão de Débito'
+                : tipo === 'credit_card' ? 'Cartão de Crédito'
+                : '';
+
+    const dataViagem = (schedule?.date || schedule?.dataViagem || '') || '';
+    const horaPartida = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
+    const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
+
+    // monta TODAS as linhas de uma vez
+    const values = (bilhetes || []).map(b => ([
+      nowSP(),                                // Data/horaSolicitação
+      b.nomeCliente || '',                    // Nome
+      userPhone ? `55${String(userPhone).replace(/\D/g,'')}` : '', // Telefone
+      userEmail || '',                        // E-mail
+      b.docCliente || '',                     // CPF
+      Number(b.valor ?? 0).toFixed(2),       // Valor
+      '2',                                    // ValorConveniencia (fixo que você usava)
+      String(fee).replace('.', ','),          // ComissaoMP
+      String(net).replace('.', ','),          // ValorLiquido
+      b.numPassagem || '',                    // NumPassagem
+      '93',                                   // SeriePassagem
+      String(payment?.status || ''),          // StatusPagamento
+      'Emitido',                              // Status
+      '',                                     // ValorDevolucao
+      (b?.idaVolta || 'Ida'),                 // Sentido
+      pagoSP,                                 // Data/hora_Pagamento
+      '',                                     // NomePagador
+      '',                                     // CPF_Pagador
+      chargesId,                              // ID_Transação
+      tipo || '',                             // TipoPagamento
+      '',                                     // correlationID
+      '',                                     // idURL
+      payment?.external_reference || '',      // Referencia
+      forma,                                  // Forma_Pagamento
+      '',                                     // idUser
+      dataViagem,                             // Data_Viagem
+      dataHoraViagem,                         // Data_Hora
+      schedule?.originName || schedule?.origem || '',     // Origem
+      schedule?.destinationName || schedule?.destino || '', // Destino
+      '',                                     // Identificador
+      payment?.id || '',                      // idPagamento
+      b.driveUrl || '',                       // LinkBPE
+      b.poltrona || ''                        // poltrona
+    ]));
+
+    if (!values.length) return { ok:true, appended:0 };
+
+    const r = await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values }
+    });
+
+    console.log('[Sheets] append ok:', values.length, 'linhas');
+    return { ok:true, appended: values.length, raw: r.data };
+  } catch (e) {
+    console.error('[Sheets] append erro:', e?.message || e);
+    return { ok:false, error: e?.message || String(e) };
+  }
+}
+
+
+
+
+
+
+/*
 async function sheetsAppendBpeRowsDirect(agg) {
   const sheets = await sheetsAuthRW();
   const spreadsheetId = process.env.SHEETS_BPE_ID;
@@ -404,74 +531,8 @@ async function sheetsAppendBpeRowsDirect(agg) {
 
   console.log('[Sheets] append ok:', rows.length, 'linhas');
 }
-
-
-
-/*
-
-async function sheetsAppendBpeRowsDirect(agg) {
-  const sheets = await sheetsAuthRW();
-  const spreadsheetId = process.env.SHEETS_BPE_ID;
-  const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
-
-  const b = agg.bilhetes || [];
-  const base = agg.base || {};
-  const mp   = base.mp || {};
-
-  // tenta extrair comissão e líquido do objeto de pagamento (quando presente)
-  // (ajuste chaves conforme resposta do MP)
-  const fee0 = (mp.fee_details && mp.fee_details[0]?.amount) || '';
-  const net  = (mp.transaction_details && mp.transaction_details.net_received_amount) || '';
-
-  const rows = b.map((bil) => ([
-    nowSP(),                                  // Data/horaSolicitação
-    bil.nomeCliente || '',                    // Nome
-    base.userPhone ? `55${String(base.userPhone).replace(/\D/g,'')}` : '', // Telefone
-    base.userEmail || '',                     // E-mail
-    bil.docCliente || '',                     // CPF
-    Number(bil.valor || 0).toFixed(2),        // Valor
-    '2',                                      // ValorConveniencia (fixo, ajuste se precisar)
-    fee0,                                     // ComissaoMP
-    net,                                      // ValorLiquido
-    bil.numPassagem || '',                    // NumPassagem
-    '93',                                     // SeriePassagem
-    base.mp?.status || '',                    // StatusPagamento
-    'Emitido',                                // Status
-    '',                                       // ValorDevolucao
-    base.idaVolta || 'ida',                   // Sentido
-    toISO3(base.dataHora || ''),              // Data/hora_Pagamento (se preferir, use data do MP)
-    '',                                       // NomePagador
-    '',                                       // CPF_Pagador
-    String(mp.id || ''),                      // ID_Transação
-    base.tipoPagamento || '',                 // TipoPagamento
-    '', '',                                   // correlationID, idURL
-    mp.external_reference || '',              // Referencia
-    base.formaPagamento || '',                // Forma_Pagamento
-    '',                                       // idUser
-    base.dataViagem || '',                    // Data_Viagem
-    base.dataHora || '',                      // Data_Hora
-    bil.origem || base.viagem?.origemNome || '', // Origem
-    bil.destino || base.viagem?.destinoNome || '', // Destino
-    '',                                       // Identificador
-    String(mp.id || ''),                      // idPagamento
-    (agg.arquivos.find(a => a.numPassagem === bil.numPassagem)?.driveUrl) || '', // LinkBPE
-    String(bil.poltrona || '')                // poltrona
-  ]));
-
-  if (!rows.length) return;
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: rows }
-  });
-
-  console.log('[Sheets] append ok:', rows.length, 'linhas');
-}
-
 */
+
 
 
 // normaliza texto: minúsculo, sem acento e sem sinais
@@ -1520,7 +1581,118 @@ const expectedCount =
   (vendaResult?.ListaPassagem?.length || 0) ||
   (passengers?.length || 0);
 
+   
+    // dentro do /api/praxio/vender, após gerar TODOS os PDFs:
+
+// … você já tem: payment, schedule, arquivos[], bilhetesPayload[]
+
+const to = getLoginEmail(req) || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+
+if (to) {
+  const appName   = process.env.APP_NAME || 'Turin Transportes';
+  const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+  const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+  const rota = `${schedule?.originName || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destino || ''}`;
+  const data = schedule?.date || '';
+  const hora = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
+  const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+  // monta a lista HTML c/ link Drive ou fallback local
+  const listaHtml = arquivos.map((a,i) => {
+    const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
+    const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+    return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
+  }).join('');
+
+  const html =
+    `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+      <p>Olá,</p>
+      <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+      <p><b>Rota:</b> ${rota}<br/>
+         <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
+         <b>Valor total:</b> ${valorTotalBRL}
+      </p>
+      <p><b>Bilhetes:</b></p>
+      <ul style="margin-top:8px">${listaHtml}</ul>
+      <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+    </div>`;
+
+  const text = [
+    'Olá,',
+    `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
+    `Rota: ${rota}`,
+    `Data: ${data}  Saída: ${hora}`,
+    `Valor total: ${valorTotalBRL}`,
+    '',
+    'Bilhetes:',
+    ...arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`)
+  ].join('\n');
+
+  // attachments: use os buffers que você já montou no loop ao gerar PDFs
+  // (se ainda não tem os buffers, leia de disk aqui com fs.readFile)
+  const attachmentsSMTP = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
+  const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
+
+  let sent = false;
+  try {
+    const got = await ensureTransport();
+    if (got.transporter) {
+      await got.transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to,
+        subject: `Seus bilhetes – ${appName}`,
+        html, text,
+        attachments: attachmentsSMTP,
+      });
+      sent = true;
+      console.log(`[Email] enviados ${attachmentsSMTP.length} anexos para ${to} via ${got.mode}`);
+    }
+  } catch (e) {
+    console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e);
+  }
+
+  if (!sent) {
+    await sendViaBrevoApi({
+      to, subject: `Seus bilhetes – ${appName}`,
+      html, text, fromEmail, fromName,
+      attachments: attachmentsBrevo
+    });
+    console.log(`[Email] enviados ${attachmentsBrevo.length} anexos para ${to} via Brevo API`);
+  }
+} else {
+  console.warn('[Email] comprador sem e-mail. Pulando envio.');
+}
+
+
+await sheetsAppendBilhetes({
+  spreadsheetId: process.env.SHEETS_BPE_ID,
+  range: process.env.SHEETS_BPE_RANGE || 'BPE!A:AG',
+  bilhetes: bilhetesPayload.map((b, i) => ({
+    ...b,
+    driveUrl: (arquivos[i]?.driveUrl || arquivos[i]?.pdfLocal || ''),
+  })),
+  schedule,
+  payment,
+  userEmail: getLoginEmail(req),
+  userPhone:
+    req?.user?.phone || req?.session?.user?.phone ||
+    req?.headers?.['x-user-phone'] || req?.body?.loginPhone || null
+});
+
+
+
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /* 
 // ————————————————————————————————————————————————
 // 5.3) Preparar pacote de e-mail (APENAS preparar; não enviar aqui)
 // ————————————————————————————————————————————————
@@ -1540,6 +1712,10 @@ try {
       getMail(req?.body?.user?.email) ||
       null;
 
+
+
+
+  
   const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
   if (to) {
     const appName   = process.env.APP_NAME || 'Turin Transportes';
@@ -1593,7 +1769,7 @@ try {
   }
 } catch (e) {
   console.error('[Email] preparação falhou:', e?.message || e);
-}
+}*/
 
 // ————————————————————————————————————————————————
 // 6) Webhook + E-mail via agregador (1 POST e 1 e-mail por compra)
