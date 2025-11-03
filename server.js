@@ -177,7 +177,7 @@ if (e.email?.to) {
       AGGR.delete(groupId);
     }
   };
-*/
+
   // Regra de disparo:
   // ► SEMPRE debounçar (evita 1 e-mail por request quando o front chama por poltrona)
   if (e.timer) clearTimeout(e.timer);
@@ -195,7 +195,7 @@ if (e.email?.to) {
 }
 
 
-
+*/
 
 /* ============================================================================
    Google Sheets (consulta por email) – leitura (mantido)
