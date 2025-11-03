@@ -183,7 +183,7 @@ async function sheetsAppendBilhetes({
     const values = (bilhetes || []).map(b => ([
       nowSP(),                                // Data/horaSolicitação
       b.nomeCliente || '',                    // Nome
-      loginPhone ||  ? `55${String().replace(/\D/g,'')}` : '', // Telefone
+      loginPhone || userPhone || '',          // Telefone
       loginEmail || userEmail || '',          // E-mail
       b.docCliente || '',                     // CPF
       Number(b.valor ?? 0).toFixed(2),        // Valor
