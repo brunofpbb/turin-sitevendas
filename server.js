@@ -109,7 +109,7 @@ function dedupArquivos(arr = []) {
 }
 
 
-      
+     /* 
       // 3) E-mail único com todos os anexos (reconstrói a lista com e.arquivos)
 if (e.email?.to) {
   // Regerar a lista/links usando TODOS os arquivos agregados
@@ -177,7 +177,7 @@ if (e.email?.to) {
       AGGR.delete(groupId);
     }
   };
-
+*/
   // Regra de disparo:
   // ► SEMPRE debounçar (evita 1 e-mail por request quando o front chama por poltrona)
   if (e.timer) clearTimeout(e.timer);
@@ -1490,7 +1490,7 @@ await sheetsAppendBilhetes({
 });
 
 
-
+/*
 
 // ————————————————————————————————————————————————
 // 6) Webhook + E-mail via agregador (1 POST e 1 e-mail por compra)
@@ -1596,7 +1596,7 @@ try {
 } catch (e) {
   console.error('[AGGR] queue erro:', e?.message || e);
 }
-
+*/
     // 7) Retorno para o front
     return res.json({ ok: true, venda: vendaResult, arquivos });
 
