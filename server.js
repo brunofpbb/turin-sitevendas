@@ -241,6 +241,9 @@ const nowSP = () => {
 // Converte “2025-11-03 10:48” -> “2025-11-03T10:48-03:00”
 const toISO3 = (s) => s ? (s.replace(' ', 'T') + '-03:00') : '';
 
+
+
+
 // >>> SUBSTITUA COMPLETAMENTE por esta versão <<<
 async function sheetsAppendBilhetes({
   spreadsheetId,
@@ -274,6 +277,16 @@ async function sheetsAppendBilhetes({
     const horaPartida = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
     const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
 
+      const loginPhone =
+      req?.user?.phone ||
+      req?.session?.user?.phone ||
+      req?.headers?.['x-user-phone'] ||
+      req?.body?.loginPhone ||
+      req?.body?.userPhone ||
+      null;
+
+    
+
     // indexa links por numPassagem para não depender do i
     const linkPorBilhete = Object.create(null);
     (schedule?.arquivos || []).forEach?.(()=>{}); // no-op: apenas garante que não quebre se schedule tiver arquivos
@@ -284,7 +297,7 @@ async function sheetsAppendBilhetes({
     const values = (bilhetes || []).map(b => ([
       nowSP(),                                // Data/horaSolicitação
       b.nomeCliente || '',                    // Nome
-      loginPhone || userPhone ? `55${String(userPhone).replace(/\D/g,'')}` : '', // Telefone
+      loginPhone ||  ? `55${String().replace(/\D/g,'')}` : '', // Telefone
       loginEmail || userEmail || '',          // E-mail
       b.docCliente || '',                     // CPF
       Number(b.valor ?? 0).toFixed(2),        // Valor
@@ -1208,7 +1221,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       idEstabelecimentoTicket = '93',
       serieBloco = '93',
       userEmail = '',
-      userPhone = '',
+       = '',
       idaVolta = 'ida'
     } = req.body || {};
 
