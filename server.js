@@ -117,7 +117,7 @@ const AGGR = new Map();
 const AGGR_DEBOUNCE_MS = 5000;   // espera mínima pra juntar múltiplos requests
 const AGGR_MAX_WAIT_MS = 25000;  // fail-safe máximo
 
-async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/undefined */) {
+async function queueUnifiedSend(fragment, hookUrl /* pode ser null/undefined */) {
   let e = AGGR.get(groupId);
   if (!e) e = { timer:null, startedAt:Date.now(), base:null, bilhetes:[], arquivos:[], email:null, expected:0, flushed:false };
 
@@ -147,25 +147,6 @@ async function queueUnifiedSend(groupId, fragment, hookUrl /* pode ser null/unde
       try {
         await sheetsAppendBpeRowsDirect({ base: payload, bilhetes: e.bilhetes, arquivos: e.arquivos });
      //   console.log('[AGGR][Sheets] append ok | groupId=', groupId, '| linhas=', e.bilhetes.length);
-          // ...
-  if (!rows.length) {
-    console.log('[Sheets] nada para inserir (0 linhas)');
-    return;
-  }
-
-  console.debug('[Sheets] append request', {
-    spreadsheetId,
-    range,
-    linhas: rows.length
-  });
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'ROWS',
-    requestBody: { values: rows }
-  });
 
   console.log('[Sheets] append ok:', rows.length, 'linhas',
               '| planilha=', spreadsheetId, '| range=', range);
@@ -1870,7 +1851,7 @@ try {
     expected: expectedCount
   };
 
-  const hookUrl = (process.env.WEBHOOK_SALVAR_BPE_URL || '').trim() || null;
+//  const hookUrl = (process.env.WEBHOOK_SALVAR_BPE_URL || '').trim() || null;
   //  || 'https://primary-teste1-f69d.up.railway.app/webhook/salvarBpe';
 
   // 👉 Garanta que computeGroupId gere a mesma chave para todos os bilhetes da compra
@@ -1878,16 +1859,16 @@ try {
  // const groupId = computeGroupId(req, payment, schedule);
 //  const groupId = computeGroupId(req, payment, schedule);
 // await queueUnifiedSend(groupId, fragment, hookUrl);
-console.log('[AGGR] queued groupId=', groupId,
-            '| bilhetes+=', bilhetes.length,
-            '| expected=', expectedCount,
-            '| emailTo=', (emailFragment?.email?.to || '(nenhum)'));
+//console.log('[AGGR] queued groupId=', groupId,
+       //     '| bilhetes+=', bilhetes.length,
+     //       '| expected=', expectedCount,
+         //   '| emailTo=', (emailFragment?.email?.to || '(nenhum)'));
 
 
   // 👉 Apenas UMA chamada: o agregador junta tudo e dispara 1 webhook + 1 e-mail
-  await queueUnifiedSend(groupId, fragment, hookUrl);
+//  await queueUnifiedSend(groupId, fragment, hookUrl);
 
-  console.log('[AGGR] queued groupId=', groupId, '| bilhetes+=', bilhetes.length, '| emailTo=', (emailFragment?.email?.to || '(nenhum)'));
+  console.log('[AGGR] queued groupId=', groupId, '| bilhetes+=', bilhetes.length);
 } catch (e) {
   console.error('[AGGR] queue erro:', e?.message || e);
 }
