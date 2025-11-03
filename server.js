@@ -109,70 +109,6 @@ function dedupArquivos(arr = []) {
 }
 
 
-
-
-// ==== Agregador por compra (webhook + e-mail + Sheets) ====
-// groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], email, expected, flushed }
-const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 5000;   // espera mínima pra juntar múltiplos requests
-const AGGR_MAX_WAIT_MS = 25000;  // fail-safe máximo
-
-async function queueUnifiedSend(fragment, hookUrl /* pode ser null/undefined */) {
-  let e = AGGR.get(groupId);
-  if (!e) e = { timer:null, startedAt:Date.now(), base:null, bilhetes:[], arquivos:[], email:null, expected:0, flushed:false };
-
-  // merge base
-  e.base = { ...(e.base || {}), ...(fragment.base || {}) };
-
-  // maior expected informado por qualquer request
-  if (fragment.expected && fragment.expected > (e.expected||0)) e.expected = fragment.expected;
-
-  // acumula deduplicando
-  if (Array.isArray(fragment.bilhetes)) e.bilhetes.push(...fragment.bilhetes);
-  if (Array.isArray(fragment.arquivos)) e.arquivos.push(...fragment.arquivos);
-  e.bilhetes = dedupBilhetes(e.bilhetes);
-  e.arquivos = dedupArquivos(e.arquivos);
-
-  // pacote de e-mail mais recente vence
-  if (fragment.email) e.email = fragment.email;
-
-  const doFlush = async () => {
-    if (e.flushed) return;
-    e.flushed = true;
-
-    const payload = { ...e.base, bilhetes: e.bilhetes, arquivos: e.arquivos };
-
-    try {
-      // 1) Google Sheets direto (uma linha por bilhete)
-      try {
-        await sheetsAppendBpeRowsDirect({ base: payload, bilhetes: e.bilhetes, arquivos: e.arquivos });
-     //   console.log('[AGGR][Sheets] append ok | groupId=', groupId, '| linhas=', e.bilhetes.length);
-
-  console.log('[Sheets] append ok:', rows.length, 'linhas',
-              '| planilha=', spreadsheetId, '| range=', range);
-
-
-       
-      } catch (err) {
-        console.error('[AGGR][Sheets] append erro:', err?.message || err);
-      }
-
-      // 2) Webhook (opcional)
-      if (hookUrl) {
-        try {
-          const resp = await fetch(hookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-source': 'sitevendas' },
-            body: JSON.stringify(payload),
-          });
-          console.log('[AGGR][Webhook] status=', resp.status, '| groupId=', groupId, '| bilhetes=', e.bilhetes.length);
-        } catch (err) {
-          console.error('[AGGR][Webhook] falhou:', err?.message || err);
-        }
-      } else {
-        console.log('[AGGR][Webhook] pulado (sem URL)');
-      }
-
       
       // 3) E-mail único com todos os anexos (reconstrói a lista com e.arquivos)
 if (e.email?.to) {
@@ -236,55 +172,7 @@ if (e.email?.to) {
 }
 
       
-      
-      
-      /*
-      // 3) E-mail único com todos os anexos
-      if (e.email?.to) {
-        let sent = false;
-        try {
-          const got = await ensureTransport();
-          if (got.transporter) {
-            await got.transporter.sendMail({
-              from: `"${e.email.fromName}" <${e.email.fromEmail}>`,
-              to: e.email.to,
-              subject: e.email.subject,
-              html: e.email.html,
-              text: e.email.text,
-              attachments: (e.email.attachments || []).map(a => ({ filename: a.filename, content: a.buffer })),
-            });
-            sent = true;
-            console.log('[AGGR][Email][SMTP] to=', e.email.to, '| anexos=', (e.email.attachments||[]).length);
-          }
-        } catch (err) {
-          console.warn('[AGGR][Email] SMTP falhou, tentando Brevo…', err?.message || err);
-        }
 
-        if (!sent) {
-          try {
-            await sendViaBrevoApi({
-              to: e.email.to,
-              subject: e.email.subject,
-              html: e.email.html,
-              text: e.email.text,
-              fromEmail: e.email.fromEmail,
-              fromName: e.email.fromName,
-              attachments: (e.email.attachments || []).map(a => ({
-                filename: a.filename,
-                contentBase64: a.contentBase64,
-              })),
-            });
-            console.log('[AGGR][Email][Brevo] to=', e.email.to, '| anexos=', (e.email.attachments||[]).length);
-          } catch (err) {
-            console.error('[AGGR][Email] Brevo falhou:', err?.message || err);
-          }
-        }
-      } else {
-        console.log('[AGGR][Email] sem destinatário; não enviado.');
-      }
-
-
-      */
     } finally {
       AGGR.delete(groupId);
     }
@@ -305,8 +193,6 @@ if (e.email?.to) {
   AGGR.set(groupId, e);
   return e;
 }
-
-
 
 
 
@@ -398,8 +284,8 @@ async function sheetsAppendBilhetes({
     const values = (bilhetes || []).map(b => ([
       nowSP(),                                // Data/horaSolicitação
       b.nomeCliente || '',                    // Nome
-      userPhone ? `55${String(userPhone).replace(/\D/g,'')}` : '', // Telefone
-      userEmail || '',                        // E-mail
+      loginPhone || userPhone ? `55${String(userPhone).replace(/\D/g,'')}` : '', // Telefone
+      loginEmail || userEmail || '',          // E-mail
       b.docCliente || '',                     // CPF
       Number(b.valor ?? 0).toFixed(2),        // Valor
       '2',                                    // ValorConveniencia
@@ -448,84 +334,6 @@ async function sheetsAppendBilhetes({
     return { ok:false, error: e?.message || String(e) };
   }
 }
-
-
-
-
-
-
-
-
-
-/*
-async function sheetsAppendBpeRowsDirect(agg) {
-  const sheets = await sheetsAuthRW();
-  const spreadsheetId = process.env.SHEETS_BPE_ID;
-  const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AF';
-
-  const b = agg.bilhetes || [];
-  const base = agg.base || {};
-  const mp   = base.mp || {};
-
-  const fee0 = (mp.fee_details && mp.fee_details[0]?.amount) || '';
-  const net  = (mp.transaction_details && mp.transaction_details.net_received_amount) || '';
-
-  const rows = b.map((bil) => ([
-    nowSP(),                                        // Data/horaSolicitação
-    bil.nomeCliente || '',                          // Nome
-    base.userPhone ? `55${String(base.userPhone).replace(/\D/g,'')}` : '', // Telefone
-    base.userEmail || '',                           // E-mail
-    bil.docCliente || '',                           // CPF
-    Number(bil.valor || 0).toFixed(2),              // Valor
-    '2',                                            // ValorConveniencia
-    fee0,                                           // ComissaoMP
-    net,                                            // ValorLiquido
-    bil.numPassagem || '',                          // NumPassagem
-    '93',                                           // SeriePassagem
-    base.mp?.status || '',                          // StatusPagamento
-    'Emitido',                                      // Status
-    '',                                             // ValorDevolucao
-    base.idaVolta || 'ida',                         // Sentido
-    toISO3(base.dataHora || ''),                    // Data/hora_Pagamento
-    '', '',                                         // NomePagador, CPF_Pagador
-    String(mp.id || ''),                            // ID_Transação
-    base.tipoPagamento || '',                       // TipoPagamento
-    '', '',                                         // correlationID, idURL
-    mp.external_reference || '',                    // Referencia
-    base.formaPagamento || '',                      // Forma_Pagamento
-    '',                                             // idUser
-    base.dataViagem || '',                          // Data_Viagem
-    base.dataHora || '',                            // Data_Hora
-    bil.origem || base.viagem?.origemNome || '',    // Origem
-    bil.destino || base.viagem?.destinoNome || '',  // Destino
-    '',                                             // Identificador
-    String(mp.id || ''),                            // idPagamento
-    (agg.arquivos.find(a => a.numPassagem === bil.numPassagem)?.driveUrl) || '', // LinkBPE
-    String(bil.poltrona || '')                      // poltrona
-  ]));
-
-  if (!rows.length) {
-    console.log('[Sheets] nada para inserir (0 linhas)');
-    return;
-  }
-
-  console.debug('[Sheets] append request', {
-    spreadsheetId, range, linhas: rows.length,
-    bilhetes: b.map(x => x.numPassagem)
-  });
-
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range,
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: { values: rows }
-  });
-
-  console.log('[Sheets] append ok:', rows.length, 'linhas');
-}
-*/
-
 
 
 // normaliza texto: minúsculo, sem acento e sem sinais
@@ -1372,7 +1180,10 @@ app.post('/api/ticket/render', async (req, res) => {
   }
 });
 
-/* =================== Webhook MP (somente log) =================== */
+
+
+
+/* =================== Webhook MP (somente log) =================== 
 app.post('/api/mp/webhook', async (req, res) => {
   res.status(200).json({ received: true });
   try {
@@ -1382,6 +1193,8 @@ app.post('/api/mp/webhook', async (req, res) => {
     console.error('[MP webhook] erro:', err?.message || err);
   }
 });
+*/
+
 
 /* =================== Venda Praxio + PDF + e-mail + Webhook agrupado =================== */
 app.post('/api/praxio/vender', async (req, res) => {
@@ -1678,95 +1491,6 @@ await sheetsAppendBilhetes({
 
 
 
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    /* 
-// ————————————————————————————————————————————————
-// 5.3) Preparar pacote de e-mail (APENAS preparar; não enviar aqui)
-// ————————————————————————————————————————————————
-let emailFragment = null;
-
-try {
-  const getMail = (v) =>
-    (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v))) ? String(v).trim() : null;
-
-  // Prioridade: e-mail do login (headers/session/body)
-  const loginEmail =
-      getMail(req?.user?.email) ||
-      getMail(req?.session?.user?.email) ||
-      getMail(req?.headers?.['x-user-email']) ||
-      getMail(req?.body?.loginEmail || req?.body?.emailLogin) ||
-      getMail(req?.body?.userEmail) ||
-      getMail(req?.body?.user?.email) ||
-      null;
-
-
-
-
-  
-  const to = loginEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-  if (to) {
-    const appName   = process.env.APP_NAME || 'Turin Transportes';
-    const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
-
-    const rota = `${schedule?.originName || schedule?.origin || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destination || schedule?.destino || ''}`;
-    const data = schedule?.date || '';
-    const hora = schedule?.horaPartida || schedule?.departureTime || '';
-
-    // Lista com links (Drive tem prioridade; senão, caminho local)
-    const listaBilhetesHtml = (arquivos || []).map((a, i) => {
-      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
-      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
-      return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
-    }).join('');
-
-    const totalBRL = Number(payment?.transaction_amount || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
-
-    const html =
-      `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
-        <p>Olá,</p>
-        <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes.</p>
-        <p><b>Rota:</b> ${rota}<br/>
-           <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
-           <b>Valor total:</b> ${totalBRL}
-        </p>
-        <p><b>Bilhetes:</b></p>
-        <ul style="margin-top:8px">${listaBilhetesHtml}</ul>
-        <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
-      </div>`;
-
-    const text =
-      `Olá,\n\nRecebemos seu pagamento em ${appName}. Bilhetes em anexo/links.\n\n` +
-      `Rota: ${rota}\nData: ${data}  Saída: ${hora}\nValor total: ${totalBRL}\n` +
-      `Bilhetes:\n` + (arquivos || []).map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`).join('\n');
-
-    emailFragment = {
-      email: {
-        to,
-        fromEmail,
-        fromName,
-        subject: `Seus bilhetes – ${appName}`,
-        html,
-        text,
-        attachments: emailAttachments || [] // use o que você já montou para anexos (se houver)
-      }
-    };
-  } else {
-    console.warn('[Email] Sem e-mail do comprador. Apenas webhook será enviado.');
-  }
-} catch (e) {
-  console.error('[Email] preparação falhou:', e?.message || e);
-}*/
 
 // ————————————————————————————————————————————————
 // 6) Webhook + E-mail via agregador (1 POST e 1 e-mail por compra)
