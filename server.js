@@ -367,34 +367,37 @@ const nowSP = () => {
   return `${fmt.day}/${fmt.month}/${fmt.year} ${fmt.hour}:${fmt.minute}:${fmt.second}`;
 };
 
+
+// === Tempo SP (mantém como está acima)
+// const nowSP = ...
+
 // Converte “2025-11-03 10:48” -> “2025-11-03T10:48-03:00”
 const toISO3 = (s) => s ? (s.replace(' ', 'T') + '-03:00') : '';
 
-
-
+// >>> SUBSTITUA COMPLETAMENTE por esta versão <<<
 async function sheetsAppendBilhetes({
   spreadsheetId,
-  range = 'BPE!A:AG',          // ajuste se seu gid/range for outro
-  bilhetes,                    // array de bilhetes [{...}]
-  schedule,                    // origem/destino/data/hora
-  payment,                     // objeto do MP já revalidado
+  range = 'BPE!A:AG',
+  bilhetes,                    // [{ numPassagem, nomeCliente, docCliente, valor, poltrona, driveUrl, origem, destino, idaVolta }]
+  schedule,                    // { date, horaPartida, originName/destinationName ... }
+  payment,                     // objeto do MP (precisamos de fee_details, net_received_amount, charges_details, date_approved, payment_type_id, id, external_reference)
   userEmail,
   userPhone
 }) {
   try {
-    const sheets = await sheetsAuth();
+    // *** usa escopo de escrita ***
+    const sheets = await sheetsAuthRW();
 
-    // campos do MP usados pela sua planilha
-    const fee = (payment?.fee_details?.[0]?.amount ?? 0);
-    const net = (payment?.transaction_details?.net_received_amount ?? 0);
-    const chargesId = (payment?.charges_details?.[0]?.id ?? '');
-    const dateApprovedISO = payment?.date_approved || null; // ISO UTC
-    // Data/hora pagamento em formato da sua planilha (sv-SE + sufixo -03:00)
-    const pagoSP = dateApprovedISO
-      ? (new Date(dateApprovedISO)).toLocaleString('sv-SE', { timeZone:'America/Sao_Paulo', hour12:false }).replace(' ','T') + '-03:00'
+    const fee  = payment?.fee_details?.[0]?.amount ?? '';
+    const net  = payment?.transaction_details?.net_received_amount ?? '';
+    const chId = payment?.charges_details?.[0]?.id ?? '';
+    const dtAp = payment?.date_approved || null;
+
+    const pagoSP = dtAp
+      ? (new Date(dtAp)).toLocaleString('sv-SE', { timeZone:'America/Sao_Paulo', hour12:false }).replace(' ','T') + '-03:00'
       : '';
 
-    const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'...
+    const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'
     const forma = tipo === 'pix' ? 'PIX'
                 : tipo === 'debit_card' ? 'Cartão de Débito'
                 : tipo === 'credit_card' ? 'Cartão de Crédito'
@@ -404,17 +407,23 @@ async function sheetsAppendBilhetes({
     const horaPartida = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
     const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
 
-    // monta TODAS as linhas de uma vez
+    // indexa links por numPassagem para não depender do i
+    const linkPorBilhete = Object.create(null);
+    (schedule?.arquivos || []).forEach?.(()=>{}); // no-op: apenas garante que não quebre se schedule tiver arquivos
+    // vamos receber o array 'arquivos' via parâmetro bilhetes (cada item já pode ter driveUrl)
+    const linkByNum = new Map();
+    // se você tiver um array externo 'arquivos' na chamada, passe via bilhetes[].driveUrl (já faço abaixo)
+
     const values = (bilhetes || []).map(b => ([
       nowSP(),                                // Data/horaSolicitação
       b.nomeCliente || '',                    // Nome
       userPhone ? `55${String(userPhone).replace(/\D/g,'')}` : '', // Telefone
       userEmail || '',                        // E-mail
       b.docCliente || '',                     // CPF
-      Number(b.valor ?? 0).toFixed(2),       // Valor
-      '2',                                    // ValorConveniencia (fixo que você usava)
-      String(fee).replace('.', ','),          // ComissaoMP
-      String(net).replace('.', ','),          // ValorLiquido
+      Number(b.valor ?? 0).toFixed(2),        // Valor
+      '2',                                    // ValorConveniencia
+      String(fee).toString().replace('.', ','), // ComissaoMP
+      String(net).toString().replace('.', ','), // ValorLiquido
       b.numPassagem || '',                    // NumPassagem
       '93',                                   // SeriePassagem
       String(payment?.status || ''),          // StatusPagamento
@@ -424,7 +433,7 @@ async function sheetsAppendBilhetes({
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
-      chargesId,                              // ID_Transação
+      chId,                                   // ID_Transação
       tipo || '',                             // TipoPagamento
       '',                                     // correlationID
       '',                                     // idURL
@@ -433,17 +442,17 @@ async function sheetsAppendBilhetes({
       '',                                     // idUser
       dataViagem,                             // Data_Viagem
       dataHoraViagem,                         // Data_Hora
-      schedule?.originName || schedule?.origem || '',     // Origem
-      schedule?.destinationName || schedule?.destino || '', // Destino
+      b.origem || schedule?.originName || schedule?.origem || '',     // Origem
+      b.destino || schedule?.destinationName || schedule?.destino || '', // Destino
       '',                                     // Identificador
       payment?.id || '',                      // idPagamento
-      b.driveUrl || '',                       // LinkBPE
+      b.driveUrl || '',                       // LinkBPE (vem do próprio item)
       b.poltrona || ''                        // poltrona
     ]));
 
     if (!values.length) return { ok:true, appended:0 };
 
-    const r = await sheets.spreadsheets.values.append({
+    await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
       valueInputOption: 'USER_ENTERED',
@@ -452,12 +461,15 @@ async function sheetsAppendBilhetes({
     });
 
     console.log('[Sheets] append ok:', values.length, 'linhas');
-    return { ok:true, appended: values.length, raw: r.data };
+    return { ok:true, appended: values.length };
   } catch (e) {
     console.error('[Sheets] append erro:', e?.message || e);
     return { ok:false, error: e?.message || String(e) };
   }
 }
+
+
+
 
 
 
@@ -1668,9 +1680,12 @@ if (to) {
 await sheetsAppendBilhetes({
   spreadsheetId: process.env.SHEETS_BPE_ID,
   range: process.env.SHEETS_BPE_RANGE || 'BPE!A:AG',
-  bilhetes: bilhetesPayload.map((b, i) => ({
+  bilhetes: bilhetesPayload.map(b => ({
     ...b,
-    driveUrl: (arquivos[i]?.driveUrl || arquivos[i]?.pdfLocal || ''),
+    // casa pelo número, não pelo índice
+    driveUrl: (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
+           || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+           || ''
   })),
   schedule,
   payment,
@@ -1679,6 +1694,7 @@ await sheetsAppendBilhetes({
     req?.user?.phone || req?.session?.user?.phone ||
     req?.headers?.['x-user-phone'] || req?.body?.loginPhone || null
 });
+
 
 
 
@@ -1850,7 +1866,7 @@ try {
     },
     bilhetes,
     arquivos: (arquivos || []),
-    ...(emailFragment || {}),    // agrega o pacote de e-mail preparado no 5.3
+    //...(emailFragment || {}),    // agrega o pacote de e-mail preparado no 5.3
     expected: expectedCount
   };
 
@@ -1860,7 +1876,7 @@ try {
   // 👉 Garanta que computeGroupId gere a mesma chave para todos os bilhetes da compra
   //    (ex.: payment.external_reference || payment.id)
  // const groupId = computeGroupId(req, payment, schedule);
-  const groupId = computeGroupId(req, payment, schedule);
+//  const groupId = computeGroupId(req, payment, schedule);
 // await queueUnifiedSend(groupId, fragment, hookUrl);
 console.log('[AGGR] queued groupId=', groupId,
             '| bilhetes+=', bilhetes.length,
