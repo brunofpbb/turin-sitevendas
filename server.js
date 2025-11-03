@@ -1107,7 +1107,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       idEstabelecimentoTicket = '93',
       serieBloco = '93',
       userEmail = '',
-       = '',
+      userPhone = '',
       idaVolta = 'ida'
     } = req.body || {};
 
