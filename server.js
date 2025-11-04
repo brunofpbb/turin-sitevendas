@@ -1343,24 +1343,32 @@ app.post('/api/praxio/vender', async (req, res) => {
       });
           }
 
-// quantos bilhetes esperamos nesta compra
-const expectedCount =
-  (vendaResult?.ListaPassagem?.length || 0) ||
-  (passengers?.length || 0);
 
 
 
 
 
-// mpPaymentId é o id único da compra no MP (vem do body)
+
+
+
+
+    // mpPaymentId é o id único da compra no MP (vem do body)
 if (!guardOnce(String(mpPaymentId))) {
   console.warn('[Idem] pular envio (já processado) para payment=', mpPaymentId);
   return res.json({ ok: true, venda: vendaResult, arquivos, note: 'idempotent-skip' });
 }
+    
+    
+    
+    
+const expectedCount =
+  (vendaResult?.ListaPassagem?.length || 0) ||
+  (passengers?.length || 0);
 
-
-
-
+if (arquivos.length !== expectedCount) {
+  console.warn('[Email] anexos inconsistentes: expected=', expectedCount, 'got=', arquivos.length);
+  // opcional: pequeno atraso e reread dos arquivos locais (raríssimo de precisar)
+}
 
 
 
