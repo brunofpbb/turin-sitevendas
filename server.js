@@ -207,38 +207,6 @@ async function sheetsAppendBilhetes({
 
 
 
-// --- mapear TipoPagamento para código numérico (0=PIX, 3=Crédito)
-const tipoPagamentoRaw =
-  req?.body?.tipoPagamento ??
-  payment?.payment_type_id ??         // ex.: 'credit_card', 'pix'
-  payment?.payment_method_id ??       // ex.: 'pix'
-  '';
-
-function mapTipoPagamentoCode(v) {
-  const t = String(v || '').toLowerCase();
-
-  // PIX
-  if (t === 'pix' || t.includes('pix')) return 0;
-
-  // Cartão de crédito
-  if (t === 'credit' || t === 'credit_card' || t.includes('credit')) return 3;
-
-  // (se quiser, retorne vazio quando não identificado)
-  return '';
-}
-
-const tipoPagamentoCode = mapTipoPagamentoCode(tipoPagamentoRaw);
-
-
-
-
-
-
-
-
-
-
-  
 
 
 
