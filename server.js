@@ -956,6 +956,40 @@ function normalizeHoraPartida(h) {
   return s;
 }
 
+
+
+
+
+
+
+// === Idempotência curta para evitar duplo envio por compra ===
+const SEND_GUARD = new Map(); // key: paymentId -> expiresAt (ms)
+
+function guardOnce(key, ttlMs = 120000) { // 2 min
+  const now = Date.now();
+  const exp = SEND_GUARD.get(key);
+  if (exp && exp > now) return false;  // já executado recentemente
+  SEND_GUARD.set(key, now + ttlMs);
+  return true;
+}
+
+// limpeza eventual
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of SEND_GUARD.entries()) if (v <= now) SEND_GUARD.delete(k);
+}, 60000);
+
+
+
+
+
+
+
+
+
+
+
+
 async function praxioLogin() {
   const resp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Login/efetualogin', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1314,7 +1348,34 @@ const expectedCount =
   (vendaResult?.ListaPassagem?.length || 0) ||
   (passengers?.length || 0);
 
-   
+
+
+
+
+// mpPaymentId é o id único da compra no MP (vem do body)
+if (!guardOnce(String(mpPaymentId))) {
+  console.warn('[Idem] pular envio (já processado) para payment=', mpPaymentId);
+  return res.json({ ok: true, venda: vendaResult, arquivos, note: 'idempotent-skip' });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
     // dentro do /api/praxio/vender, após gerar TODOS os PDFs:
 
 // … você já tem: payment, schedule, arquivos[], bilhetesPayload[]
