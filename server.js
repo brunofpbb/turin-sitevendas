@@ -196,11 +196,11 @@ async function sheetsAppendBilhetes({
       ? (new Date(dtAp)).toLocaleString('sv-SE', { timeZone:'America/Sao_Paulo', hour12:false }).replace(' ','T') + '-03:00'
       : '';
 
-   /* const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'
+    const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'
     const forma = tipo === 'pix' ? 'PIX'
                 : tipo === 'debit_card' ? 'Cartão de Débito'
                 : tipo === 'credit_card' ? 'Cartão de Crédito'
-                : '';*/
+                : '';
 
 
     
