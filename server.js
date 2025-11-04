@@ -1289,7 +1289,7 @@ app.post('/api/praxio/vender', async (req, res) => {
         valor:       p.ValorPgto ?? ticket.valor ?? null,
         idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida'
       });
-    }
+    
 
 // quantos bilhetes esperamos nesta compra
 const expectedCount =
