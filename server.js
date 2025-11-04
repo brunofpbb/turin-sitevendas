@@ -221,7 +221,7 @@ async function sheetsAppendBilhetes({
       String(payment?.status || ''),          // StatusPagamento
       'Emitido',                              // Status
       '',                                     // ValorDevolucao
-      (b?.idaVolta || 'Ida'),                 // Sentido
+      (b?.idaVolta || (String(idaVolta).toLowerCase()==='volta' ? 'Volta' : 'Ida')),                 // Sentido
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
@@ -1251,21 +1251,7 @@ app.post('/api/praxio/vender', async (req, res) => {
         });
 
 
-// dedupe simples: evita e-mail duplicado na mesma compra
-const EMAIL_DEDUPE = global.EMAIL_DEDUPE || (global.EMAIL_DEDUPE = new Set());
-const emailKey = `mp:${payment?.id}|ref:${payment?.external_reference || ''}`;
-if (EMAIL_DEDUPE.has(emailKey)) {
-  console.log('[Email] ignorado (duplicado):', emailKey);
-} else {
-  EMAIL_DEDUPE.add(emailKey);
-  setTimeout(() => EMAIL_DEDUPE.delete(emailKey), 5 * 60 * 1000); // 5 min
-
-  // ... (trecho existente de composição + envio do email)
-  // mantém exatamente como está hoje: tenta SMTP; se falhar, usa Brevo;
-}
-
-
-        
+       
         // preparar anexos para e-mail
         emailAttachments.push({
           filename: nome,
@@ -1300,7 +1286,8 @@ if (EMAIL_DEDUPE.has(emailKey)) {
         poltrona:    p.Poltrona || ticket.poltrona || null,
         nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
         docCliente:  p.DocCliente || ticket.docCliente || null,
-        valor:       p.ValorPgto ?? ticket.valor ?? null
+        valor:       p.ValorPgto ?? ticket.valor ?? null,
+        idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida'
       });
     }
 
