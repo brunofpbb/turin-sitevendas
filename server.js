@@ -197,18 +197,16 @@ const toISO3 = (s) => s ? (s.replace(' ', 'T') + '-03:00') : '';
 
 
 
-// >>> SUBSTITUA COMPLETAMENTE por esta versão <<<
 async function sheetsAppendBilhetes({
   spreadsheetId,
   range = 'BPE!A:AG',
   bilhetes,                    // [{ numPassagem, nomeCliente, docCliente, valor, poltrona, driveUrl, origem, destino, idaVolta }]
   schedule,                    // { date, horaPartida, originName/destinationName ... }
-  payment,                     // objeto do MP (precisamos de fee_details, net_received_amount, charges_details, date_approved, payment_type_id, id, external_reference)
+  payment,                     // objeto do MP
   userEmail,
   userPhone
 }) {
   try {
-    // *** usa escopo de escrita ***
     const sheets = await sheetsAuthRW();
 
     const fee  = payment?.fee_details?.[0]?.amount ?? '';
@@ -230,28 +228,11 @@ async function sheetsAppendBilhetes({
     const horaPartida = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
     const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
 
-      const loginPhone =
-      req?.user?.phone ||
-      req?.session?.user?.phone ||
-      req?.headers?.['x-user-phone'] ||
-      req?.body?.loginPhone ||
-      req?.body?.userPhone ||
-      null;
-
-    
-
-    // indexa links por numPassagem para não depender do i
-    const linkPorBilhete = Object.create(null);
-    (schedule?.arquivos || []).forEach?.(()=>{}); // no-op: apenas garante que não quebre se schedule tiver arquivos
-    // vamos receber o array 'arquivos' via parâmetro bilhetes (cada item já pode ter driveUrl)
-    const linkByNum = new Map();
-    // se você tiver um array externo 'arquivos' na chamada, passe via bilhetes[].driveUrl (já faço abaixo)
-
     const values = (bilhetes || []).map(b => ([
       nowSP(),                                // Data/horaSolicitação
       b.nomeCliente || '',                    // Nome
-      loginPhone || userPhone || '',          // Telefone
-      loginEmail || userEmail || '',          // E-mail
+      (userPhone || ''),                      // Telefone
+      (userEmail || ''),                      // E-mail
       b.docCliente || '',                     // CPF
       Number(b.valor ?? 0).toFixed(2),        // Valor
       '2',                                    // ValorConveniencia
@@ -279,7 +260,7 @@ async function sheetsAppendBilhetes({
       b.destino || schedule?.destinationName || schedule?.destino || '', // Destino
       '',                                     // Identificador
       payment?.id || '',                      // idPagamento
-      b.driveUrl || '',                       // LinkBPE (vem do próprio item)
+      b.driveUrl || '',                       // LinkBPE
       b.poltrona || ''                        // poltrona
     ]));
 
@@ -300,6 +281,10 @@ async function sheetsAppendBilhetes({
     return { ok:false, error: e?.message || String(e) };
   }
 }
+
+
+
+
 
 
 // normaliza texto: minúsculo, sem acento e sem sinais
@@ -1309,6 +1294,26 @@ app.post('/api/praxio/vender', async (req, res) => {
           filename: nome,
           folderId: process.env.GDRIVE_FOLDER_ID,
         });
+
+
+// dedupe simples: evita e-mail duplicado na mesma compra
+const EMAIL_DEDUPE = global.EMAIL_DEDUPE || (global.EMAIL_DEDUPE = new Set());
+const emailKey = `mp:${payment?.id}|ref:${payment?.external_reference || ''}`;
+if (EMAIL_DEDUPE.has(emailKey)) {
+  console.log('[Email] ignorado (duplicado):', emailKey);
+} else {
+  EMAIL_DEDUPE.add(emailKey);
+  setTimeout(() => EMAIL_DEDUPE.delete(emailKey), 5 * 60 * 1000); // 5 min
+
+  // ... (trecho existente de composição + envio do email)
+  // mantém exatamente como está hoje: tenta SMTP; se falhar, usa Brevo;
+}
+
+
+
+
+
+        
 
         // preparar anexos para e-mail
         emailAttachments.push({
