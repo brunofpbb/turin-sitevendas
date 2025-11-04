@@ -212,12 +212,6 @@ const pmId   = String(payment?.payment_method_id || '').toLowerCase(); // costum
 const tipoPagamento =
   (pmId.includes('pix') || mpType === 'pix' || mpType === 'bank_transfer') ? '0' : '3';
 
-
-
-
-
-
-
     
 
     const dataViagem = (schedule?.date || schedule?.dataViagem || '') || '';
@@ -1029,27 +1023,6 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // === Idempotência curta para evitar duplo envio por compra ===
 const SEND_GUARD = new Map(); // key: paymentId -> expiresAt (ms)
 
@@ -1066,14 +1039,6 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of SEND_GUARD.entries()) if (v <= now) SEND_GUARD.delete(k);
 }, 60000);
-
-
-
-
-
-
-
-
 
 
 
@@ -1557,169 +1522,6 @@ queueUnifiedSend(groupId, fragment, async (bundle) => {
     userPhone                           // normalizado
   });
 });
-
-
-
-// console.log('[AGGR][flush]', groupId, '| bilhetes=', bilhetes.length, '| anexos=', emailAttachments.length);
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-    
- /*   
-const expectedCount =
-  (vendaResult?.ListaPassagem?.length || 0) ||
-  (passengers?.length || 0);
-
-if (arquivos.length !== expectedCount) {
-  console.warn('[Email] anexos inconsistentes: expected=', expectedCount, 'got=', arquivos.length);
-  // opcional: pequeno atraso e reread dos arquivos locais (raríssimo de precisar)
-}
-*/
-
-
-
-
-
-
-
-
-
-
-
-/*
-
-    
-    // dentro do /api/praxio/vender, após gerar TODOS os PDFs:
-
-// … você já tem: payment, schedule, arquivos[], bilhetesPayload[]
-const loginEmail = getLoginEmail(req, payment, vendaResult);
-const loginPhone = getLoginPhone(req, payment, vendaResult);
-
-// <-- use "loginEmail" no pacote do e-mail (to) e também passe pro Sheets
-
-const to = getLoginEmail(req) || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
-
-if (to) {
-  const appName   = process.env.APP_NAME || 'Turin Transportes';
-  const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-  const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
-
-  const rota = `${schedule?.originName || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destino || ''}`;
-  const data = schedule?.date || '';
-  const hora = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
-  const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-
-  // monta a lista HTML c/ link Drive ou fallback local
-  const listaHtml = arquivos.map((a,i) => {
-    const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
-    const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
-    return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
-  }).join('');
-
-  const html =
-    `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
-      <p>Olá,</p>
-      <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
-      <p><b>Rota:</b> ${rota}<br/>
-         <b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/>
-         <b>Valor total:</b> ${valorTotalBRL}
-      </p>
-      <p><b>Bilhetes:</b></p>
-      <ul style="margin-top:8px">${listaHtml}</ul>
-      <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
-    </div>`;
-
-  const text = [
-    'Olá,',
-    `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
-    `Rota: ${rota}`,
-    `Data: ${data}  Saída: ${hora}`,
-    `Valor total: ${valorTotalBRL}`,
-    '',
-    'Bilhetes:',
-    ...arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`)
-  ].join('\n');
-
-  // attachments: use os buffers que você já montou no loop ao gerar PDFs
-  // (se ainda não tem os buffers, leia de disk aqui com fs.readFile)
-  const attachmentsSMTP = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
-  const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
-
-  let sent = false;
-  try {
-    const got = await ensureTransport();
-    if (got.transporter) {
-      await got.transporter.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
-        to,
-        subject: `Seus bilhetes – ${appName}`,
-        html, text,
-        attachments: attachmentsSMTP,
-      });
-      sent = true;
-      console.log(`[Email] enviados ${attachmentsSMTP.length} anexos para ${to} via ${got.mode}`);
-    }
-  } catch (e) {
-    console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e);
-  }
-
-  if (!sent) {
-    await sendViaBrevoApi({
-      to, subject: `Seus bilhetes – ${appName}`,
-      html, text, fromEmail, fromName,
-      attachments: attachmentsBrevo
-    });
-    console.log(`[Email] enviados ${attachmentsBrevo.length} anexos para ${to} via Brevo API`);
-  }
-} else {
-  console.warn('[Email] comprador sem e-mail. Pulando envio.');
-}
-   
-
-await sheetsAppendBilhetes({
-  spreadsheetId: process.env.SHEETS_BPE_ID,
-  range: process.env.SHEETS_BPE_RANGE || 'BPE!A:AG',
-  bilhetes: bilhetesPayload.map(b => ({
-    ...b,
-    // casa pelo número, não pelo índice
-    driveUrl: (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
-           || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
-           || ''
-  })),
-  schedule,
-  payment,
-  userEmail: loginEmail || '',              // ← mesmo e-mail do envio do PDF
-  userPhone: loginPhone || ''               // ← normalizado (só dígitos)
-});
-
-
-
-
-*/
-
-
-
-
-
 
 
 
