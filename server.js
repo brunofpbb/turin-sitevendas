@@ -182,7 +182,8 @@ async function sheetsAppendBilhetes({
   schedule,                    // { date, horaPartida, originName/destinationName ... }
   payment,                     // objeto do MP
   userEmail,
-  userPhone
+  userPhone,
+  idaVoltaDefault = ''
 }) {
   try {
     const sheets = await sheetsAuthRW();
@@ -1233,12 +1234,14 @@ if (!guardOnce(String(mpPaymentId))) {
   console.warn('[Idem] pular envio (já processado) para payment=', mpPaymentId);
   return res.json({ ok: true, venda: vendaResult, arquivos, note: 'idempotent-skip' });
 }
-*/
+
 
 if (!guardOnce(String(mpPaymentId))) {
   console.warn('[Idem] pular processamento (já processado) payment=', mpPaymentId);
   return res.json({ ok: true, note: 'idempotent-skip' });
 }
+
+*/
 
 
 
@@ -1434,7 +1437,7 @@ const expectedCount =
 
 // monta fragmento
 const fragment = {
-  base: { payment, schedule, userEmail: loginEmail||'', userPhone: loginPhone||'' },
+  base: { payment, schedule, userEmail: loginEmail||'', userPhone: loginPhone||'', idaVolta },
   bilhetes: bilhetesPayload,
   arquivos,
   emailAttachments,
@@ -1447,7 +1450,13 @@ const groupId = String(mpPaymentId || payment?.id || payment?.external_reference
 // enfileira; quando o AGGR perceber que chegou tudo (ou estourar timeout), ele dispara 1x
 queueUnifiedSend(groupId, fragment, async (bundle) => {
   const { base, bilhetes, arquivos, emailAttachments } = bundle;
-  const { payment, schedule, userEmail, userPhone } = base;
+  const { payment, schedule, userEmail, userPhone, idaVolta } = base;
+
+  // trava para evitar e-mail/Sheets duplicados por pagamento
+  if (!guardOnce(String(payment?.id || groupId))) {
+    console.warn('[Idem] envio já realizado para', payment?.id || groupId);
+    return;
+  }
 
   // 1) E-MAIL único com todos os anexos
   const to = userEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
@@ -1519,7 +1528,8 @@ queueUnifiedSend(groupId, fragment, async (bundle) => {
     schedule,
     payment,
     userEmail,                          // mesmo e-mail usado no envio
-    userPhone                           // normalizado
+    userPhone,                           // normalizado
+    idaVoltaDefault: idaVolta
   });
 });
 
