@@ -196,13 +196,21 @@ async function sheetsAppendBilhetes({
       ? (new Date(dtAp)).toLocaleString('sv-SE', { timeZone:'America/Sao_Paulo', hour12:false }).replace(' ','T') + '-03:00'
       : '';
 
-    const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'
+   /* const tipo = String(payment?.payment_type_id || '').toLowerCase();   // 'pix'|'credit_card'|'debit_card'
     const forma = tipo === 'pix' ? 'PIX'
                 : tipo === 'debit_card' ? 'Cartão de Débito'
                 : tipo === 'credit_card' ? 'Cartão de Crédito'
-                : '';
+                : '';*/
 
 
+    
+    // Identificação robusta do método
+const mpType = String(payment?.payment_type_id   || '').toLowerCase(); // 'pix' | 'credit_card' | 'debit_card' | 'bank_transfer'...
+const pmId   = String(payment?.payment_method_id || '').toLowerCase(); // costuma conter 'pix' quando é PIX
+
+// Código para a planilha
+const tipoPagamento =
+  (pmId.includes('pix') || mpType === 'pix' || mpType === 'bank_transfer') ? '0' : '3';
 
 
 
@@ -236,7 +244,7 @@ async function sheetsAppendBilhetes({
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
       chId,                                   // ID_Transação
-      String(tipoPagamentoCode) || '',                             // TipoPagamento
+      tipoPagamento,                          // TipoPagamento
       '',                                     // correlationID
       '',                                     // idURL
       payment?.external_reference || '',      // Referencia
