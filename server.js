@@ -202,6 +202,48 @@ async function sheetsAppendBilhetes({
                 : tipo === 'credit_card' ? 'Cartão de Crédito'
                 : '';
 
+
+
+
+
+
+// --- mapear TipoPagamento para código numérico (0=PIX, 3=Crédito)
+const tipoPagamentoRaw =
+  req?.body?.tipoPagamento ??
+  payment?.payment_type_id ??         // ex.: 'credit_card', 'pix'
+  payment?.payment_method_id ??       // ex.: 'pix'
+  '';
+
+function mapTipoPagamentoCode(v) {
+  const t = String(v || '').toLowerCase();
+
+  // PIX
+  if (t === 'pix' || t.includes('pix')) return 0;
+
+  // Cartão de crédito
+  if (t === 'credit' || t === 'credit_card' || t.includes('credit')) return 3;
+
+  // (se quiser, retorne vazio quando não identificado)
+  return '';
+}
+
+const tipoPagamentoCode = mapTipoPagamentoCode(tipoPagamentoRaw);
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+    
+
     const dataViagem = (schedule?.date || schedule?.dataViagem || '') || '';
     const horaPartida = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
     const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
@@ -226,7 +268,7 @@ async function sheetsAppendBilhetes({
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
       chId,                                   // ID_Transação
-      tipo || '',                             // TipoPagamento
+      String(tipoPagamentoCode) || '',                             // TipoPagamento
       '',                                     // correlationID
       '',                                     // idURL
       payment?.external_reference || '',      // Referencia
