@@ -1260,12 +1260,20 @@ app.post('/api/praxio/vender', async (req, res) => {
 
 
         // mpPaymentId é o id único da compra no MP (vem do body)
+
+    
+    /*
+
 if (!guardOnce(String(mpPaymentId))) {
   console.warn('[Idem] pular envio (já processado) para payment=', mpPaymentId);
   return res.json({ ok: true, venda: vendaResult, arquivos, note: 'idempotent-skip' });
 }
+*/
 
-
+if (!guardOnce(String(mpPaymentId))) {
+  console.warn('[Idem] pular processamento (já processado) payment=', mpPaymentId);
+  return res.json({ ok: true, note: 'idempotent-skip' });
+}
 
 
 
@@ -1552,7 +1560,7 @@ queueUnifiedSend(groupId, fragment, async (bundle) => {
 
 
 
-console.log('[AGGR][flush]', groupId, '| bilhetes=', bilhetes.length, '| anexos=', emailAttachments.length);
+// console.log('[AGGR][flush]', groupId, '| bilhetes=', bilhetes.length, '| anexos=', emailAttachments.length);
 
 
     
