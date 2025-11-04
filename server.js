@@ -15,8 +15,6 @@ function fetchWithTimeout(url, opts = {}, ms = 10000) {
 }
 
 
-
-
 // === serviços de bilhete (PDF) ===
 const { mapVendaToTicket } = require('./services/ticket/mapper');
 const { generateTicketPdf } = require('./services/ticket/pdf');
@@ -26,20 +24,6 @@ app.use(express.json({ limit: '2mb' }));
 const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
-/*
-// === Normalizador de e-mail (login tem prioridade)
-function getLoginEmail(req){
-  const isMail = v => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v));
-  const get = v => isMail(v) ? String(v).trim() : null;
-  return (
-    get(req?.user?.email) ||
-    get(req?.session?.user?.email) ||
-    get(req?.headers?.['x-user-email']) ||
-    get(req?.body?.loginEmail || req?.body?.emailLogin) ||
-    null
-  );
-}
-*/
 
 
 // === Helpers p/ e-mail e telefone do login ===
@@ -104,9 +88,6 @@ function getLoginPhone(req, payment, vendaResult) {
 }
 
 
-
-
-
 // === ID de grupo (idempotência por compra)
 function computeGroupId(req, payment, schedule){
   return (
@@ -147,8 +128,7 @@ function dedupArquivos(arr = []) {
   });
 }
 
-
-  
+ 
 
 /* ============================================================================
    Google Sheets (consulta por email) – leitura (mantido)
@@ -193,8 +173,6 @@ const nowSP = () => {
 
 // Converte “2025-11-03 10:48” -> “2025-11-03T10:48-03:00”
 const toISO3 = (s) => s ? (s.replace(' ', 'T') + '-03:00') : '';
-
-
 
 
 async function sheetsAppendBilhetes({
@@ -281,10 +259,6 @@ async function sheetsAppendBilhetes({
     return { ok:false, error: e?.message || String(e) };
   }
 }
-
-
-
-
 
 
 // normaliza texto: minúsculo, sem acento e sem sinais
@@ -1037,10 +1011,6 @@ async function praxioGravaDevolucao({ idSessao, xmlPassagem }) {
 }
 
 
-
-
-
-
 // Data com offset -03:00 (ex.: 2025-10-17T22:12:24-03:00)
 function nowWithTZOffsetISO(offsetMinutes = -(3 * 60)) {
   const now = new Date();
@@ -1130,21 +1100,6 @@ app.post('/api/ticket/render', async (req, res) => {
     res.status(400).json({ ok:false, error: e.message || 'Falha ao gerar bilhete' });
   }
 });
-
-
-
-
-/* =================== Webhook MP (somente log) =================== 
-app.post('/api/mp/webhook', async (req, res) => {
-  res.status(200).json({ received: true });
-  try {
-    const { type, data } = req.body || {};
-    console.log('[MP webhook] type:', type, 'id:', data?.id);
-  } catch (err) {
-    console.error('[MP webhook] erro:', err?.message || err);
-  }
-});
-*/
 
 
 /* =================== Venda Praxio + PDF + e-mail + Webhook agrupado =================== */
@@ -1310,11 +1265,7 @@ if (EMAIL_DEDUPE.has(emailKey)) {
 }
 
 
-
-
-
         
-
         // preparar anexos para e-mail
         emailAttachments.push({
           filename: nome,
