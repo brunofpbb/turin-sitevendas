@@ -26,7 +26,7 @@ app.use(express.json({ limit: '2mb' }));
 const PUBLIC_DIR  = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const PORT = process.env.PORT || 8080;
-
+/*
 // === Normalizador de e-mail (login tem prioridade)
 function getLoginEmail(req){
   const isMail = v => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v));
@@ -39,6 +39,73 @@ function getLoginEmail(req){
     null
   );
 }
+*/
+
+
+// === Helpers p/ e-mail e telefone do login ===
+function getMail(v) {
+  const s = (v ?? '').toString().trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s : null;
+}
+function normalizePhoneBR(v) {
+  // tira tudo que não for dígito; se tiver DDI/DDD ausente, add "55" só no Sheets
+  const d = (v ?? '').toString().replace(/\D+/g, '');
+  return d || ''; // ex.: "31999998888"
+}
+
+/**
+ * Prioriza e-mail do login (mesma regra do e-mail que você envia o PDF),
+ * com fallback para o e-mail do comprador (MP ou vendaResult).
+ */
+function getLoginEmail(req, payment, vendaResult) {
+  const fromLogin =
+    getMail(req?.user?.email) ||
+    getMail(req?.session?.user?.email) ||
+    getMail(req?.headers?.['x-user-email']) ||
+    getMail(req?.body?.loginEmail || req?.body?.emailLogin || req?.body?.userEmail) ||
+    getMail(req?.body?.user?.email);
+
+  if (fromLogin) return fromLogin;
+
+  // Fallback: tenta pegar do MP / venda
+  const fromMP =
+    getMail(payment?.payer?.email) ||
+    getMail(payment?.additional_info?.payer?.email) ||
+    getMail(payment?.card?.cardholder?.email);
+
+  if (fromMP) return fromMP;
+
+  const fromVenda =
+    getMail(vendaResult?.EmailCliente) ||
+    getMail(vendaResult?.emailCliente);
+
+  return fromVenda || null;
+}
+
+function getLoginPhone(req, payment, vendaResult) {
+  const fromLogin =
+    req?.user?.phone || req?.session?.user?.phone ||
+    req?.headers?.['x-user-phone'] ||
+    req?.body?.loginPhone || req?.body?.userPhone || req?.body?.user?.phone;
+
+  if (fromLogin) return normalizePhoneBR(fromLogin);
+
+  // Fallbacks (quando existir)
+  const fromMP =
+    payment?.payer?.phone?.number ||
+    payment?.additional_info?.payer?.phone?.number;
+
+  if (fromMP) return normalizePhoneBR(fromMP);
+
+  const fromVenda =
+    vendaResult?.TelefoneCli || vendaResult?.CelularCli;
+
+  return normalizePhoneBR(fromVenda);
+}
+
+
+
+
 
 // === ID de grupo (idempotência por compra)
 function computeGroupId(req, payment, schedule){
@@ -1290,6 +1357,10 @@ const expectedCount =
     // dentro do /api/praxio/vender, após gerar TODOS os PDFs:
 
 // … você já tem: payment, schedule, arquivos[], bilhetesPayload[]
+const loginEmail = getLoginEmail(req, payment, vendaResult);
+const loginPhone = getLoginPhone(req, payment, vendaResult);
+
+// <-- use "loginEmail" no pacote do e-mail (to) e também passe pro Sheets
 
 const to = getLoginEmail(req) || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
 
@@ -1368,7 +1439,7 @@ if (to) {
 } else {
   console.warn('[Email] comprador sem e-mail. Pulando envio.');
 }
-
+   
 
 await sheetsAppendBilhetes({
   spreadsheetId: process.env.SHEETS_BPE_ID,
@@ -1382,10 +1453,8 @@ await sheetsAppendBilhetes({
   })),
   schedule,
   payment,
-  userEmail: getLoginEmail(req),
-  userPhone:
-    req?.user?.phone || req?.session?.user?.phone ||
-    req?.headers?.['x-user-phone'] || req?.body?.loginPhone || null
+  userEmail: loginEmail || '',              // ← mesmo e-mail do envio do PDF
+  userPhone: loginPhone || ''               // ← normalizado (só dígitos)
 });
 
 
