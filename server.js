@@ -888,7 +888,7 @@ app.post('/api/auth/request-code', async (req, res) => {
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
     codes.set(email, { code, expiresAt, attempts: 0 });
 
-       = process.env.APP_NAME || 'Turin Transportes';
+    const appName   = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
     const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
     const from      = `"${fromName}" <${fromEmail}>`;
