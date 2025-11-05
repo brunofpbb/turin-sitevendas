@@ -278,32 +278,56 @@ function mergeFilesIntoBookingAtIndex(openIdx, arquivos) {
   localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
 }
 
+
+  // --- HELPERS: obter pedido/itens e passageiros da UI/localStorage ---
+function getOrderFromUI() {
+  // tenta várias chaves conhecidas; retorna sempre um array de itens
+  const candidates = [
+    localStorage.getItem('order'),
+    localStorage.getItem('cart'),
+    localStorage.getItem('checkout_order'),
+    localStorage.getItem('lastTickets'),
+    localStorage.getItem('bookings'),
+    (typeof window !== 'undefined' && window.__ORDER_JSON) || null,
+  ].filter(Boolean);
+
+  for (const raw of candidates) {
+    try {
+      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(obj)) return obj;
+      if (obj && Array.isArray(obj.items)) return obj.items;
+      if (obj && Array.isArray(obj.open))  return obj.open; // caso {open:[...], paid:[...]}
+    } catch (_) {}
+  }
+  return []; // fallback seguro
+}
+
+function getPassengersFromItem(it) {
+  // já existia no seu código; deixe este stub só se não existir.
+  return Array.isArray(it?.passengers) ? it.passengers : [];
+}
+
+function getScheduleFromItem(it) {
+  // idem acima: mantenha seu original; aqui é apenas um guard
+  return it?.schedule || it?.viagem || {};
+}
+
+
+
+
+  
 // === emite UMA venda por item ===
 async function venderPraxioApósAprovado(paymentId) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const order = getOrderFromUI();
-
-
 
   // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
 const totalDeBilhetesDaCompra = (order || []).reduce((acc, it) => {
   const pax = getPassengersFromItem(it) || [];
   return acc + pax.length;
 }, 0);
-
-
-
-
-
-
-
-
-
   
   const results = [];
-
-
-
 
 
 
