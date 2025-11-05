@@ -287,7 +287,7 @@ function mergeFilesIntoBookingAtIndex(openIdx, arquivos) {
 // === emite UMA venda por item ===
 async function venderPraxioApósAprovado(paymentId) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const order = getOrderFromUI();
+  const order = getScheduleFromItem();
 
   // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
 const totalDeBilhetesDaCompra = (order || []).reduce((acc, it) => {
