@@ -888,7 +888,7 @@ app.post('/api/auth/request-code', async (req, res) => {
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
     codes.set(email, { code, expiresAt, attempts: 0 });
 
-    const appName   = process.env.APP_NAME || 'Turin Transportes';
+       = process.env.APP_NAME || 'Turin Transportes';
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
     const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
     const from      = `"${fromName}" <${fromEmail}>`;
@@ -1463,6 +1463,10 @@ const fragment = {
   expected: expectedCount
 };
 
+    
+
+/*
+    
 // chave por compra
 const groupId = String(mpPaymentId || payment?.id || payment?.external_reference || computeGroupId(req, payment, schedule));
 
@@ -1536,7 +1540,140 @@ const text = [
 const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
 const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
 
+*/
 
+
+
+
+
+// chave por compra
+const groupId = String(
+  mpPaymentId || payment?.id || payment?.external_reference || computeGroupId(req, payment, schedule)
+);
+
+// enfileira; quando o AGGR perceber que chegou tudo (ou estourar timeout), ele dispara 1x
+queueUnifiedSend(groupId, fragment, async (bundle) => {
+  const { base, bilhetes, arquivos, emailAttachments } = bundle;
+  const { payment, schedule, userEmail, userPhone, idaVolta } = base;
+
+  // trava para evitar e-mail/Sheets duplicados por pagamento
+  if (!guardOnce(String(payment?.id || groupId))) {
+    console.warn('[Idem] envio já realizado para', payment?.id || groupId);
+    return;
+  }
+
+  // 1) E-MAIL único com todos os anexos
+  const to = userEmail || pickBuyerEmail({ req, payment, fallback: null });
+  if (to) {
+    const appName   = process.env.APP_NAME || 'Turin Transportes';
+    const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+    // Descobre se há múltiplas rotas
+    const pairs = new Set(
+      bilhetes.map(b => `${b.origemNome || b.origem || ''}→${b.destinoNome || b.destino || ''}`)
+    );
+    const headerRoute = (pairs.size === 1 && bilhetes.length)
+      ? [...pairs][0]
+      : 'Múltiplas rotas (veja por bilhete)';
+
+    const valorTotalBRL = (Number(payment?.transaction_amount || 0))
+      .toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+
+    // lista <li> com rota/data/hora por bilhete e link
+    const listaHtml = bilhetes.map((b,i) => {
+      const sentido = String(b.idaVolta || '').toLowerCase();
+      const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
+      const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
+                || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+                || '';
+      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+      return `<li style="margin:10px 0">
+                <div><b>Bilhete nº ${b.numPassagem}</b> (${sentido || 'ida'})</div>
+                <div><b>Rota:</b> ${rotaStr}</div>
+                <div><b>Data/Hora:</b> ${b.dataViagem || ''} ${b.horaPartida || ''}</div>
+                ${linkHtml}
+              </li>`;
+    }).join('');
+
+    const html =
+      `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+         <p>Olá,</p>
+         <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+         <p><b>Rota:</b> ${headerRoute}<br/>
+            <b>Valor total:</b> ${valorTotalBRL}
+         </p>
+         <p><b>Bilhetes:</b></p>
+         <ul style="margin-top:8px">${listaHtml}</ul>
+         <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+       </div>`;
+
+    const text = [
+      'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
+      `Rota(s): ${headerRoute}`, `Valor total: ${valorTotalBRL}`,
+      '', 'Bilhetes:',
+      ...bilhetes.map((b,i) =>
+        ` - ${b.numPassagem} (${(b.idaVolta||'ida')}) ${b.origemNome||b.origem||''} -> ${b.destinoNome||b.destino||''} ${b.dataViagem||''} ${b.horaPartida||''}`
+      )
+    ].join('\n');
+
+    // usa os nomes já definidos (displayName)
+    const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
+    const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
+
+    let sent = false;
+    try {
+      const got = await ensureTransport();
+      if (got.transporter) {
+        await got.transporter.sendMail({
+          from: `"${fromName}" <${fromEmail}>`,
+          to, subject: `Seus bilhetes – ${appName}`, html, text,
+          attachments: attachmentsSMTP,
+        });
+        sent = true;
+        console.log(`[Email] enviados ${attachmentsSMTP.length} anexos para ${to} via ${got.mode}`);
+      }
+    } catch (e) {
+      console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e);
+    }
+
+    if (!sent) {
+      await sendViaBrevoApi({
+        to,
+        subject: `Seus bilhetes – ${appName}`,
+        html, text, fromEmail, fromName,
+        attachments: attachmentsBrevo
+      });
+      console.log(`[Email] enviados ${attachmentsBrevo.length} anexos para ${to} via Brevo API`);
+    }
+  } else {
+    console.warn('[Email] comprador sem e-mail. Pulando envio.');
+  }
+
+  // 2) SHEETS – 1 linha por bilhete (mantém igual ao seu)
+  await sheetsAppendBilhetes({
+    spreadsheetId: process.env.SHEETS_BPE_ID,
+    range: process.env.SHEETS_BPE_RANGE || 'BPE!A:AG',
+    bilhetes: bilhetes.map(b => ({
+      ...b,
+      driveUrl: (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
+             || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+             || ''
+    })),
+    schedule,
+    payment,
+    userEmail,
+    userPhone,
+    idaVoltaDefault: idaVolta
+  });
+});
+
+
+    
+
+
+
+    
     let sent = false;
     try {
       const got = await ensureTransport();
