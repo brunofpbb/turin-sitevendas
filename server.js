@@ -1465,33 +1465,57 @@ queueUnifiedSend(groupId, fragment, async (bundle) => {
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
     const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
-    const rota = `${schedule?.originName || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destino || ''}`;
-    const data = schedule?.date || '';
-    const hora = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
-    const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    // Descobre se há múltiplas rotas
+const pairs = new Set(bilhetes.map(b => `${b.origemNome || b.origem || ''}→${b.destinoNome || b.destino || ''}`));
+const headerRoute = (pairs.size === 1 && bilhetes.length)
+  ? [...pairs][0]
+  : 'Múltiplas rotas (veja por bilhete)';
 
-    const listaHtml = arquivos.map((a,i) => {
-      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
-      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
-      return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
-    }).join('');
+const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
-    const html =
-      `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
-        <p>Olá,</p>
-        <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
-        <p><b>Rota:</b> ${rota}<br/><b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/><b>Valor total:</b> ${valorTotalBRL}</p>
-        <p><b>Bilhetes:</b></p><ul style="margin-top:8px">${listaHtml}</ul>
-        <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
-      </div>`;
-    const text = [
-      'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
-      `Rota: ${rota}`, `Data: ${data}  Saída: ${hora}`, `Valor total: ${valorTotalBRL}`,
-      '', 'Bilhetes:', ...arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`)
-    ].join('\n');
+// lista <li> com rota/data/hora por bilhete e link
+const listaHtml = bilhetes.map((b,i) => {
+  const sentido = String(b.idaVolta || '').toLowerCase();
+  const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
+  const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
+           || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+           || '';
+  const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+  return `<li style="margin:10px 0">
+            <div><b>Bilhete nº ${b.numPassagem}</b> (${sentido || 'ida'})</div>
+            <div><b>Rota:</b> ${rotaStr}</div>
+            <div><b>Data/Hora:</b> ${b.dataViagem || ''} ${b.horaPartida || ''}</div>
+            ${linkHtml}
+          </li>`;
+}).join('');
 
-    const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
-    const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
+// cabeçalho (Data/Hora do schedule pode não representar todos; ok deixar só valor total)
+const appName   = process.env.APP_NAME || 'Turin Transportes';
+const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+const html =
+  `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+     <p>Olá,</p>
+     <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+     <p><b>Rota:</b> ${headerRoute}<br/>
+        <b>Valor total:</b> ${valorTotalBRL}
+     </p>
+     <p><b>Bilhetes:</b></p>
+     <ul style="margin-top:8px">${listaHtml}</ul>
+     <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+   </div>`;
+
+const text = [
+  'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
+  `Rota(s): ${headerRoute}`, `Valor total: ${valorTotalBRL}`,
+  '', 'Bilhetes:',
+  ...bilhetes.map((b,i) => ` - ${b.numPassagem} (${(b.idaVolta||'ida')}) ${b.origemNome||b.origem||''} -> ${b.destinoNome||b.destino||''} ${b.dataViagem||''} ${b.horaPartida||''}`)
+].join('\n');
+
+// usa os nomes já definidos (displayName)
+const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
+const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
 
     let sent = false;
     try {
