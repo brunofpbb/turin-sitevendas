@@ -205,13 +205,14 @@ async function sheetsAppendBilhetes({
 
 
     
-    // Identificação robusta do método
+// Identificação robusta do método
 const mpType = String(payment?.payment_type_id   || '').toLowerCase(); // 'pix' | 'credit_card' | 'debit_card' | 'bank_transfer'...
-const pmId   = String(payment?.payment_method_id || '').toLowerCase(); // costuma conter 'pix' quando é PIX
+const pmId   = String(payment?.payment_method_id || '').toLowerCase(); // costuma conter 'pix'
 
-// Código para a planilha
+// Código para a planilha (você pediu código, não descrição)
 const tipoPagamento =
   (pmId.includes('pix') || mpType === 'pix' || mpType === 'bank_transfer') ? '0' : '3';
+
 
     
 
@@ -234,7 +235,7 @@ const tipoPagamento =
       String(payment?.status || ''),          // StatusPagamento
       'Emitido',                              // Status
       '',                                     // ValorDevolucao
-      (b?.idaVolta || (String(idaVolta).toLowerCase()==='volta' ? 'Volta' : 'Ida')),                 // Sentido
+      (b?.idaVolta || (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (fix)
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
@@ -960,8 +961,8 @@ function normalizeHoraPartida(h) {
 // ==== Agregador por compra (webhook/e-mail/Sheets) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 2500;   // espera p/ juntar múltiplos requests
-const AGGR_MAX_WAIT_MS = 20000;  // fail-safe
+const AGGR_DEBOUNCE_MS = 8000;   // ⬅️ 8s para juntar múltiplas chamadas
+const AGGR_MAX_WAIT_MS = 30000;  // ⬅️ segurança 30s
 
 function queueUnifiedSend(groupId, fragment, doFlushCb) {
   let e = AGGR.get(groupId);
@@ -969,10 +970,13 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
     e = { timer:null, startedAt:Date.now(), base:{}, bilhetes:[], arquivos:[], emailAttachments:[], expected:0, flushed:false };
     AGGR.set(groupId, e);
   }
-  // base (ultima vence)
+
+  // merge base (último vence)
   e.base = { ...e.base, ...(fragment.base||{}) };
-  // maior expected
+
+  // expected = maior visto (mantemos, mas não usamos para flush imediato)
   if (fragment.expected && fragment.expected > e.expected) e.expected = fragment.expected;
+
   // acumula
   if (Array.isArray(fragment.bilhetes)) e.bilhetes.push(...fragment.bilhetes);
   if (Array.isArray(fragment.arquivos)) e.arquivos.push(...fragment.arquivos);
@@ -992,9 +996,9 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
 
   const tryFlush = async () => {
     if (e.flushed) return;
-    const ready = e.expected > 0 && e.arquivos.length >= e.expected && e.bilhetes.length >= e.expected;
     const waited = (Date.now() - e.startedAt) >= AGGR_MAX_WAIT_MS;
-    if (!ready && !waited) return;
+    const haveSomething = e.bilhetes.length > 0 || e.arquivos.length > 0 || e.emailAttachments.length > 0;
+    if (!waited && !haveSomething) return;
 
     e.flushed = true;
     clearTimeout(e.timer); e.timer = null;
@@ -1008,12 +1012,8 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
 
   clearTimeout(e.timer);
   e.timer = setTimeout(tryFlush, AGGR_DEBOUNCE_MS);
-
-  // flush imediato se já bateu o expected
-  if (e.expected > 0 && e.arquivos.length >= e.expected && e.bilhetes.length >= e.expected) {
-    tryFlush();
-  }
 }
+
 
 
 
