@@ -281,7 +281,25 @@ function mergeFilesIntoBookingAtIndex(openIdx, arquivos) {
 // === emite UMA venda por item ===
 async function venderPraxioApósAprovado(paymentId) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const order = getOrderFromUI();
 
+
+
+  // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
+const totalDeBilhetesDaCompra = (order || []).reduce((acc, it) => {
+  const pax = getPassengersFromItem(it) || [];
+  return acc + pax.length;
+}, 0);
+
+
+
+
+
+
+
+
+
+  
   const results = [];
 
 
@@ -358,11 +376,7 @@ if (legs.length > 1) {
   
   
 
-  // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
-const totalDeBilhetesDaCompra = (order || []).reduce((acc, it) => {
-  const pax = getPassengersFromItem(it) || [];
-  return acc + pax.length;
-}, 0);
+
 
 
 
