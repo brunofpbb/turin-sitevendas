@@ -305,7 +305,8 @@ async function venderPraxioApósAprovado(paymentId) {
         serieBloco: '93',
         userEmail,
         userPhone,
-        idaVolta
+        idaVolta,
+        expectedTotalTickets: totalDeBilhetesDaCompra // exemplo: 7 (4 ida + 3 volta)
       })
     });
     const j = await r.json();
