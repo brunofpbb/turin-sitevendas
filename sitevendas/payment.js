@@ -285,6 +285,77 @@ async function venderPraxioApósAprovado(paymentId) {
   const results = [];
 
 
+
+
+
+
+// agrupa itens por viagem/origem/destino/hora
+function keyOf(it) {
+  const s = it.schedule || {};
+  return [s.idViagem||s.IdViagem, s.horaPartida||s.departureTime, s.idOrigem||s.CodigoOrigem, s.idDestino||s.CodigoDestino].join('|');
+}
+const groups = new Map();
+(order || []).forEach((it) => {
+  const k = keyOf(it);
+  if (!groups.has(k)) groups.set(k, { it, passengers: [] });
+  groups.get(k).passengers.push(...getPassengersFromItem(it));
+});
+
+const legs = [];
+for (const { it, passengers } of groups.values()) {
+  const schedule = getScheduleFromItem(it);
+  const totalAmount = Number(String(it?.schedule?.price || 0).replace(',', '.')) * (passengers.length || 0);
+  legs.push({
+    schedule,
+    passengers,
+    totalAmount,
+    idaVolta: inferLegType(it, 0, order),
+    idEstabelecimentoVenda: '1',
+    idEstabelecimentoTicket: schedule.agencia || '93',
+    serieBloco: '93'
+  });
+}
+
+// se tiver mais de 1 leg, faz 1 POST só
+if (legs.length > 1) {
+  const r = await fetch('/api/praxio/vender-multi', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify({
+      mpPaymentId: paymentId,
+      legs,
+      expectedTotalTickets: totalDeBilhetesDaCompra,
+      userEmail: user.email || '',
+      userPhone: (user.phone || user.telefone || '').toString()
+    })
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'Falha ao emitir bilhetes (multi)');
+  const arquivos = j.arquivos || [];
+  return { ok:true, vendas:[j.venda], arquivos };
+}
+
+// caso contrário, segue no modo atual (loop por item)...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
   
 
   // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
