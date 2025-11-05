@@ -961,8 +961,8 @@ function normalizeHoraPartida(h) {
 // ==== Agregador por compra (webhook/e-mail/Sheets) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 8000;   // ⬅️ 8s para juntar múltiplas chamadas
-const AGGR_MAX_WAIT_MS = 30000;  // ⬅️ segurança 30s
+const AGGR_DEBOUNCE_MS = 2500;   // ⬅️ 8s para juntar múltiplas chamadas
+const AGGR_MAX_WAIT_MS = 20000;  // ⬅️ segurança 30s
 
 function queueUnifiedSend(groupId, fragment, doFlushCb) {
   let e = AGGR.get(groupId);
@@ -994,21 +994,25 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
     if (seenA.has(k)) return false; seenA.add(k); return true;
   });
 
-  const tryFlush = async () => {
-    if (e.flushed) return;
-    const waited = (Date.now() - e.startedAt) >= AGGR_MAX_WAIT_MS;
-    const haveSomething = e.bilhetes.length > 0 || e.arquivos.length > 0 || e.emailAttachments.length > 0;
-    if (!waited && !haveSomething) return;
+const tryFlush = async () => {
+  if (e.flushed) return;
 
-    e.flushed = true;
-    clearTimeout(e.timer); e.timer = null;
+  const gotAll = e.expected > 0 && e.bilhetes.length >= e.expected;
+  const waited = (Date.now() - e.startedAt) >= AGGR_MAX_WAIT_MS;
+  const haveSomething = e.bilhetes.length > 0 || e.arquivos.length > 0 || e.emailAttachments.length > 0;
 
-    try {
-      await doFlushCb({ ...e });
-    } finally {
-      AGGR.delete(groupId);
-    }
-  };
+  if (!gotAll && !waited && !haveSomething) return;
+
+  e.flushed = true;
+  clearTimeout(e.timer); e.timer = null;
+
+  try {
+    await doFlushCb({ ...e });
+  } finally {
+    AGGR.delete(groupId);
+  }
+};
+
 
   clearTimeout(e.timer);
   e.timer = setTimeout(tryFlush, AGGR_DEBOUNCE_MS);
@@ -1377,19 +1381,16 @@ const slug = s => String(s || '')
       const localPath = path.join(outDir, pdf.filename);
       const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
 
-      // 5.2 subir no Drive (opcional)
-  // 5.2 subir no Drive (opcional) + preparar anexos
+// 5.2 subir no Drive (opcional) + preparar anexos
 let drive = null;
 let buf = null;
-let displayName = null;
+
+// nome do anexo: nomepassageiro_numero_sentido.pdf
+const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
+const displayName = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
 
 try {
   buf = await fs.promises.readFile(localPath);
-
-  // nome do anexo: nomepassageiro_numero_sentido.pdf
-  const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
-  displayName = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
-
   drive = await uploadPdfToDrive({
     buffer: buf,
     filename: displayName,
@@ -1397,30 +1398,28 @@ try {
   });
 } catch (e) {
   console.error('[Drive] upload falhou:', e?.message || e);
-  try {
-    buf = buf || await fs.promises.readFile(localPath);
-    const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
-    displayName = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
-  } catch(_) {}
+  // tenta ao menos ler o arquivo local para anexar ao e-mail
+  if (!buf) buf = await fs.promises.readFile(localPath);
 }
 
-// anexo para e-mail
+// anexo para e-mail (SMTP e Brevo)
+emailAttachments.push({
+  filename: displayName,
+  contentBase64: buf.toString('base64'),
+  buffer: buf,
+});
+
+// metadados p/ links
 arquivos.push({
   numPassagem: ticket.numPassagem,
   pdfLocal: localUrl,
   driveUrl: drive?.webViewLink || null,
   driveFileId: drive?.id || null,
-  filename: displayName || `BPE_${ticket.numPassagem}.pdf`,
+  filename: displayName,
 });
 
 
 
-      arquivos.push({
-        numPassagem: ticket.numPassagem,
-        pdfLocal: localUrl,
-        driveUrl: drive?.webViewLink || null,
-        driveFileId: drive?.id || null
-      });
 
 bilhetesPayload.push({
   numPassagem: p.NumPassagem || ticket.numPassagem,
@@ -1452,7 +1451,9 @@ const loginPhone = getLoginPhone(req, payment, vendaResult);
 // contagem esperada (qtd de bilhetes desta venda)
 // contagem esperada: prioriza o total da compra vindo do front; senão, usa o nº de passageiros desta chamada
 //const expectedCount = expectedTotalTickets || (vendaResult?.ListaPassagem?.length || passengers?.length || 0);
-const expectedCount = Number(req.body?.expectedTotalTickets) || (vendaResult?.ListaPassagem?.length || 0) || (passengers?.length || 0);
+//const expectedCount = Number(req.body?.expectedTotalTickets) || (vendaResult?.ListaPassagem?.length || 0) || (passengers?.length || 0);
+  const expectedCount = Number(req.body?.expectedTotalTickets) ||  (vendaResult?.ListaPassagem?.length || 0) || (passengers?.length || 0);
+
 
 
 // monta fragmento
