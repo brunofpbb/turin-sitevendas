@@ -278,102 +278,11 @@ function mergeFilesIntoBookingAtIndex(openIdx, arquivos) {
   localStorage.setItem('bookings', JSON.stringify([...paid, ...open]));
 }
 
-
-
-  
-
-
-  
 // === emite UMA venda por item ===
 async function venderPraxioApósAprovado(paymentId) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const order = getScheduleFromItem();
 
-  // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
-const totalDeBilhetesDaCompra = (order || []).reduce((acc, it) => {
-  const pax = getPassengersFromItem(it) || [];
-  return acc + pax.length;
-}, 0);
-  
   const results = [];
-
-
-
-// agrupa itens por viagem/origem/destino/hora
-function keyOf(it) {
-  const s = it.schedule || {};
-  return [s.idViagem||s.IdViagem, s.horaPartida||s.departureTime, s.idOrigem||s.CodigoOrigem, s.idDestino||s.CodigoDestino].join('|');
-}
-const groups = new Map();
-(order || []).forEach((it) => {
-  const k = keyOf(it);
-  if (!groups.has(k)) groups.set(k, { it, passengers: [] });
-  groups.get(k).passengers.push(...getPassengersFromItem(it));
-});
-
-const legs = [];
-for (const { it, passengers } of groups.values()) {
-  const schedule = getScheduleFromItem(it);
-  const totalAmount = Number(String(it?.schedule?.price || 0).replace(',', '.')) * (passengers.length || 0);
-  legs.push({
-    schedule,
-    passengers,
-    totalAmount,
-    idaVolta: inferLegType(it, 0, order),
-    idEstabelecimentoVenda: '1',
-    idEstabelecimentoTicket: schedule.agencia || '93',
-    serieBloco: '93'
-  });
-}
-
-// se tiver mais de 1 leg, faz 1 POST só
-if (legs.length > 1) {
-  const r = await fetch('/api/praxio/vender-multi', {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify({
-      mpPaymentId: paymentId,
-      legs,
-      expectedTotalTickets: totalDeBilhetesDaCompra,
-      userEmail: user.email || '',
-      userPhone: (user.phone || user.telefone || '').toString()
-    })
-  });
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.error || 'Falha ao emitir bilhetes (multi)');
-  const arquivos = j.arquivos || [];
-  return { ok:true, vendas:[j.venda], arquivos };
-}
-
-// caso contrário, segue no modo atual (loop por item)...
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-  
-
-
-
-
-
-
-  
   for (let i = 0; i < order.length; i++) {
     const it = order[i];
     const schedule   = getScheduleFromItem(it);
@@ -396,8 +305,7 @@ if (legs.length > 1) {
         serieBloco: '93',
         userEmail,
         userPhone,
-        idaVolta,
-        expectedTotalTickets: totalDeBilhetesDaCompra // exemplo: 7 (4 ida + 3 volta)
+        idaVolta
       })
     });
     const j = await r.json();
@@ -639,20 +547,13 @@ container.querySelectorAll('.order-item .item-remove').forEach(btn => {
               showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
               try {
-const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-const arquivos = venda?.arquivos || venda?.Arquivos || [];
-if (arquivos.length) {
-  mergeDriveLinksIntoBookings(arquivos);
-
-  // ✅ aguarda o flush (e-mail + append) antes de sair da tela
-  const pid = data.id || data?.payment?.id;
-  try { 
-    await fetch(`/api/agg/await?id=${encodeURIComponent(pid)}`).then(r => r.json());
-  } catch(_) {}
-
-  location.href = 'profile.html';
-  return;
-}
+                const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+                const arquivos = venda?.arquivos || venda?.Arquivos || [];
+                if (arquivos.length) {
+                  mergeDriveLinksIntoBookings(arquivos);
+                  location.href = 'profile.html';
+                  return;
+                }
                 hideOverlayIfShown();
                 alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
               } catch (e) {
@@ -705,20 +606,13 @@ if (arquivos.length) {
           showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
           try {
-const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-const arquivos = venda?.arquivos || venda?.Arquivos || [];
-if (arquivos.length) {
-  mergeDriveLinksIntoBookings(arquivos);
-
-  // ✅ aguarda o flush (e-mail + append) antes de sair da tela
-  const pid = data.id || data?.payment?.id;
-  try { 
-    await fetch(`/api/agg/await?id=${encodeURIComponent(pid)}`).then(r => r.json());
-  } catch(_) {}
-
-  location.href = 'profile.html';
-  return;
-}
+            const venda = await venderPraxioApósAprovado(paymentId);
+            const arquivos = venda?.arquivos || venda?.Arquivos || [];
+            if (arquivos.length) {
+              mergeDriveLinksIntoBookings(arquivos);
+              location.href = 'profile.html';
+              return;
+            }
             hideOverlayIfShown();
             alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
           } catch (e) {
