@@ -139,4 +139,52 @@ router.get('/payments/:id', async (req, res) => {
   }
 });
 
+
+// Alias compatíveis com o payment.js do front:
+
+// /api/mp/payment-status?id=123
+router.get('/payment-status', async (req, res) => {
+  try {
+    const id = String(req.query.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'payment id obrigatório' });
+    const r = await payments.get({ id });
+    const b = r || {};
+    res.json({
+      id: b.id,
+      status: b.status,
+      status_detail: b.status_detail,
+      date_created: b.date_created,
+      date_approved: b.date_approved || null,
+      transaction_amount: b.transaction_amount,
+      payment_method_id: b.payment_method_id,
+      point_of_interaction: b.point_of_interaction || null
+    });
+  } catch (e) {
+    res.status(400).json({ error: true, message: 'Falha ao consultar' });
+  }
+});
+
+// /api/mp/payment/:id
+router.get('/payment/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'payment id obrigatório' });
+    const r = await payments.get({ id });
+    const b = r || {};
+    res.json({
+      id: b.id,
+      status: b.status,
+      status_detail: b.status_detail,
+      date_created: b.date_created,
+      date_approved: b.date_approved || null,
+      transaction_amount: b.transaction_amount,
+      payment_method_id: b.payment_method_id,
+      point_of_interaction: b.point_of_interaction || null
+    });
+  } catch (e) {
+    res.status(400).json({ error: true, message: 'Falha ao consultar' });
+  }
+});
+
+
 module.exports = router;
