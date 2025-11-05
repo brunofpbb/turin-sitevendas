@@ -1208,6 +1208,19 @@ app.post('/api/ticket/render', async (req, res) => {
 });
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* =================== Venda Praxio + PDF + e-mail + Webhook agrupado =================== */
 app.post('/api/praxio/vender', async (req, res) => {
   try {
@@ -1225,27 +1238,22 @@ app.post('/api/praxio/vender', async (req, res) => {
     } = req.body || {};
 
 
-        // mpPaymentId é o id único da compra no MP (vem do body)
 
-    
-    /*
+    // total esperado de bilhetes nessa COMPRA (pode vir do front já somando ida+volta+múltiplos passageiros)
+const expectedTotalTickets =
+  Number(req.body?.expectedTotalTickets || req.body?.expected || 0) || 0;
 
-if (!guardOnce(String(mpPaymentId))) {
-  console.warn('[Idem] pular envio (já processado) para payment=', mpPaymentId);
-  return res.json({ ok: true, venda: vendaResult, arquivos, note: 'idempotent-skip' });
-}
+// helper para nomes de arquivo bonitos
+const slug = s => String(s || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'')
+  .toLowerCase();
 
-
-if (!guardOnce(String(mpPaymentId))) {
-  console.warn('[Idem] pular processamento (já processado) payment=', mpPaymentId);
-  return res.json({ ok: true, note: 'idempotent-skip' });
-}
-
-*/
 
 
 
 
+    
     
 
     // 1) Revalida o pagamento
@@ -1370,36 +1378,42 @@ if (!guardOnce(String(mpPaymentId))) {
       const localUrl  = `/tickets/${subDir}/${pdf.filename}`;
 
       // 5.2 subir no Drive (opcional)
-      let drive = null;
-      try {
-        const buf = await fs.promises.readFile(localPath);
-        const nome = `BPE_${ticket.numPassagem}.pdf`;
-        drive = await uploadPdfToDrive({
-          buffer: buf,
-          filename: nome,
-          folderId: process.env.GDRIVE_FOLDER_ID,
-        });
+  // 5.2 subir no Drive (opcional) + preparar anexos
+let drive = null;
+let buf = null;
+let displayName = null;
+
+try {
+  buf = await fs.promises.readFile(localPath);
+
+  // nome do anexo: nomepassageiro_numero_sentido.pdf
+  const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
+  displayName = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
+
+  drive = await uploadPdfToDrive({
+    buffer: buf,
+    filename: displayName,
+    folderId: process.env.GDRIVE_FOLDER_ID,
+  });
+} catch (e) {
+  console.error('[Drive] upload falhou:', e?.message || e);
+  try {
+    buf = buf || await fs.promises.readFile(localPath);
+    const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
+    displayName = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
+  } catch(_) {}
+}
+
+// anexo para e-mail
+arquivos.push({
+  numPassagem: ticket.numPassagem,
+  pdfLocal: localUrl,
+  driveUrl: drive?.webViewLink || null,
+  driveFileId: drive?.id || null,
+  filename: displayName || `BPE_${ticket.numPassagem}.pdf`,
+});
 
 
-       
-        // preparar anexos para e-mail
-        emailAttachments.push({
-          filename: nome,
-          contentBase64: buf.toString('base64'),
-          buffer: buf,
-        });
-      } catch (e) {
-        console.error('[Drive] upload falhou:', e?.message || e);
-        try {
-          const buf = await fs.promises.readFile(localPath);
-          const nome = `BPE_${ticket.numPassagem}.pdf`;
-          emailAttachments.push({
-            filename: nome,
-            contentBase64: buf.toString('base64'),
-            buffer: buf,
-          });
-        } catch(_) {}
-      }
 
       arquivos.push({
         numPassagem: ticket.numPassagem,
@@ -1408,17 +1422,22 @@ if (!guardOnce(String(mpPaymentId))) {
         driveFileId: drive?.id || null
       });
 
-      bilhetesPayload.push({
-        numPassagem: p.NumPassagem || ticket.numPassagem,
-        chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
-        origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
-        destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
-        poltrona:    p.Poltrona || ticket.poltrona || null,
-        nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
-        docCliente:  p.DocCliente || ticket.docCliente || null,
-        valor:       p.ValorPgto ?? ticket.valor ?? null,
-        idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
-      });
+bilhetesPayload.push({
+  numPassagem: p.NumPassagem || ticket.numPassagem,
+  chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
+  origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  origemNome:  p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destinoNome: p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  poltrona:    p.Poltrona || ticket.poltrona || null,
+  nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
+  docCliente:  p.DocCliente || ticket.docCliente || null,
+  valor:       p.ValorPgto ?? ticket.valor ?? null,
+  idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida'),
+  dataViagem:  toYMD(schedule?.date || schedule?.dataViagem || ''),
+  horaPartida: String(horaPad).slice(0,2) + ':' + String(horaPad).slice(2,4),
+});
+
           }
 
 
@@ -1431,9 +1450,9 @@ const loginEmail = getLoginEmail(req, payment, vendaResult);
 const loginPhone = getLoginPhone(req, payment, vendaResult);
 
 // contagem esperada (qtd de bilhetes desta venda)
-const expectedCount =
-  (vendaResult?.ListaPassagem?.length || 0) ||
-  (passengers?.length || 0);
+// contagem esperada: prioriza o total da compra vindo do front; senão, usa o nº de passageiros desta chamada
+const expectedCount = expectedTotalTickets || (vendaResult?.ListaPassagem?.length || passengers?.length || 0);
+
 
 // monta fragmento
 const fragment = {
@@ -1465,33 +1484,58 @@ queueUnifiedSend(groupId, fragment, async (bundle) => {
     const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
     const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
-    const rota = `${schedule?.originName || schedule?.origem || ''} → ${schedule?.destinationName || schedule?.destino || ''}`;
-    const data = schedule?.date || '';
-    const hora = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
-    const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+   // Descobre se há múltiplas rotas
+const pairs = new Set(bilhetes.map(b => `${b.origemNome || b.origem || ''}→${b.destinoNome || b.destino || ''}`));
+const headerRoute = (pairs.size === 1 && bilhetes.length)
+  ? [...pairs][0]
+  : 'Múltiplas rotas (veja por bilhete)';
 
-    const listaHtml = arquivos.map((a,i) => {
-      const link = a.driveUrl || (a.pdfLocal ? (new URL(a.pdfLocal, `https://${req.headers.host}`).href) : '');
-      const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
-      return `<li>Bilhete nº <b>${a.numPassagem}</b>${linkHtml}</li>`;
-    }).join('');
+const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
-    const html =
-      `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
-        <p>Olá,</p>
-        <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
-        <p><b>Rota:</b> ${rota}<br/><b>Data:</b> ${data} &nbsp; <b>Saída:</b> ${hora}<br/><b>Valor total:</b> ${valorTotalBRL}</p>
-        <p><b>Bilhetes:</b></p><ul style="margin-top:8px">${listaHtml}</ul>
-        <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
-      </div>`;
-    const text = [
-      'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
-      `Rota: ${rota}`, `Data: ${data}  Saída: ${hora}`, `Valor total: ${valorTotalBRL}`,
-      '', 'Bilhetes:', ...arquivos.map((a,i)=>` - Bilhete ${i+1}: ${a.numPassagem}`)
-    ].join('\n');
+// lista <li> com rota/data/hora por bilhete e link
+const listaHtml = bilhetes.map((b,i) => {
+  const sentido = String(b.idaVolta || '').toLowerCase();
+  const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
+  const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
+           || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+           || '';
+  const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
+  return `<li style="margin:10px 0">
+            <div><b>Bilhete nº ${b.numPassagem}</b> (${sentido || 'ida'})</div>
+            <div><b>Rota:</b> ${rotaStr}</div>
+            <div><b>Data/Hora:</b> ${b.dataViagem || ''} ${b.horaPartida || ''}</div>
+            ${linkHtml}
+          </li>`;
+}).join('');
 
-    const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
-    const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
+// cabeçalho (Data/Hora do schedule pode não representar todos; ok deixar só valor total)
+const appName   = process.env.APP_NAME || 'Turin Transportes';
+const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+const html =
+  `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
+     <p>Olá,</p>
+     <p>Recebemos o seu pagamento em <b>${appName}</b>. Seguem os bilhetes em anexo.</p>
+     <p><b>Rota:</b> ${headerRoute}<br/>
+        <b>Valor total:</b> ${valorTotalBRL}
+     </p>
+     <p><b>Bilhetes:</b></p>
+     <ul style="margin-top:8px">${listaHtml}</ul>
+     <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+   </div>`;
+
+const text = [
+  'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
+  `Rota(s): ${headerRoute}`, `Valor total: ${valorTotalBRL}`,
+  '', 'Bilhetes:',
+  ...bilhetes.map((b,i) => ` - ${b.numPassagem} (${(b.idaVolta||'ida')}) ${b.origemNome||b.origem||''} -> ${b.destinoNome||b.destino||''} ${b.dataViagem||''} ${b.horaPartida||''}`)
+].join('\n');
+
+// usa os nomes já definidos (displayName)
+const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
+const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
+
 
     let sent = false;
     try {
@@ -1532,6 +1576,19 @@ queueUnifiedSend(groupId, fragment, async (bundle) => {
     idaVoltaDefault: idaVolta
   });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
