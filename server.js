@@ -1451,7 +1451,8 @@ const loginPhone = getLoginPhone(req, payment, vendaResult);
 
 // contagem esperada (qtd de bilhetes desta venda)
 // contagem esperada: prioriza o total da compra vindo do front; senão, usa o nº de passageiros desta chamada
-const expectedCount = expectedTotalTickets || (vendaResult?.ListaPassagem?.length || passengers?.length || 0);
+//const expectedCount = expectedTotalTickets || (vendaResult?.ListaPassagem?.length || passengers?.length || 0);
+const expectedCount = Number(req.body?.expectedTotalTickets) || (vendaResult?.ListaPassagem?.length || 0) || (passengers?.length || 0);
 
 
 // monta fragmento
