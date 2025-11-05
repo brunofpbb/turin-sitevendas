@@ -1490,9 +1490,9 @@ const listaHtml = bilhetes.map((b,i) => {
 }).join('');
 
 // cabeçalho (Data/Hora do schedule pode não representar todos; ok deixar só valor total)
-const appName   = process.env.APP_NAME || 'Turin Transportes';
-const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+// const appName   = process.env.APP_NAME || 'Turin Transportes';
+// const fromName  = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
+// const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
 const html =
   `<div style="font-family:Arial,sans-serif;font-size:15px;color:#222">
