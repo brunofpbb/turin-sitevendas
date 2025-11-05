@@ -961,8 +961,8 @@ function normalizeHoraPartida(h) {
 // ==== Agregador por compra (webhook/e-mail/Sheets) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 2500;   // ⬅️ 8s para juntar múltiplas chamadas
-const AGGR_MAX_WAIT_MS = 20000;  // ⬅️ segurança 30s
+const AGGR_DEBOUNCE_MS = 3000;   // ⬅️ 8s para juntar múltiplas chamadas
+const AGGR_MAX_WAIT_MS = 25000;  // ⬅️ segurança 30s
 
 function queueUnifiedSend(groupId, fragment, doFlushCb) {
   let e = AGGR.get(groupId);
