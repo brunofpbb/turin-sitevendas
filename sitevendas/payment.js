@@ -283,6 +283,20 @@ async function venderPraxioApósAprovado(paymentId) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   const results = [];
+
+
+  
+
+  // === TOTAL de bilhetes desta compra (soma de todos os passageiros de todos os trechos)
+const totalDeBilhetesDaCompra = (order || []).reduce((acc, it) => {
+  const pax = getPassengersFromItem(it) || [];
+  return acc + pax.length;
+}, 0);
+
+
+
+
+  
   for (let i = 0; i < order.length; i++) {
     const it = order[i];
     const schedule   = getScheduleFromItem(it);
