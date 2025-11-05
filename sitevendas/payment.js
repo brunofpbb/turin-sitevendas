@@ -562,13 +562,20 @@ container.querySelectorAll('.order-item .item-remove').forEach(btn => {
               showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
               try {
-                const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-                const arquivos = venda?.arquivos || venda?.Arquivos || [];
-                if (arquivos.length) {
-                  mergeDriveLinksIntoBookings(arquivos);
-                  location.href = 'profile.html';
-                  return;
-                }
+const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+const arquivos = venda?.arquivos || venda?.Arquivos || [];
+if (arquivos.length) {
+  mergeDriveLinksIntoBookings(arquivos);
+
+  // ✅ aguarda o flush (e-mail + append) antes de sair da tela
+  const pid = data.id || data?.payment?.id;
+  try { 
+    await fetch(`/api/agg/await?id=${encodeURIComponent(pid)}`).then(r => r.json());
+  } catch(_) {}
+
+  location.href = 'profile.html';
+  return;
+}
                 hideOverlayIfShown();
                 alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
               } catch (e) {
@@ -621,13 +628,20 @@ container.querySelectorAll('.order-item .item-remove').forEach(btn => {
           showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
           try {
-            const venda = await venderPraxioApósAprovado(paymentId);
-            const arquivos = venda?.arquivos || venda?.Arquivos || [];
-            if (arquivos.length) {
-              mergeDriveLinksIntoBookings(arquivos);
-              location.href = 'profile.html';
-              return;
-            }
+const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
+const arquivos = venda?.arquivos || venda?.Arquivos || [];
+if (arquivos.length) {
+  mergeDriveLinksIntoBookings(arquivos);
+
+  // ✅ aguarda o flush (e-mail + append) antes de sair da tela
+  const pid = data.id || data?.payment?.id;
+  try { 
+    await fetch(`/api/agg/await?id=${encodeURIComponent(pid)}`).then(r => r.json());
+  } catch(_) {}
+
+  location.href = 'profile.html';
+  return;
+}
             hideOverlayIfShown();
             alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
           } catch (e) {
