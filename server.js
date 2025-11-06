@@ -169,6 +169,32 @@ const nowSP = () => {
 };
 
 
+// --- Helpers ---------------------------------------------------------------
+
+function resolveSentido(p, scheduleIda, scheduleVolta, fallback = 'Ida') {
+  // 1) valor explícito vindo da Praxio ou do seu objeto de bilhete
+  const s = String(p?.Sentido || p?.sentido || '').toLowerCase();
+  if (s === 'ida' || s === 'volta') return s[0].toUpperCase() + s.slice(1);
+
+  // 2) tentar inferir por origem/destino
+  const po = Number(p?.Idorigem || p?.idOrigem || p?.OrigemId);
+  const pd = Number(p?.Iddestino || p?.idDestino || p?.DestinoId);
+
+  const iO = Number(scheduleIda?.originId || scheduleIda?.idOrigem);
+  const iD = Number(scheduleIda?.destinationId || scheduleIda?.idDestino);
+
+  const vO = Number(scheduleVolta?.originId || scheduleVolta?.idOrigem);
+  const vD = Number(scheduleVolta?.destinationId || scheduleVolta?.idDestino);
+
+  if (po && pd && iO && iD && po === iO && pd === iD) return 'Ida';
+  if (po && pd && vO && vD && po === vO && pd === vD) return 'Volta';
+
+  // 3) fallback (ex.: idaVoltaDefault do bundle)
+  return (String(fallback).toLowerCase() === 'volta') ? 'Volta' : 'Ida';
+}
+
+
+
 // === Tempo SP (mantém como está acima)
 // const nowSP = ...
 
@@ -1489,7 +1515,7 @@ bilhetesPayload.push({
   horaPartida: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
 
   // ✅ garante sentido por bilhete
-  idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
+  idaVolta:   sentido || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
 });
 
           }
