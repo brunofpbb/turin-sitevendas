@@ -869,6 +869,13 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName, a
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
 
+const slug = s => String(s || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'')
+  .toLowerCase();
+
+
+  
   const brevoAttachments = (attachments || []).map(a => ({
     name: a.filename || `${slug(ticket.nomeCliente)}_${ticket.numPassagem}_${sentido}.pdf` || 'anexo.pdf',
     content: a.contentBase64 || a.content || ''
