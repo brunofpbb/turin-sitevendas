@@ -877,7 +877,7 @@ const slug = s => String(s || '')
 
   
   const brevoAttachments = (attachments || []).map(a => ({
-    name: a.filename || `${slug(ticket.nomeCliente)}_${ticket.numPassagem}_${sentido}.pdf` || 'anexo.pdf',
+    name: a.filename || 'anexo.pdf',
     content: a.contentBase64 || a.content || ''
   }));
 
@@ -1416,7 +1416,7 @@ if (!guardOnce(String(mpPaymentId))) {
       let drive = null;
       try {
         const buf = await fs.promises.readFile(localPath);
-        const nome = `BPE_${ticket.numPassagem}.pdf`;
+        const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
         drive = await uploadPdfToDrive({
           buffer: buf,
           filename: nome,
@@ -1435,7 +1435,7 @@ if (!guardOnce(String(mpPaymentId))) {
         console.error('[Drive] upload falhou:', e?.message || e);
         try {
           const buf = await fs.promises.readFile(localPath);
-          const nome = `BPE_${ticket.numPassagem}.pdf`;
+          const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
           emailAttachments.push({
             filename: nome,
             contentBase64: buf.toString('base64'),
@@ -1518,7 +1518,7 @@ const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString(
 
 // lista <li> com rota/data/hora por bilhete e link
 const listaHtml = bilhetes.map((b,i) => {
-  const sentido = String(b.idaVolta || '').toLowerCase();
+  const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
   const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
   const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
            || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
