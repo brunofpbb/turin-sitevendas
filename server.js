@@ -215,7 +215,8 @@ const tipoPagamento =
   (pmId.includes('pix') || mpType === 'pix' || mpType === 'bank_transfer') ? '0' : '3';
 
 
-    
+// garanta que é array de bilhetes válidos
+const list = Array.isArray(bilhetes) ? bilhetes.filter(Boolean) : [];    
 
 const values = list.map(b => {
   // ✅ AGORA sim: b existe aqui
