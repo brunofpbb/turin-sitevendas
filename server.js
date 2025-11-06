@@ -880,12 +880,22 @@ const slug = s => String(s || '')
   .replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'')
   .toLowerCase();
 
-
+/*
   
 const brevoAttachments = (attachments || []).map(a => ({
   name: a.filename && String(a.filename).trim() ? a.filename : 'anexo.pdf',
   content: a.contentBase64 || a.content || ''
+}));*/
+
+
+
+  const brevoAttachments = (attachments || []).map(a => ({
+  // aceita filename OU name (por segurança)
+  name: (a.filename || a.name || 'anexo.pdf'),
+  // aceita contentBase64 OU content (por segurança)
+  content: (a.contentBase64 || a.content || '')
 }));
+
 
 
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -1577,9 +1587,24 @@ const text = [
 ].join('\n');
 
 // usa os nomes já definidos (displayName)
-const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
-const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
+//const attachmentsSMTP  = emailAttachments.map(a => ({ filename: a.filename, content: a.buffer }));
+//const attachmentsBrevo = emailAttachments.map(a => ({ name: a.filename, content: a.contentBase64 }));
 
+const attachmentsSMTP  = emailAttachments.map(a => ({
+  filename: a.filename,
+  content:  a.buffer
+}));
+
+const attachmentsBrevo = emailAttachments.map(a => ({
+  filename: a.filename,       // <— usa filename (não “name”)
+  contentBase64: a.contentBase64
+}));
+
+
+
+
+
+    
     let sent = false;
     try {
       const got = await ensureTransport();
