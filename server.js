@@ -217,9 +217,10 @@ const tipoPagamento =
 
     
 
-    const dataViagem = (schedule?.date || schedule?.dataViagem || '') || '';
-    const horaPartida = String(schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
-    const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
+const dataViagem  = (b?.dataViagem  || schedule?.date || schedule?.dataViagem || '');
+const horaPartida = String(b?.horaPartida || schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
+const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
+
 
     const values = (bilhetes || []).map(b => ([
       nowSP(),                                // Data/horaSolicitação
@@ -236,7 +237,7 @@ const tipoPagamento =
       String(payment?.status || ''),          // StatusPagamento
       'Emitido',                              // Status
       '',                                     // ValorDevolucao
-      (b?.idaVolta || (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (fix)
+            (b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
@@ -876,10 +877,11 @@ const slug = s => String(s || '')
 
 
   
-  const brevoAttachments = (attachments || []).map(a => ({
-    name: a.filename || 'anexo.pdf',
-    content: a.contentBase64 || a.content || ''
-  }));
+const brevoAttachments = (attachments || []).map(a => ({
+  name: a.filename && String(a.filename).trim() ? a.filename : 'anexo.pdf',
+  content: a.contentBase64 || a.content || ''
+}));
+
 
   const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -1455,17 +1457,26 @@ if (!guardOnce(String(mpPaymentId))) {
         driveFileId: drive?.id || null
       });
 
-      bilhetesPayload.push({
-        numPassagem: p.NumPassagem || ticket.numPassagem,
-        chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
-        origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
-        destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
-        poltrona:    p.Poltrona || ticket.poltrona || null,
-        nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
-        docCliente:  p.DocCliente || ticket.docCliente || null,
-        valor:       p.ValorPgto ?? ticket.valor ?? null,
-        idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
-      });
+bilhetesPayload.push({
+  numPassagem: p.NumPassagem || ticket.numPassagem,
+  chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
+  origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  origemNome:  ticket.origem || schedule?.originName || schedule?.origem || null,      // p/ cabeçalho da rota
+  destinoNome: ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  poltrona:    p.Poltrona || ticket.poltrona || null,
+  nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
+  docCliente:  p.DocCliente || ticket.docCliente || null,
+  valor:       p.ValorPgto ?? ticket.valor ?? null,
+
+  // ✅ adiciona Data/Hora por bilhete
+  dataViagem:  p.DataViagem || ticket.dataViagem || schedule?.date || schedule?.dataViagem || '',
+  horaPartida: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
+
+  // ✅ garante sentido por bilhete
+  idaVolta:    (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
+});
+
           }
 
 
