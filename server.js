@@ -267,7 +267,7 @@ const values = list.map(b => {
       String(payment?.status || ''),          // StatusPagamento
       'Emitido',                              // Status
       '',                                     // ValorDevolucao
-      const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault), 
+      sentido,
     //(b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
