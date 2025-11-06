@@ -870,7 +870,7 @@ async function sendViaBrevoApi({ to, subject, html, text, fromEmail, fromName, a
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
 
   const brevoAttachments = (attachments || []).map(a => ({
-    name: a.filename || 'anexo.pdf',
+    name: a.filename || `${slug(ticket.nomeCliente)}_${ticket.numPassagem}_${sentido}.pdf` || 'anexo.pdf',
     content: a.contentBase64 || a.content || ''
   }));
 
