@@ -519,7 +519,7 @@ app.get('/api/mp/wait-flush', async (req, res) => {
     if (!e || e.flushed) return res.json({ ok:true, flushed:true });
 
     // ainda pendente → aguarda com timeout
-    const TIMEOUT = Math.max(AGGR_MAX_WAIT_MS, AGGR_DEBOUNCE_MS + 2000); // ~40s
+    const TIMEOUT = Math.max(AGGR_MAX_WAIT_MS, AGGR_DEBOUNCE_MS + 5000); // ~40s
     await new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout')), TIMEOUT);
       e.waiters.push(() => { clearTimeout(t); resolve(); });
@@ -1016,8 +1016,8 @@ function normalizeHoraPartida(h) {
 // ==== Agregador por compra (webhook/e-mail/Sheets) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
-const AGGR_DEBOUNCE_MS = 9000;   // ⬅️ 8s para juntar múltiplas chamadas
-const AGGR_MAX_WAIT_MS = 40000;  // ⬅️ segurança 30s
+const AGGR_DEBOUNCE_MS = 11000;   // ⬅️ 8s para juntar múltiplas chamadas
+const AGGR_MAX_WAIT_MS = 60000;  // ⬅️ segurança 30s
 
 function queueUnifiedSend(groupId, fragment, doFlushCb) {
   let e = AGGR.get(groupId);
