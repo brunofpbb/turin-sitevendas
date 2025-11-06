@@ -1415,6 +1415,7 @@ if (!guardOnce(String(mpPaymentId))) {
       // 5.2 subir no Drive (opcional)
       let drive = null;
       try {
+        const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
         const buf = await fs.promises.readFile(localPath);
         const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
         drive = await uploadPdfToDrive({
@@ -1434,6 +1435,7 @@ if (!guardOnce(String(mpPaymentId))) {
       } catch (e) {
         console.error('[Drive] upload falhou:', e?.message || e);
         try {
+          const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
           const buf = await fs.promises.readFile(localPath);
           const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
           emailAttachments.push({
