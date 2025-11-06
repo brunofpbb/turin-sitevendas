@@ -217,12 +217,15 @@ const tipoPagamento =
 
     
 
-const dataViagem  = (b?.dataViagem  || schedule?.date || schedule?.dataViagem || '');
-const horaPartida = String(b?.horaPartida || schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
-const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
+const values = list.map(b => {
+  // ✅ AGORA sim: b existe aqui
+  const dataViagem = (b?.dataViagem || schedule2?.date || schedule2?.dataViagem || '');
+  const horaPartida = String(b?.horaPartida || schedule2?.horaPartida || schedule2?.departureTime || '').slice(0, 5);
+  const dataHoraViagem = (dataViagem && horaPartida)
+    ? `${dataViagem} ${horaPartida}`
+    : (dataViagem || horaPartida);
 
-
-    const values = (bilhetes || []).map(b => ([
+  return [
       nowSP(),                                // Data/horaSolicitação
       b.nomeCliente || '',                    // Nome
       (userPhone ? ('55' + userPhone) : ''),  // Telefone (com DDI 55)
@@ -237,7 +240,7 @@ const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}
       String(payment?.status || ''),          // StatusPagamento
       'Emitido',                              // Status
       '',                                     // ValorDevolucao
-            (b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
+      (b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
@@ -256,7 +259,8 @@ const dataHoraViagem = dataViagem && horaPartida ? `${dataViagem} ${horaPartida}
       payment?.id || '',                      // idPagamento
       b.driveUrl || '',                       // LinkBPE
       b.poltrona || ''                        // poltrona
-    ]));
+      ];
+});
 
     if (!values.length) return { ok:true, appended:0 };
 
