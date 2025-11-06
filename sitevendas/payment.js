@@ -547,13 +547,19 @@ container.querySelectorAll('.order-item .item-remove').forEach(btn => {
               showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
               try {
-                const venda = await venderPraxioApósAprovado(data.id || data?.payment?.id);
-                const arquivos = venda?.arquivos || venda?.Arquivos || [];
-                if (arquivos.length) {
-                  mergeDriveLinksIntoBookings(arquivos);
-                  location.href = 'profile.html';
-                  return;
-                }
+const paymentId = (data.id || data?.payment?.id);
+const venda = await venderPraxioApósAprovado(paymentId);
+const arquivos = venda?.arquivos || venda?.Arquivos || [];
+if (arquivos.length) {
+  mergeDriveLinksIntoBookings(arquivos);
+
+  // 👇 aguarda Sheets + e-mail concluírem no backend
+  try { await fetch(`/api/mp/wait-flush?paymentId=${encodeURIComponent(paymentId)}`); } catch (_) {}
+
+  location.href = 'profile.html';
+  return;
+}
+
                 hideOverlayIfShown();
                 alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
               } catch (e) {
@@ -606,13 +612,19 @@ container.querySelectorAll('.order-item .item-remove').forEach(btn => {
           showOverlayOnce('Pagamento confirmado!', 'Gerando o BPe…');
 
           try {
-            const venda = await venderPraxioApósAprovado(paymentId);
-            const arquivos = venda?.arquivos || venda?.Arquivos || [];
-            if (arquivos.length) {
-              mergeDriveLinksIntoBookings(arquivos);
-              location.href = 'profile.html';
-              return;
-            }
+const venda = await venderPraxioApósAprovado(paymentId);
+const arquivos = venda?.arquivos || venda?.Arquivos || [];
+if (arquivos.length) {
+  mergeDriveLinksIntoBookings(arquivos);
+
+  // 👇 espera o flush do agregador (Sheets + e-mail)
+  try { await fetch(`/api/mp/wait-flush?paymentId=${encodeURIComponent(paymentId)}`); } catch (_) {}
+
+  location.href = 'profile.html';
+  return;
+}
+
+
             hideOverlayIfShown();
             alert('Pagamento aprovado, mas não foi possível gerar o bilhete. Suporte notificado.');
           } catch (e) {
