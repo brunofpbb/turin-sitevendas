@@ -267,7 +267,8 @@ const values = list.map(b => {
       String(payment?.status || ''),          // StatusPagamento
       'Emitido',                              // Status
       '',                                     // ValorDevolucao
-      (b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
+      const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault), 
+    //(b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
       pagoSP,                                 // Data/hora_Pagamento
       '',                                     // NomePagador
       '',                                     // CPF_Pagador
@@ -1459,7 +1460,8 @@ if (!guardOnce(String(mpPaymentId))) {
       let drive = null;
       try {
         const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
-        const sentido = (String(idaVolta).toLowerCase()==='volta') ? 'volta' : 'ida';
+        const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
+        //const sentido = (String(idaVolta).toLowerCase()==='volta') ? 'volta' : 'ida';
         const buf = await fs.promises.readFile(localPath);
         const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
         drive = await uploadPdfToDrive({
@@ -1480,7 +1482,8 @@ if (!guardOnce(String(mpPaymentId))) {
         console.error('[Drive] upload falhou:', e?.message || e);
         try {
           const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
-          const sentido = (String(idaVolta).toLowerCase()==='volta') ? 'volta' : 'ida';
+          const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
+          //const sentido = (String(idaVolta).toLowerCase()==='volta') ? 'volta' : 'ida';
           const buf = await fs.promises.readFile(localPath);
           const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
           emailAttachments.push({
@@ -1515,6 +1518,7 @@ bilhetesPayload.push({
   horaPartida: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
 
   // ✅ garante sentido por bilhete
+  const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
   idaVolta:   sentido || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
 });
 
@@ -1574,7 +1578,8 @@ const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString(
 
 // lista <li> com rota/data/hora por bilhete e link
 const listaHtml = bilhetes.map((b,i) => {
-  const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
+ // const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
+  const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
   const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
   const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
            || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
