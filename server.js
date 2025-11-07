@@ -242,52 +242,54 @@ const tipoPagamento =
 
 
 // garanta que é array de bilhetes válidos
-const list = Array.isArray(bilhetes) ? bilhetes.filter(Boolean) : [];    
+const list = Array.isArray(bilhetes) ? bilhetes.filter(Boolean) : [];
 
 const values = list.map(b => {
-  // ✅ AGORA sim: b existe aqui
-  const dataViagem = (b?.dataViagem || schedule2?.date || schedule2?.dataViagem || '');
-  const horaPartida = String(b?.horaPartida || schedule2?.horaPartida || schedule2?.departureTime || '').slice(0, 5);
-  const dataHoraViagem = (dataViagem && horaPartida)
-    ? `${dataViagem} ${horaPartida}`
-    : (dataViagem || horaPartida);
+  // fonte de data/hora
+  const dataViagem  = (b?.dataViagem || schedule?.date || schedule?.dataViagem || '');
+  const horaPartida = String(b?.horaPartida || schedule?.horaPartida || schedule?.departureTime || '').slice(0,5);
+  const dataHoraViagem = (dataViagem && horaPartida) ? `${dataViagem} ${horaPartida}` : (dataViagem || horaPartida);
+
+  // sentido por bilhete, com fallback do bundle
+  const sentido = b?.idaVolta
+    ? String(b.idaVolta)
+    : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida');
 
   return [
-      nowSP(),                                // Data/horaSolicitação
-      b.nomeCliente || '',                    // Nome
-      (userPhone ? ('55' + userPhone) : ''),  // Telefone (com DDI 55)
-      (userEmail || ''),                      // E-mail
-      b.docCliente || '',                     // CPF
-      Number(b.valor ?? 0).toFixed(2),        // Valor
-      '2',                                    // ValorConveniencia
-      String(fee).toString().replace('.', ','), // ComissaoMP
-      String(net).toString().replace('.', ','), // ValorLiquido
-      b.numPassagem || '',                    // NumPassagem
-      '93',                                   // SeriePassagem
-      String(payment?.status || ''),          // StatusPagamento
-      'Emitido',                              // Status
-      '',                                     // ValorDevolucao
-      sentido,
-    //(b && b.idaVolta ? String(b.idaVolta) : (String(idaVoltaDefault).toLowerCase() === 'volta' ? 'Volta' : 'Ida')), // Sentido (usa o do bilhete; se vazio, cai no default do bundle)
-      pagoSP,                                 // Data/hora_Pagamento
-      '',                                     // NomePagador
-      '',                                     // CPF_Pagador
-      chId,                                   // ID_Transação
-      tipoPagamento,                          // TipoPagamento
-      '',                                     // correlationID
-      '',                                     // idURL
-      payment?.external_reference || '',      // Referencia
-      forma,                                  // Forma_Pagamento
-      '',                                     // idUser
-      dataViagem,                             // Data_Viagem
-      dataHoraViagem,                         // Data_Hora
-      b.origem || schedule?.originName || schedule?.origem || '',     // Origem
-      b.destino || schedule?.destinationName || schedule?.destino || '', // Destino
-      '',                                     // Identificador
-      payment?.id || '',                      // idPagamento
-      b.driveUrl || '',                       // LinkBPE
-      b.poltrona || ''                        // poltrona
-      ];
+    nowSP(),                                // Data/horaSolicitação
+    b.nomeCliente || '',                    // Nome
+    (userPhone ? ('55' + userPhone) : ''),  // Telefone (DDI 55)
+    (userEmail || ''),                      // E-mail
+    b.docCliente || '',                     // CPF
+    Number(b.valor ?? 0).toFixed(2),        // Valor
+    '2',                                    // ValorConveniencia
+    String(fee).toString().replace('.', ','), // ComissaoMP
+    String(net).toString().replace('.', ','), // ValorLiquido
+    b.numPassagem || '',                    // NumPassagem
+    '93',                                   // SeriePassagem
+    String(payment?.status || ''),          // StatusPagamento
+    'Emitido',                              // Status
+    '',                                     // ValorDevolucao
+    sentido,                                // Sentido
+    pagoSP,                                 // Data/hora_Pagamento
+    '',                                     // NomePagador
+    '',                                     // CPF_Pagador
+    chId,                                   // ID_Transação
+    tipoPagamento,                          // TipoPagamento (0=PIX, 3=Cartão)
+    '',                                     // correlationID
+    '',                                     // idURL
+    payment?.external_reference || '',      // Referencia
+    forma,                                  // Forma_Pagamento (rótulo)
+    '',                                     // idUser
+    dataViagem,                             // Data_Viagem
+    dataHoraViagem,                         // Data_Hora
+    b.origem || schedule?.originName || schedule?.origem || '',         // Origem
+    b.destino || schedule?.destinationName || schedule?.destino || '',  // Destino
+    '',                                     // Identificador
+    payment?.id || '',                      // idPagamento
+    b.driveUrl || '',                       // LinkBPE
+    b.poltrona || ''                        // Poltrona
+  ];
 });
 
     if (!values.length) return { ok:true, appended:0 };
@@ -1440,6 +1442,7 @@ if (!guardOnce(String(mpPaymentId))) {
     const bilhetesPayload = [];
 
     for (const p of (vendaResult.ListaPassagem || [])) {
+      const sentido = (String(idaVolta).toLowerCase() === 'volta') ? 'Volta' : 'Ida';
       const ticket = mapVendaToTicket({
         ListaPassagem: [p],
         mp: {
@@ -1459,8 +1462,8 @@ if (!guardOnce(String(mpPaymentId))) {
       // 5.2 subir no Drive (opcional)
       let drive = null;
       try {
-        const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
-        const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
+       /* const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
+        //const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
         //const sentido = (String(idaVolta).toLowerCase()==='volta') ? 'volta' : 'ida';
         const buf = await fs.promises.readFile(localPath);
         const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
@@ -1477,7 +1480,21 @@ if (!guardOnce(String(mpPaymentId))) {
           filename: nome,
           contentBase64: buf.toString('base64'),
           buffer: buf,
-        });
+        });*/
+
+      const buf = await fs.promises.readFile(localPath);
+const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
+drive = await uploadPdfToDrive({
+  buffer: buf,
+  filename: nome,
+  folderId: process.env.GDRIVE_FOLDER_ID,
+});
+emailAttachments.push({ filename: nome, contentBase64: buf.toString('base64'), buffer: buf });
+
+
+
+
+        
       } catch (e) {
         console.error('[Drive] upload falhou:', e?.message || e);
         try {
@@ -1501,7 +1518,7 @@ if (!guardOnce(String(mpPaymentId))) {
         driveFileId: drive?.id || null
       });
 
-bilhetesPayload.push({
+/*bilhetesPayload.push({
   numPassagem: p.NumPassagem || ticket.numPassagem,
   chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
   origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
@@ -1520,7 +1537,29 @@ bilhetesPayload.push({
   // ✅ garante sentido por bilhete
   const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
   idaVolta:   sentido || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
+});*/
+
+
+bilhetesPayload.push({
+  numPassagem: p.NumPassagem || ticket.numPassagem,
+  chaveBPe:    p.ChaveBPe || ticket.chaveBPe || null,
+  origem:      p.Origem || ticket.origem || schedule?.originName || schedule?.origem || null,
+  destino:     p.Destino || ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  origemNome:  ticket.origem || schedule?.originName || schedule?.origem || null,
+  destinoNome: ticket.destino || schedule?.destinationName || schedule?.destino || null,
+  poltrona:    p.Poltrona || ticket.poltrona || null,
+  nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
+  docCliente:  p.DocCliente || ticket.docCliente || null,
+  valor:       p.ValorPgto ?? ticket.valor ?? null,
+
+  dataViagem:  p.DataViagem || ticket.dataViagem || schedule?.date || schedule?.dataViagem || '',
+  horaPartida: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
+
+  idaVolta:    sentido
 });
+
+
+      
 
           }
 
@@ -1577,21 +1616,21 @@ const headerRoute = (pairs.size === 1 && bilhetes.length)
 const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 
 // lista <li> com rota/data/hora por bilhete e link
-const listaHtml = bilhetes.map((b,i) => {
- // const sentido = String(idaVolta).toLowerCase() === 'volta' ? 'volta' : 'ida';
-  const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
+const listaHtml = bilhetes.map((b, i) => {
+  const sentido = b?.idaVolta || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida');
   const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
   const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
-           || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
-           || '';
+            || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+            || '';
   const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
   return `<li style="margin:10px 0">
-            <div><b>Bilhete nº ${b.numPassagem}</b> (${sentido || 'ida'})</div>
+            <div><b>Bilhete nº ${b.numPassagem}</b> (${sentido})</div>
             <div><b>Rota:</b> ${rotaStr}</div>
             <div><b>Data/Hora:</b> ${b.dataViagem || ''} ${b.horaPartida || ''}</div>
             ${linkHtml}
           </li>`;
 }).join('');
+
 
 // cabeçalho (Data/Hora do schedule pode não representar todos; ok deixar só valor total)
 // const appName   = process.env.APP_NAME || 'Turin Transportes';
