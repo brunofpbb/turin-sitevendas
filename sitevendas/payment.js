@@ -229,26 +229,32 @@ let order = expandCartItems(readCart());
   }
 
 
-  // helper: tenta inferir ida/volta do item
+// helper: classifica ida/volta comparando com a 1ª rota do carrinho
 function inferLegType(it, idx, order) {
+  // 1) explicit flags vencem
   if (it.isReturn === true || it.tripType === 'volta') return 'volta';
   if (it.tripType === 'ida') return 'ida';
 
-  // fallback: se houver 2 trechos invertidos, o 2º é volta
-  if (order.length >= 2 && idx === 1) {
-    const getIds = (x) => {
-      const s = x?.schedule || {};
-      return {
-        o: s.originId || s.idOrigem || s.CodigoOrigem,
-        d: s.destinationId || s.idDestino || s.CodigoDestino
-      };
-    };
-    const a = getIds(order[0]);
-    const b = getIds(order[1]);
-    if (a.o && a.d && b.o && b.d && a.o === b.d && a.d === b.o) return 'volta';
+  // 2) extrai origem/destino do item atual
+  const s = it?.schedule || {};
+  const o = s.originId || s.idOrigem || s.CodigoOrigem;
+  const d = s.destinationId || s.idDestino || s.CodigoDestino;
+
+  // 3) extrai origem/destino da 1ª rota do carrinho (referência)
+  const f = (order[0] && order[0].schedule) || {};
+  const fO = f.originId || f.idOrigem || f.CodigoOrigem;
+  const fD = f.destinationId || f.idDestino || f.CodigoDestino;
+
+  // 4) compara com a referência
+  if (o && d && fO && fD) {
+    if (o === fO && d === fD) return 'ida';
+    if (o === fD && d === fO) return 'volta';
   }
+
+  // 5) fallback seguro
   return 'ida';
 }
+
 
 // atualiza UM booking (por índice) com os arquivos gerados
 function mergeFilesIntoBookingAtIndex(openIdx, arquivos) {
