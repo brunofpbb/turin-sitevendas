@@ -1048,10 +1048,17 @@ const AGGR = new Map();
 const AGGR_DEBOUNCE_MS = 11000;   // ⬅️ 8s para juntar múltiplas chamadas
 const AGGR_MAX_WAIT_MS = 60000;  // ⬅️ segurança 30s
 
-function queueUnifiedSend(groupId, fragment, doFlushCb) {
+/*function queueUnifiedSend(groupId, fragment, doFlushCb) {
   let e = AGGR.get(groupId);
   if (!e) {
     e = { timer:null, startedAt:Date.now(), base:{}, bilhetes:[], arquivos:[], emailAttachments:[], expected:0, flushed:false, waiters:[] };
+    AGGR.set(groupId, e);
+  }*/
+function queueUnifiedSend(groupId, fragment, doFlushCb) {
+  let e = AGGR.get(groupId);
+  if (!e) {
+    e = { timer:null, startedAt:Date.now(), base:{}, bilhetes:[], arquivos:[], emailAttachments:[],
+          expected:0, flushed:false, waiters:[] };
     AGGR.set(groupId, e);
   }
 
@@ -1060,13 +1067,14 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
 
   // ❌ antes: if (fragment.expected > e.expected) e.expected = fragment.expected;
   // ✅ agora: somar o total esperado deste fragmento (ida + volta, etc.)
+  // soma o esperado desta resposta (qtd de bilhetes)
   const addExpected = Number(fragment?.expected || 0);
   if (addExpected > 0) e.expected += addExpected;
 
   // acumula
-  if (Array.isArray(fragment.bilhetes))        e.bilhetes.push(...fragment.bilhetes);
-  if (Array.isArray(fragment.arquivos))        e.arquivos.push(...fragment.arquivos);
-  if (Array.isArray(fragment.emailAttachments)) e.emailAttachments.push(...fragment.emailAttachments);
+  if (Array.isArray(fragment?.bilhetes))        e.bilhetes.push(...fragment.bilhetes);
+  if (Array.isArray(fragment?.arquivos))        e.arquivos.push(...fragment.arquivos);
+  if (Array.isArray(fragment?.emailAttachments)) e.emailAttachments.push(...fragment.emailAttachments);
 
   // de-dups
   const seenB = new Set();
@@ -1084,21 +1092,24 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
     return true;
   });
 
-  const tryFlush = async () => {
+const tryFlush = async () => {
     if (e.flushed) return;
+
     const waited = (Date.now() - e.startedAt) >= AGGR_MAX_WAIT_MS;
 
-    // ✅ agora compara com o deduplicado atual
-    const reachedExpected = e.expected > 0 && e.bilhetes.length >= e.expected;
+    // ✅ agora só flusha quando TEMOS TODOS os anexos também
+    const haveAllBilhetes = e.expected > 0 && e.bilhetes.length >= e.expected;
+    const haveAllAnexos   = e.expected > 0 && e.emailAttachments.length >= e.expected;
 
-    if (!waited && !reachedExpected) return;
+    if (!waited && !(haveAllBilhetes && haveAllAnexos)) return;
 
     e.flushed = true;
     clearTimeout(e.timer); e.timer = null;
+
+    console.log(`[AGGR] flushing: expected=${e.expected} bilhetes=${e.bilhetes.length} anexos=${e.emailAttachments.length} waited=${waited}`);
     try { await doFlushCb({ ...e }); }
     finally {
-      const ws = Array.isArray(e.waiters) ? e.waiters.splice(0) : [];
-      ws.forEach(fn => { try { fn(); } catch{} });
+      (e.waiters || []).forEach(fn => { try { fn(); } catch{} });
       AGGR.delete(groupId);
     }
   };
