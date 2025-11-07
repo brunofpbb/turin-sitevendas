@@ -1059,7 +1059,10 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
   e.base = { ...e.base, ...(fragment.base||{}) };
 
   // expected = maior visto (mantemos, mas não usamos para flush imediato)
-  if (fragment.expected && fragment.expected > e.expected) e.expected = fragment.expected;
+  // if (fragment.expected && fragment.expected > e.expected) e.expected = fragment.expected;
+
+  const addExpected = Number(fragment?.expected || 0);
+  if (addExpected > 0) e.expected += addExpected;
 
   // acumula
   if (Array.isArray(fragment.bilhetes)) e.bilhetes.push(...fragment.bilhetes);
