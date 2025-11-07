@@ -1058,46 +1058,47 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
   // merge base (último vence)
   e.base = { ...e.base, ...(fragment.base||{}) };
 
-  // expected = maior visto (mantemos, mas não usamos para flush imediato)
-  // if (fragment.expected && fragment.expected > e.expected) e.expected = fragment.expected;
-
+  // ❌ antes: if (fragment.expected > e.expected) e.expected = fragment.expected;
+  // ✅ agora: somar o total esperado deste fragmento (ida + volta, etc.)
   const addExpected = Number(fragment?.expected || 0);
   if (addExpected > 0) e.expected += addExpected;
 
   // acumula
-  if (Array.isArray(fragment.bilhetes)) e.bilhetes.push(...fragment.bilhetes);
-  if (Array.isArray(fragment.arquivos)) e.arquivos.push(...fragment.arquivos);
+  if (Array.isArray(fragment.bilhetes))        e.bilhetes.push(...fragment.bilhetes);
+  if (Array.isArray(fragment.arquivos))        e.arquivos.push(...fragment.arquivos);
   if (Array.isArray(fragment.emailAttachments)) e.emailAttachments.push(...fragment.emailAttachments);
 
   // de-dups
   const seenB = new Set();
   e.bilhetes = e.bilhetes.filter(b => {
     const k = `${b?.numPassagem||''}|${b?.chaveBPe||''}`;
-    if (!k.trim() || seenB.has(k)) return false; seenB.add(k); return true;
+    if (!k.trim() || seenB.has(k)) return false;
+    seenB.add(k);
+    return true;
   });
   const seenA = new Set();
   e.arquivos = e.arquivos.filter(a => {
     const k = `${a?.driveFileId||''}|${a?.numPassagem||''}|${a?.pdfLocal||''}`;
-    if (seenA.has(k)) return false; seenA.add(k); return true;
+    if (seenA.has(k)) return false;
+    seenA.add(k);
+    return true;
   });
 
   const tryFlush = async () => {
     if (e.flushed) return;
     const waited = (Date.now() - e.startedAt) >= AGGR_MAX_WAIT_MS;
-    const haveSomething = e.bilhetes.length > 0 || e.arquivos.length > 0 || e.emailAttachments.length > 0;
 
-    // 👉 flush imediato quando chegar no esperado
+    // ✅ agora compara com o deduplicado atual
     const reachedExpected = e.expected > 0 && e.bilhetes.length >= e.expected;
 
-    if (!waited && !haveSomething && !reachedExpected) return;
+    if (!waited && !reachedExpected) return;
 
     e.flushed = true;
     clearTimeout(e.timer); e.timer = null;
     try { await doFlushCb({ ...e }); }
     finally {
-      // Notifica todos os "waiters"
       const ws = Array.isArray(e.waiters) ? e.waiters.splice(0) : [];
-      ws.forEach(fn => { try { fn(); } catch(_){} });
+      ws.forEach(fn => { try { fn(); } catch{} });
       AGGR.delete(groupId);
     }
   };
@@ -1105,6 +1106,7 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
   clearTimeout(e.timer);
   e.timer = setTimeout(tryFlush, AGGR_DEBOUNCE_MS);
 }
+
 
 
 
