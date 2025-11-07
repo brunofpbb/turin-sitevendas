@@ -1636,12 +1636,14 @@ const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString(
 const listaHtml = bilhetes.map((b, i) => {
   const sentido = b?.idaVolta || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida');
   const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
+  const nome     = (b?.nomeCliente || '').toString().trim() || '(passageiro não informado)';
   const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
             || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
             || '';
   const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i+1}</a></div>` : '';
   return `<li style="margin:10px 0">
             <div><b>Bilhete nº ${b.numPassagem}</b> (${sentido})</div>
+            <div><b>Passageiro:</b> ${nome}</div>
             <div><b>Rota:</b> ${rotaStr}</div>
             <div><b>Data/Hora:</b> ${b.dataViagem || ''} ${b.horaPartida || ''}</div>
             ${linkHtml}
