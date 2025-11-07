@@ -1482,6 +1482,7 @@ if (!guardOnce(String(mpPaymentId))) {
           buffer: buf,
         });*/
 
+      const slug = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').toLowerCase();
       const buf = await fs.promises.readFile(localPath);
 const nome = `${slug(ticket.nomeCliente || 'passageiro')}_${ticket.numPassagem}_${sentido}.pdf`;
 drive = await uploadPdfToDrive({
