@@ -1518,7 +1518,7 @@ bilhetesPayload.push({
   horaPartida: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
 
   // ✅ garante sentido por bilhete
- // const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
+  const sentido = resolveSentido(p, schedule, scheduleVolta, idaVoltaDefault);
   idaVolta:   sentido || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida')
 });
 
