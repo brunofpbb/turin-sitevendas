@@ -1638,7 +1638,7 @@ main.two-cols {
     max-width: 100%;
     margin: 0;
     padding: 0 0 1.5rem;
-    gap: 12px;                /* espaço pequeno entre os dois cards */
+    gap: 50px;                /* espaço pequeno entre os dois cards */
   }
 
   main.two-cols > * {
