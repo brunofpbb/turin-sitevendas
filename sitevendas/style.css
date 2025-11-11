@@ -1546,8 +1546,8 @@ footer { text-align: center; }
 
 /* Padrão: empilhado (mobile / tablets menores) */
 main.two-cols {
-  display: flex;
-  flex-direction: column;
+ /* display: flex;
+  flex-direction: column;*/
   gap: 12px;
   width: 100%;
   max-width: 1200px;
@@ -1563,8 +1563,8 @@ main.two-cols > .content-card {
 */
 
 
-/* Desktop grande: volta para duas colunas lado a lado 
+/* Desktop grande: volta para duas colunas lado a lado */
 @media (min-width: 1200px) {
 
 }
-*/
+
