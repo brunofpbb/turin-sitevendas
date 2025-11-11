@@ -1558,7 +1558,7 @@ main.two-cols {
 /* garante que os dois cards não criem margem extra entre si */
 main.two-cols > aside,
 main.two-cols > .content-card {
-  margin: 100;
+  margin: 10;
 }
 
 
