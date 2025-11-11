@@ -1548,7 +1548,7 @@ footer { text-align: center; }
 main.two-cols {
  /* display: flex;*/
   direction: column;
-  gap: 12px;
+  gap: 120px;
   width: 100%;
   max-width: 1200px;
   margin: 16px auto 24px;
@@ -1558,7 +1558,7 @@ main.two-cols {
 /* garante que os dois cards não criem margem extra entre si */
 main.two-cols > aside,
 main.two-cols > .content-card {
-  margin: 10;
+  margin: 100;
 }
 
 
