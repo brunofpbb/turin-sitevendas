@@ -95,7 +95,7 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 .passenger-row input[name="name"]{flex:2 1 0}
 .passenger-row input[name="cpf"],.passenger-row input[name="phone"]{flex:1 1 0}
 
-/* ===== Responsivo ===== */
+/* ===== Responsivo ===== 
 @media (max-width: 1024px){
   .two-cols{ grid-template-columns: 1fr; padding: 0 16px; }
   .search-card{ position: static; }
@@ -110,13 +110,19 @@ body{
   flex-direction: column;
   min-height: 100vh;
 }
-main{ flex: 1 0 auto; }         /* ocupa o espaço, empurrando o footer para baixo */
+main{ flex: 1 0 auto; }         /* ocupa o espaço, empurrando o footer para baixo 
 footer{
   flex-shrink: 0;
   text-align: center;
   padding: 16px 0;
   color: #666;
 }
+
+*/
+
+
+
+
 
 /* ===== Login ===== */
 .auth-wrapper{
