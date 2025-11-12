@@ -95,12 +95,16 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 .passenger-row input[name="name"]{flex:2 1 0}
 .passenger-row input[name="cpf"],.passenger-row input[name="phone"]{flex:1 1 0}
 
+
+
+
+
 /* ===== Responsivo ===== */
 @media (max-width: 1024px){
   .two-cols{ grid-template-columns: 1fr; padding: 0 16px; }
   .search-card{ position: static; }
-  .content-card{min-height:100px}           /* era 380 */
-  .bus-bg{width:100%;height:210px}
+  .content-card{min-height:200px, top: 0}           /* era 380 */
+  .bus-bg{width:100%;height:100px}                 /*era 210*/
   .seat-grid{left:50%;transform:translateX(-50%);width:64%}
 }
 
