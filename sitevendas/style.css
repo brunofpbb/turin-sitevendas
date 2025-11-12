@@ -1546,13 +1546,13 @@ footer { text-align: center; }
 
 /* Padrão: empilhado (mobile / tablets menores) */
 main.two-cols {
-  display: flex;
+ /* display: flex;*/
   flex-direction: column;
- /* gap: 12px;
+  gap: 12px;
   width: 80%;
   max-width: 900px;
   margin: 16px auto 10px;
-  padding: 10px 12px 16px;*/
+  padding: 10px 12px 16px;
 }
 
 
