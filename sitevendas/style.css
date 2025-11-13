@@ -1566,7 +1566,7 @@ main.two-cols > .content-card {
 @media (min-width: 1200px) {
   main.two-cols {
     display: grid;
-    grid-template-columns: 340px minmax(780px, 1050px);
+  /*  grid-template-columns: 340px minmax(780px, 1050px); */
     gap: 26px;
     padding: 24px;
   }
