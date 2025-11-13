@@ -1551,7 +1551,7 @@ main.two-cols > .content-card {
   margin: 0;
 }
 
-/* Quando não há conteúdo ainda, não vira um buracão branco 
+ Quando não há conteúdo ainda, não vira um buracão branco 
 .content-card:empty {
   min-height: 0 !important;
   padding: 0 !important;
@@ -1559,7 +1559,7 @@ main.two-cols > .content-card {
   background: transparent !important;
 }
 
-*/
+
 
 
 /* Desktop grande: volta para duas colunas lado a lado */
