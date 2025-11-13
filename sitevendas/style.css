@@ -1540,12 +1540,12 @@ main.two-cols {
   flex-direction: column;
   gap: 12px;
   width: 85%;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 16px auto 24px;
   padding: 0 12px 16px;
 }
 
-/* garante que os dois cards não criem margem extra entre si */
+/* garante que os dois cards não criem margem extra entre si 
 main.two-cols > aside,
 main.two-cols > .content-card {
   margin: 0;
@@ -1558,7 +1558,7 @@ main.two-cols > .content-card {
   box-shadow: none !important;
   background: transparent !important;
 }
-
+*/
 
 
 
