@@ -1551,26 +1551,19 @@ main.two-cols > .content-card {
   margin: 0;
 }
 
+*/
+
  Quando não há conteúdo ainda, não vira um buracão branco 
 .content-card:empty {
+   display: hide;
   min-height: 0 !important;
   padding: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
 }
-*/
 
 
 
-/* Desktop grande: volta para duas colunas lado a lado */
-@media (min-width: 1200px) {
-  main.two-cols {
-    display: grid;
-  /*  grid-template-columns: 340px minmax(780px, 1050px); */
-    gap: 26px;
-    padding: 24px;
-  }
-}
 
 
 
