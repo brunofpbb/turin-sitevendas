@@ -1540,32 +1540,3 @@ footer { text-align: center; }
 
 
 
-
-
-/* === OVERRIDE TWO-COLS: mobile first === */
-
-/* Padrão: empilhado (mobile / tablets menores) */
-main.two-cols {
- /* display: flex;*/
-  flex-direction: column;
-  gap: 12px;
-  width: 80%;
-  max-width: 900px;
-  margin: 16px auto 10px;
-  padding: 10px 12px 16px;
-}
-
-
-/* garante que os dois cards não criem margem extra entre si */
-main.two-cols > aside,
-main.two-cols > .content-card {
-  margin: 10;
-}
-
-
-
-/* Desktop grande: volta para duas colunas lado a lado */
-@media (min-width: 1200px) {
-
-}
-
