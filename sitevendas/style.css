@@ -1536,7 +1536,7 @@ footer { text-align: center; }
 
 /* Padrão: empilhado (mobile / tablets menores) */
 main.two-cols {
-  display: flex;
+/*  display: flex;*/
   flex-direction: column;
   gap: 12px;
   width: 85%;
@@ -1555,7 +1555,6 @@ main.two-cols > .content-card {
 
  Quando não há conteúdo ainda, não vira um buracão branco 
 .content-card:empty {
-   display: hide;
   min-height: 0 !important;
   padding: 0 !important;
   box-shadow: none !important;
