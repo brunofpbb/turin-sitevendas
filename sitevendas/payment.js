@@ -601,7 +601,7 @@ if (arquivos.length) {
             const pix = data?.point_of_interaction?.transaction_data;
             if (pix?.qr_code || pix?.qr_code_base64) {
               showPixBox({ qr_b64: pix.qr_code_base64, qr_text: pix.qr_code });
-              alert('Pix gerado! Conclua o pagamento no seu banco.');
+             // alert('Pix gerado! Conclua o pagamento no seu banco.');
               const paymentId = data.id || data?.payment?.id;
               if (paymentId) startPixPolling(paymentId); // <<<<<< POLLING AQUI
               return;
