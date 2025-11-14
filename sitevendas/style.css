@@ -1657,3 +1657,41 @@ main.two-cols > .content-card {
 
 
 
+
+
+/* OVERRIDE FINAL – botões menores no mobile */
+@media (max-width: 1200px) {
+  .search-form .search-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  /* derruba qualquer width:100% anterior */
+  .search-form .search-actions button,
+  .search-form .search-actions a.btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: auto !important;      /* chave pra deixar de ocupar 100% */
+    min-width: 130px;
+    padding: 8px 12px;
+  }
+
+  /* “Pesquisar” um pouco maior que os outros */
+  .search-form .search-actions .btn-primary {
+    min-width: 170px;
+  }
+
+  /* “Limpar” e “Sair” mais curtinhos */
+  .search-form .search-actions .btn-light,
+  .search-form .search-actions .btn-danger {
+    min-width: 120px;
+  }
+}
+
+
+
+
+
