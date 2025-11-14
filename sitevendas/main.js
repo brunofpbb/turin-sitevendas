@@ -466,7 +466,7 @@ function updateUserNav() {
 
     nav.innerHTML = `
       <a class="pill user-name" id="go-profile" href="${profileHref}">${name}</a>
-      <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
+      <button class="pill cta-exit" id="btn-logout" type="button">Desconectar</button>
     `;
 
     // Força navegação ao profile mesmo se algum script fizer preventDefault
