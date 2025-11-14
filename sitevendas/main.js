@@ -457,26 +457,25 @@ function updateUserNav() {
       return;
     }
 
- 
     
     
     
- *
+
     
     // LOGADO
+// LOGADO
 const name = user.name || user.email;
 nav.innerHTML = `
   <a class="pill user-name" href="profile.html" id="go-profile">${name}</a>
   <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
 `;
 
-    const btn = nav.querySelector('#btn-logout');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        localStorage.removeItem('user');
-        // redireciona pra home (ou login)
-        location.href = 'index.html';
-      });
+// listeners
+nav.querySelector('#btn-logout')?.addEventListener('click', () => {
+  localStorage.removeItem('user');
+  location.href = 'index.html';
+});
+
     }
   } catch (e) {
     console.warn('updateUserNav falhou:', e);
