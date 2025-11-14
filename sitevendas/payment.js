@@ -404,14 +404,35 @@ function removeFromStorageBySeatPointer(srcOpenIdx, seatNumber) {
       `);
     });
 
-    const html = lines.join('') + `<div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>`;
+   /* const html = lines.join('') + `<div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>`;
     if (summaryBodyEl) {
       summaryBodyEl.innerHTML = html;
       if (summaryTotalEl) summaryTotalEl.textContent = fmtBRL(total);
     } else if (legacySummaryEl) {
       legacySummaryEl.innerHTML = html;
     }
+    
+    */
 
+    const baseHtml = lines.join('');
+
+// Novo layout (payment.html atual)
+if (summaryBodyEl) {
+  summaryBodyEl.innerHTML = baseHtml;
+  if (summaryTotalEl) summaryTotalEl.textContent = fmtBRL(total);
+}
+// Layout antigo (usa somente #order-summary e precisa do total dentro)
+else if (legacySummaryEl) {
+  const html = baseHtml +
+    `<div class="summary-total"><span>Total</span><span>${fmtBRL(total)}</span></div>`;
+  legacySummaryEl.innerHTML = html;
+}
+
+
+
+
+
+    
     const container = summaryBodyEl || legacySummaryEl;
     if (container) {
 container.querySelectorAll('.order-item .item-remove').forEach(btn => {
