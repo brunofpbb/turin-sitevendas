@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Turin Transportes – Minhas Viagens</title>
   <link rel="stylesheet" href="style.css" />
+  <script defer src="main.js"></script>
+  <script src="profile.js" defer></script>
 
   <!-- Favicons -->
   <link rel="icon" href="/img/turin-fav.ico?v=2">
@@ -23,31 +25,11 @@
     .btn-success:hover{ filter:brightness(1.05); }
     .bilhete-num{ font-size:13px; color:#2b2b2b; }
   </style>
-  <script>
-    // mini helper p/ preencher o menu (igual às outras telas)
-    function updateUserNav(){
-      const nav = document.getElementById('user-nav');
-      if (!nav) return;
-      const user = JSON.parse(localStorage.getItem('user') || 'null');
-      nav.innerHTML = '';
-      if (user){
-        const a = document.createElement('a');
-        a.href = 'profile.html';
-        a.textContent = `Minhas viagens (${user.name || user.email})`;
-        nav.appendChild(a);
-        const s = document.createElement('a');
-        s.href = '#'; s.style.marginLeft = '12px'; s.textContent = 'Sair';
-        s.onclick = ()=>{ localStorage.removeItem('user'); updateUserNav(); location.href = 'index.html'; };
-        nav.appendChild(s);
-      } else {
-        const a = document.createElement('a');
-        a.href = 'login.html'; a.textContent = 'Entrar';
-        a.onclick = ()=> localStorage.setItem('postLoginRedirect', 'profile.html');
-        nav.appendChild(a);
-      }
-    }
-  </script>
-  <script src="profile.js" defer></script>
+
+  
+  
+ 
+
 </head>
 <body>
   
