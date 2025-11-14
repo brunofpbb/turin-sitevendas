@@ -1606,6 +1606,35 @@ main.two-cols > .content-card {
 
 
 
+/* ===== Botões do formulário — MOBILE ===== */
+@media (max-width: 768px) {
+  /* linha dos botões */
+  .search-form .search-actions{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:10px;
+  }
+
+  /* Padrão dos botões no mobile: não ocupar 100% */
+  .search-form .search-actions .btn{
+    width:auto;               /* deixa no tamanho do conteúdo */
+    padding:10px 14px;
+  }
+
+  /* “Pesquisar” um pouco mais largo, mas não tela toda */
+  .search-form .search-actions .btn-primary{
+    width:80%;
+    max-width:320px;          /* limite superior */
+  }
+
+  /* “Limpar” e “Sair” lado a lado, menores */
+  .search-form .search-actions .btn-light,
+  .search-form .search-actions .btn-danger{
+    flex:0 0 42%;
+    max-width:220px;
+  }
+}
 
 
 
