@@ -457,12 +457,18 @@ function updateUserNav() {
       return;
     }
 
+ 
+    
+    
+    
+ *
+    
     // LOGADO
-    const name = user.name || user.email;
-    nav.innerHTML = `
-      <span class="pill user-name">${name}</span>
-      <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
-    `;
+const name = user.name || user.email;
+nav.innerHTML = `
+  <a class="pill user-name" href="profile.html" id="go-profile">${name}</a>
+  <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
+`;
 
     const btn = nav.querySelector('#btn-logout');
     if (btn) {
