@@ -1640,4 +1640,20 @@ main.two-cols > .content-card {
 
 
 
+/* “Pesquisar” um pouco mais estreito */
+.search-form .search-actions .btn-primary{
+  width: 60%;      /* antes 80% */
+  max-width: 260px;
+}
+
+/* “Limpar” e “Sair” mais curtinhos */
+.search-form .search-actions .btn-light,
+.search-form .search-actions .btn-danger{
+  flex: 0 0 38%;   /* antes 42% */
+  max-width: 180px;
+}
+
+
+
+
 
