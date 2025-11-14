@@ -442,49 +442,59 @@ function attachAutocomplete(input, panel, source){
 });
 
 
-// NAV do usuário (destaque "Entrar" quando deslogado; "Sair" + nome quando logado)
+// NAV do usuário (Entrar quando deslogado; Nome -> Profile + Sair quando logado)
 function updateUserNav() {
   try {
     const nav = document.getElementById('user-nav');
     if (!nav) return;
 
     const user = JSON.parse(localStorage.getItem('user') || 'null');
+
+    // DESLOGADO
     if (!user || !user.email) {
-      // DESLOGADO
       nav.innerHTML = `
         <a class="pill cta-enter" href="login.html">Entrar</a>
       `;
       return;
     }
 
-    
-    
-    
-
-    
     // LOGADO
-// LOGADO
-const name = user.name || user.email;
-nav.innerHTML = `
-  <a class="pill user-name" href="profile.html" id="go-profile">${name}</a>
-  <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
-`;
+    const name = user.name || user.email;
 
-// listeners
-nav.querySelector('#btn-logout')?.addEventListener('click', () => {
-  localStorage.removeItem('user');
-  location.href = 'index.html';
-});
+    // tente profile.html; se sua rota for /profile (sem extensão), troque abaixo
+    const profileHref = 'profile.html';
 
+    nav.innerHTML = `
+      <a class="pill user-name" id="go-profile" href="${profileHref}">${name}</a>
+      <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
+    `;
+
+    // Força navegação ao profile mesmo se algum script fizer preventDefault
+    const link = nav.querySelector('#go-profile');
+    if (link) {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        // se sua página for "profile" (sem .html), troque aqui:
+        window.location.href = profileHref; 
+      });
     }
+
+    // Logout
+    const btn = nav.querySelector('#btn-logout');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        localStorage.removeItem('user');
+        window.location.href = 'index.html';
+      });
+    }
+
   } catch (e) {
     console.warn('updateUserNav falhou:', e);
   }
 }
 
-// garante execução no load (se ainda não tiver em outro ponto)
 document.addEventListener('DOMContentLoaded', () => {
-  if (typeof updateUserNav === 'function') updateUserNav();
+  updateUserNav();
 });
 
 
