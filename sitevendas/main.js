@@ -441,7 +441,49 @@ function attachAutocomplete(input, panel, source){
   }
 });
 
-/* ===== Nav usuário (como você já tinha) ===== */
+
+// NAV do usuário (destaque "Entrar" quando deslogado; "Sair" + nome quando logado)
+function updateUserNav() {
+  try {
+    const nav = document.getElementById('user-nav');
+    if (!nav) return;
+
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    if (!user || !user.email) {
+      // DESLOGADO
+      nav.innerHTML = `
+        <a class="pill cta-enter" href="login.html">Entrar</a>
+      `;
+      return;
+    }
+
+    // LOGADO
+    const name = user.name || user.email;
+    nav.innerHTML = `
+      <span class="pill user-name">${name}</span>
+      <button class="pill cta-exit" id="btn-logout" type="button">Sair</button>
+    `;
+
+    const btn = nav.querySelector('#btn-logout');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        localStorage.removeItem('user');
+        // redireciona pra home (ou login)
+        location.href = 'index.html';
+      });
+    }
+  } catch (e) {
+    console.warn('updateUserNav falhou:', e);
+  }
+}
+
+// garante execução no load (se ainda não tiver em outro ponto)
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof updateUserNav === 'function') updateUserNav();
+});
+
+
+/* ===== Nav usuário (como você já tinha) ===== *//*
 function updateUserNav(){
   const nav = document.getElementById('user-nav');
   if (!nav) return;
@@ -465,3 +507,4 @@ function updateUserNav(){
     nav.appendChild(a);
   }
 }
+*/
