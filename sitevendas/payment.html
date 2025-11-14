@@ -28,7 +28,7 @@
       overflow: hidden !important;
     }
     
-    /* Caixa do PIX */
+    /* Caixa do PIX 
     #pix-box{
       margin-top:16px; padding:14px; border:1px solid #e2e2e2; border-radius:10px;
       background:#fff;
@@ -38,7 +38,53 @@
     #pix-code{ flex:1; padding:.6rem; border:1px solid #ccc; border-radius:6px }
     #pix-copy{ padding:.6rem .9rem; border:0; border-radius:8px; cursor:pointer }
     #pix-status{ margin-top:8px; color:#555 }
-    #pix-qr img{ max-width:220px; height:auto; }
+    #pix-qr img{ max-width:220px; height:auto; }*/
+
+
+
+    /* Caixa do PIX */
+#pix-box{
+  margin-top:16px;
+  padding:14px;
+  border:1px solid #e2e2e2;
+  border-radius:10px;
+  background:#fff;
+}
+#pix-box h4{ margin:0 0 8px 0 }
+
+#pix-box .pix-row{
+  display:flex;
+  flex-direction:column;        /* empilha código + botão */
+  align-items:center;           /* centraliza no eixo horizontal */
+  justify-content:center;
+  gap:8px;
+  margin-top:8px;
+}
+
+#pix-code{
+  width:100%;
+  max-width:360px;
+  padding:.6rem;
+  border:1px solid #ccc;
+  border-radius:6px;
+}
+
+#pix-copy{
+  align-self:center;
+  padding:.6rem .9rem;
+  border:0;
+  border-radius:8px;
+  cursor:pointer;
+}
+
+#pix-status{ margin-top:8px; color:#555 }
+#pix-qr img{ max-width:220px; height:auto; }
+
+
+
+
+
+    
 
     /* ===== Overlay de emissão do bilhete ===== */
     #issuance-overlay{
@@ -112,21 +158,26 @@
     <!-- Card central: Bricks -->
     <section class="content-card" id="bricks-card">
       <h2 class="step-title">Informações de Pagamento</h2>
-      <p class="mute">Pagamento seguro via Checkout API do Mercado Pago (Bricks).</p>
+      <p class="mute">Pagamento seguro via Checkout API do Mercado Pago.</p>
 
       <!-- Container do Brick -->
       <div id="payment-bricks" style="margin-top:12px;"></div>
 
       <!-- Resultado PIX (criado/atualizado pelo JS) -->
-      <div id="pix-box" style="display:none">
-        <h4>Pagamento via Pix</h4>
-        <div id="pix-qr"></div>
-        <div class="pix-row">
-          <input id="pix-code" type="text" readonly>
-          <button id="pix-copy" type="button" class="btn">Copiar código</button>
-        </div>
-        <p id="pix-status">Aguardando pagamento…</p>
-      </div>
+<div id="pix-box" style="display:none">
+  <h4>Pagamento via Pix</h4>
+  <div id="pix-qr"></div>
+
+  <div class="pix-row">
+    <input id="pix-code" type="text" readonly>
+    <button id="pix-copy" type="button" class="btn btn-primary">
+      Copiar código
+    </button>
+  </div>
+
+  <p id="pix-status">Aguardando pagamento…</p>
+</div>
+
     </section>
   </main>
 
