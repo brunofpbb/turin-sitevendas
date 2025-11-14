@@ -1532,6 +1532,44 @@ footer { text-align: center; }
 
 
 
+/* Ações lado a lado, alinhadas à direita */
+.actions.inline{ display:flex; align-items:center; gap:10px; }
+.actions.right{ justify-content:flex-end; }
+
+/* Destaque no topo (nav do usuário) */
+.user-nav{ display:flex; gap:12px; align-items:center; justify-content:center; }
+.user-nav .pill{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 12px; border-radius:9999px; font-weight:700; line-height:1;
+  border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.08); color:#fff;
+}
+.user-nav .pill:hover{ background:rgba(255,255,255,.14); }
+
+/* Quando DESLOGADO: link Entrar destacado */
+.user-nav .cta-enter{
+  border-color: rgba(255,255,255,.5);
+  background: rgba(255,255,255,.16);
+}
+
+/* Quando LOGADO: Sair destacado + nome visível */
+.user-nav .user-name{ opacity:.95; font-weight:600; }
+.user-nav .cta-exit{
+  border-color:#fff; background:#fff; color:#0a5a2e;
+}
+.user-nav .cta-exit:hover{ filter:brightness(0.95); }
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* === OVERRIDE TWO-COLS: mobile first === */
 
 /* Padrão: empilhado (mobile / tablets menores) */
