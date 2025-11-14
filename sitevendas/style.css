@@ -1632,7 +1632,7 @@ main.two-cols > .content-card {
   .search-form .search-actions .btn-light,
   .search-form .search-actions .btn-danger{
     flex:0 0 42%;
-    max-width:220px;
+    max-width:120px;
   }
 }
 
