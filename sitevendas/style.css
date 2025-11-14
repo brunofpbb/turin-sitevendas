@@ -103,7 +103,7 @@ nav{margin-top:.5rem} nav a{color:#fff;margin:0 .5rem;text-decoration:none}
 @media (max-width: 1024px){
   .two-cols{ grid-template-columns: 1fr; padding: 0 16px; }
   .search-card{ position: static; }
-  .content-card{min-height:380px}           /* era 380 */
+  .content-card{min-height:420px}           /* era 380 */
   .bus-bg{width:100%;height:210px}                 /*era 210*/
   .seat-grid{left:50%;transform:translateX(-50%);width:64%}
 }
