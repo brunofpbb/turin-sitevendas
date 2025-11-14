@@ -1536,7 +1536,7 @@ footer { text-align: center; }
 
 /* Padrão: empilhado (mobile / tablets menores) */
 main.two-cols {
-/*  display: flex;*/
+  display: flex;
   flex-direction: column;
   gap: 12px;
   width: 85%;
