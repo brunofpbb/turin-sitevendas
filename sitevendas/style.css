@@ -1560,6 +1560,8 @@ footer { text-align: center; }
 
 
 
+.user-nav .user-name { cursor:pointer; text-decoration:none; }
+.user-nav .user-name:hover { background:rgba(255,255,255,.20); }
 
 
 
