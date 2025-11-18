@@ -42,6 +42,31 @@
   row-gap: var(--gap-y, ${BASE_GAP_Y}px);
 }
 
+
+
+
+
+
+/* Ajuste fino do ônibus no mobile: traz as poltronas um pouco pra esquerda */
+@media (max-width: 768px){
+  .seats-onepage .bus-grid{
+    transform: translateX(-90px);  /* teste -16, -18, -20 até encaixar */
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .seats-onepage .seat{
   background:#eaf5ea; color:#1a301a;
   border:1px solid #d8ead8; border-radius:6px;
@@ -71,15 +96,51 @@
 .seats-onepage .info-line{ margin:10px 0 4px; color:var(--muted); font-weight:700; }
 .seats-onepage .counter{ margin-bottom:14px; }
 
+
+
+
+
+
+
 /* Lista de passageiros (inputs com estilo de form-control) */
 .seats-onepage .pax { display:none; margin-top:12px; }
 .seats-onepage .pax.readonly input{ background:#f7f7f7; color:#666; }
 .seats-onepage .pax-list{ display:flex; flex-direction:column; gap:10px; }
-.seats-onepage .pax-row{ display:grid; grid-template-columns: 90px 1.3fr 1fr 1fr; gap:12px; align-items:center; }
-.seats-onepage .pax-row .label{ color:#2a3b2a; font-weight:600; text-align:right; padding-right:6px; }
+.seats-onepage .pax-row{
+  display:grid;
+  grid-template-columns: 90px 1.3fr 1fr 1fr;
+  gap:12px;
+  align-items:center;
+}
+.seats-onepage .pax-row .label{
+  color:#2a3b2a;
+  font-weight:600;
+  text-align:right;
+  padding-right:6px;
+}
+
+/* MOBILE: empilha os campos para não estourar a largura */
+@media (max-width: 768px){
+  .seats-onepage .pax-row{
+    grid-template-columns: 1fr;
+  }
+  .seats-onepage .pax-row .label{
+    text-align:left;
+    padding-right:0;
+  }
+}
 
 /* fallback de .form-control (parecido com os campos da esquerda) */
 .seats-onepage .pax-row .form-control{
+
+
+
+
+
+
+
+
+
   height: 36px;
   padding: 6px 10px;
   border: 1px solid #ced4da;
@@ -470,10 +531,13 @@ function toYMD(dateStr) {
       container.dispatchEvent(new CustomEvent('seats:back'));
     });
 
+
+    /*
     // ===== Responsividade =====
     function applyScale() {
       const w = img?.getBoundingClientRect().width || BASE_IMG_WIDTH;
-      const scale = Math.max(0.6, Math.min(1.5, w / BASE_IMG_WIDTH));
+   //   const scale = Math.max(0.6, Math.min(1.5, w / BASE_IMG_WIDTH));
+      const scale = Math.min(1.5, w / BASE_IMG_WIDTH);
       root.style.setProperty('--grid-top',  (BASE_TOP   * scale) + 'px');
       root.style.setProperty('--grid-left', (BASE_LEFT  * scale) + 'px');
       root.style.setProperty('--cell-w',    (BASE_CELL_W* scale) + 'px');
@@ -481,6 +545,37 @@ function toYMD(dateStr) {
       root.style.setProperty('--gap-x',     (BASE_GAP_X * scale) + 'px');
       root.style.setProperty('--gap-y',     (BASE_GAP_Y * scale) + 'px');
     }
+*/
+
+
+function applyScale() {
+  if (!img) return;
+
+  const w = img.getBoundingClientRect().width || BASE_IMG_WIDTH;
+
+  // escala real baseada na largura do ônibus (sem mínimo forçado)
+  let scale = w / BASE_IMG_WIDTH;
+
+  // limita só pra não ficar gigante em telas enormes
+  if (scale > 1.5) scale = 1.5;
+
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+  // pequeno ajuste só para mobile (puxa um pouco para a esquerda)
+  const baseLeft = isMobile ? (BASE_LEFT - 30) : BASE_LEFT;
+
+  root.style.setProperty('--grid-top',  (BASE_TOP   * scale) + 'px');
+  root.style.setProperty('--grid-left', (baseLeft   * scale) + 'px');
+  root.style.setProperty('--cell-w',    (BASE_CELL_W* scale) + 'px');
+  root.style.setProperty('--cell-h',    (BASE_CELL_H* scale) + 'px');
+  root.style.setProperty('--gap-x',     (BASE_GAP_X * scale) + 'px');
+  root.style.setProperty('--gap-y',     (BASE_GAP_Y * scale) + 'px');
+}
+
+
+
+    
+    
     const ro = new ResizeObserver(applyScale);
     ro.observe(img);
     img.addEventListener('load', applyScale);
