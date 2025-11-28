@@ -16,6 +16,137 @@ function fetchWithTimeout(url, opts = {}, ms = 10000) {
 }
 
 
+
+
+// === Log e alerta de falhas de emissão ===
+const ERROR_LOG_DIR  = path.join(__dirname, 'logs');
+const ERROR_LOG_FILE = path.join(ERROR_LOG_DIR, 'vendas-falhas.log');
+const ADMIN_ALERT_EMAIL =
+  process.env.ADMIN_ALERT_EMAIL || 'informaticamaciel2010@gmail.com';
+
+async function logVendaFalha(entry) {
+  try {
+    await fs.promises.mkdir(ERROR_LOG_DIR, { recursive: true });
+    const linha = JSON.stringify({
+      ts: new Date().toISOString(),
+      ...entry,
+    }) + '\n';
+    await fs.promises.appendFile(ERROR_LOG_FILE, linha, 'utf8');
+    console.error('[Venda][Erro] registrado em log:', ERROR_LOG_FILE);
+  } catch (e) {
+    console.error('[Venda][Erro] falha ao gravar log:', e?.message || e);
+  }
+}
+
+
+/*
+
+async function notifyAdminVendaFalha(entry) {
+  try {
+    const appName = process.env.APP_NAME || 'Turin Transportes';
+    const fromName = process.env.SUPPORT_FROM_NAME || appName;
+    const fromEmail =
+      process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+    const subject =
+      `[${appName}] Falha na emissão de bilhete (payment ${entry?.mpPaymentId || entry?.payment?.id || '—'})`;
+
+    const body = [
+      'Falha na emissão do bilhete após pagamento aprovado.',
+      '',
+      `Erro: ${entry.errorMessage || entry.error || '(sem mensagem)'}`,
+      '',
+      'Dados da venda/pagamento:',
+      JSON.stringify(entry, null, 2),
+    ].join('\n');
+
+    await transporter.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: ADMIN_ALERT_EMAIL,
+      subject,
+      text: body,
+    });
+
+    console.log('[Venda][Erro] alerta enviado para', ADMIN_ALERT_EMAIL);
+  } catch (e) {
+    console.error('[Venda][Erro] falha ao enviar e-mail de alerta:', e?.message || e);
+  }
+}
+*/
+
+
+
+
+
+
+
+async function notifyAdminVendaFalha(entry) {
+  try {
+    const appName = process.env.APP_NAME || 'Turin Transportes';
+    const fromName = process.env.SUPPORT_FROM_NAME || appName;
+    const fromEmail =
+      process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+
+    const subject =
+      `[${appName}] Falha na emissão de bilhete (payment ${entry?.mpPaymentId || entry?.payment?.id || '—'})`;
+
+    const body = [
+      'Falha na emissão do bilhete após pagamento aprovado.',
+      '',
+      `Erro: ${entry.errorMessage || entry.error || '(sem mensagem)'}`,
+      '',
+      'Dados da venda/pagamento:',
+      JSON.stringify(entry, null, 2),
+    ].join('\n');
+
+    let sent = false;
+    try {
+      const got = await ensureTransport();
+      if (got.transporter) {
+        await got.transporter.sendMail({
+          from: `"${fromName}" <${fromEmail}>`,
+          to: ADMIN_ALERT_EMAIL,
+          subject,
+          text: body,
+        });
+        console.log('[Venda][Erro] alerta enviado via SMTP para', ADMIN_ALERT_EMAIL);
+        sent = true;
+      }
+    } catch (e) {
+      console.error('[Venda][Erro] falha ao enviar alerta via SMTP:', e?.message || e);
+    }
+
+    // fallback Brevo
+    if (!sent) {
+      await sendViaBrevoApi({
+        to: ADMIN_ALERT_EMAIL,
+        subject,
+        html: body.replace(/\n/g, '<br>'),
+        text: body,
+        fromEmail,
+        fromName,
+      });
+      console.log('[Venda][Erro] alerta enviado via Brevo para', ADMIN_ALERT_EMAIL);
+    }
+  } catch (e) {
+    console.error('[Venda][Erro] falha ao enviar e-mail de alerta:', e?.message || e);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // === serviços de bilhete (PDF) ===
 const { mapVendaToTicket } = require('./services/ticket/mapper');
 const { generateTicketPdf } = require('./services/ticket/pdf');
@@ -189,9 +320,10 @@ function resolveSentido(p, scheduleIda, scheduleVolta, fallback = 'Ida') {
   if (po && pd && iO && iD && po === iO && pd === iD) return 'Ida';
   if (po && pd && vO && vD && po === vO && pd === vD) return 'Volta';
 
-  // 3) fallback (ex.: idaVoltaDefault do bundle)
+  // fallback (ex.: idaVoltaDefault do bundle)
   return (String(fallback).toLowerCase() === 'volta') ? 'Volta' : 'Ida';
 }
+
 
 
 
@@ -793,6 +925,9 @@ app.post('/api/cancel-ticket', async (req, res) => {
     const grava = await praxioGravaDevolucao({ idSessao: IdSessaoOp, xmlPassagem });
     console.log('[PRAXIO] RES GravaDevolucao =>', JSON.stringify(grava).slice(0, 800));
 
+
+    /*
+
     // 3) MP — calcula disponível e estorna (LOGs)
     const pay = await mpGetPayment(paymentId);
     const total = +Number(pay.transaction_amount || 0).toFixed(2);
@@ -821,6 +956,120 @@ app.post('/api/cancel-ticket', async (req, res) => {
       console.log('[MP] Sem valor disponível para estorno. valorRefund=', valorRefund, 'disponivel=', disponivel);
     }
 
+
+
+    */
+
+
+
+
+
+
+        // 3) MP — calcula disponível e estorna (LOGs)
+    const pay = await mpGetPayment(paymentId);
+    const total = +Number(pay.transaction_amount || 0).toFixed(2);
+    const refundedSoFar = Array.isArray(pay.refunds)
+      ? +pay.refunds.reduce((a, r) => a + (+Number(r.amount || 0).toFixed(2)), 0).toFixed(2)
+      : 0;
+    const disponivel = Math.max(0, +Number(total - refundedSoFar).toFixed(2));
+    console.log('[MP] paymentId=', paymentId, 'total=', total, 'refundedSoFar=', refundedSoFar, 'disponivel=', disponivel);
+
+    let valorRefund = Math.min(valorRefundDesejado, disponivel);
+    if (valorRefund < 0) valorRefund = 0;
+
+    let refund = null;
+    let refundErroInterno = false;
+
+    if (valorRefund > 0) {
+      console.log(
+        '[MP] POST refund url= https://api.mercadopago.com/v1/payments/'+paymentId+'/refunds',
+        'body=', { amount: +Number(valorRefund).toFixed(2) },
+        'headers:', { 'X-Idempotency-Key': correlationID || '(auto)' }
+      );
+      try {
+        refund = await mpRefund({ paymentId, amount: valorRefund, idempotencyKey: correlationID });
+        console.log('[MP] RES refund =>', JSON.stringify(refund).slice(0, 800));
+      } catch (err) {
+        const det =
+          err?.details?.cause?.[0]?.description ||
+          err?.details?.message ||
+          err?.message ||
+          '';
+
+        console.error('[MP] refund erro:', det, err?.details || err);
+
+        // Se for INTERNAL_ERROR do MP, não vamos quebrar o cancelamento,
+        // só logar e avisar o suporte para fazer o estorno manual.
+        if (String(det).toLowerCase().includes('internal_error')) {
+          refundErroInterno = true;
+
+          const entry = {
+            stage: 'cancel-ticket-refund',
+            numeroPassagem,
+            paymentId,
+            valorOriginal,
+            valorRefundDesejado,
+            valorRefundCalculado: valorRefund,
+            total,
+            refundedSoFar,
+            disponivel,
+            errorMessage: det,
+            mpError: err?.details || err,
+          };
+
+          try {
+            await logVendaFalha(entry);
+            await notifyAdminVendaFalha(entry);
+          } catch (inner) {
+            console.error('[cancel-ticket] falha ao registrar erro de refund:', inner);
+          }
+
+          // mantém "refund" null; vamos devolver uma nota explicativa na resposta
+        } else {
+          // Outros erros continuam derrubando o cancelamento
+          throw new Error(det || 'Falha ao estornar no Mercado Pago');
+        }
+      }
+    } else {
+      console.log('[MP] Sem valor disponível para estorno. valorRefund=', valorRefund, 'disponivel=', disponivel);
+    }
+
+    // 4) Sheets — marcar "Cancelado" (não falha a operação se o update quebrar)
+    let planilha = { ok: true };
+    try {
+      await sheetsUpdateStatus(rowIndex, 'Cancelado');
+    } catch (err) {
+      console.error('[Sheets] Falha ao atualizar Status:', err?.message || err);
+      planilha = { ok: false, error: err?.message || String(err) };
+    }
+
+    return res.json({
+      ok: true,
+      numeroPassagem,
+      valorOriginal,
+      valorRefund,
+      praxio: { verifica: ver, grava },
+      mp: refund
+        ? refund
+        : (refundErroInterno
+            ? { note: 'Cancelado na Praxio. Estorno não concluído no Mercado Pago (internal_error). Suporte será notificado.' }
+            : { note: 'Sem estorno (indisponível).' }),
+      planilha,
+      
+    });
+
+
+
+
+
+
+
+
+
+
+
+    /*
+
     // 4) Sheets — marcar "Cancelado" (não falha a operação se o update quebrar)
     let planilha = { ok: true };
     try {
@@ -838,7 +1087,7 @@ app.post('/api/cancel-ticket', async (req, res) => {
       praxio: { verifica: ver, grava },
       mp: refund ? refund : { note: 'Sem estorno (indisponível).' },
       planilha
-    });
+    });*/
   } catch (e) {
     const http = e?.code === 'PRAXIO_BLOQUEADO' ? 409 : 500;
     console.error('[cancel-ticket] erro:', e);
@@ -1330,27 +1579,7 @@ app.post('/api/praxio/vender', async (req, res) => {
     } = req.body || {};
 
 
-        // mpPaymentId é o id único da compra no MP (vem do body)
-
-    
-    /*
-
-if (!guardOnce(String(mpPaymentId))) {
-  console.warn('[Idem] pular envio (já processado) para payment=', mpPaymentId);
-  return res.json({ ok: true, venda: vendaResult, arquivos, note: 'idempotent-skip' });
-}
-
-
-if (!guardOnce(String(mpPaymentId))) {
-  console.warn('[Idem] pular processamento (já processado) payment=', mpPaymentId);
-  return res.json({ ok: true, note: 'idempotent-skip' });
-}
-
-*/
-
-
-
-
+  
     
 
     // 1) Revalida o pagamento
@@ -1452,6 +1681,61 @@ if (!guardOnce(String(mpPaymentId))) {
         // 4) Chama Praxio
     const vendaResult = await praxioVendaPassagem(bodyVenda);
     console.log('[Praxio][Venda][Resp]:', JSON.stringify(vendaResult).slice(0, 4000));
+
+
+
+
+
+
+        // --- Se a Praxio não devolver bilhete, registra erro e avisa suporte
+    const semBilhetes =
+      !vendaResult ||
+      vendaResult.Sucesso === false ||
+      !Array.isArray(vendaResult.ListaPassagem) ||
+      vendaResult.ListaPassagem.length === 0;
+
+    if (semBilhetes) {
+      const msgPraxi =
+        vendaResult?.Mensagem ||
+        vendaResult?.Mensagem2 ||
+        vendaResult?.MensagemDetalhada ||
+        'Retorno da Praxio sem bilhetes (ListaPassagem vazia).';
+
+      const erroEntry = {
+        stage: 'praxio-venda',
+        mpPaymentId,
+        userEmail,
+        userPhone,
+        schedule,
+        passengers,
+        totalAmount,
+        bodyVenda,
+        vendaResult,
+        errorMessage: msgPraxi,
+      };
+
+      await logVendaFalha(erroEntry);
+      await notifyAdminVendaFalha(erroEntry);
+
+      return res.status(502).json({
+        ok: false,
+        error: 'Falha na emissão do bilhete na Praxio.',
+        message: msgPraxi,
+      });
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+    
 
     // 🔎 Validação extra: garantir que existem bilhetes válidos
     const lista = Array.isArray(vendaResult.ListaPassagem)
@@ -1796,16 +2080,10 @@ const attachmentsBrevo = emailAttachments.map(a => ({
 
 
 
-    
+/*    
 
 // 7) Retorno para o front
     return res.json({ ok: true, venda: vendaResult, arquivos });
-
-/*  } catch (e) {
-    console.error('praxio/vender error:', e);
-    return res.status(500).json({ ok:false, error: e.message || 'Falha ao vender/gerar bilhete.' });
-  }
-});*/
 
 
   } catch (e) {
@@ -1828,7 +2106,62 @@ const attachmentsBrevo = emailAttachments.map(a => ({
   }
 });
 
+*/
 
+
+
+
+
+
+return res.json({ ok: true, vendaResult, arquivos });
+  } catch (err) {
+    console.error('[Praxio][Venda] erro inesperado:', err);
+
+    try {
+      const erroEntry = {
+        stage: 'exception',
+        mpPaymentId: req.body?.mpPaymentId || null,
+        userEmail: req.body?.userEmail || '',
+        userPhone: req.body?.userPhone || '',
+        schedule: req.body?.schedule || null,
+        passengers: req.body?.passengers || null,
+        totalAmount: req.body?.totalAmount || null,
+        errorMessage: err?.message || String(err),
+        stack: err?.stack || null,
+      };
+
+      await logVendaFalha(erroEntry);
+      await notifyAdminVendaFalha(erroEntry);
+    } catch (inner) {
+      console.error('[Praxio][Venda] falha ao registrar erro:', inner);
+    }
+
+    return res.status(500).json({
+      ok: false,
+      error: 'Erro interno ao emitir o bilhete. Nosso suporte já foi notificado.',
+    });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
 
 
 
