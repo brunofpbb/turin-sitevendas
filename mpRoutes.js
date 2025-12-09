@@ -6,7 +6,7 @@ const { MercadoPagoConfig, Payment } = require('mercadopago');
 const router = express.Router();
 
 const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const PUBLIC_KEY  = process.env.MP_PUBLIC_KEY;
+const PUBLIC_KEY = process.env.MP_PUBLIC_KEY;
 
 if (!ACCESS_TOKEN) {
   console.warn('[MP] MP_ACCESS_TOKEN ausente! /api/mp/* retornará erro.');
@@ -46,14 +46,14 @@ router.post('/pay', async (req, res) => {
     }
 
     // aceita camel/snake do Brick
-    const paymentMethodId   = req.body.paymentMethodId ?? req.body.payment_method_id;
+    const paymentMethodId = req.body.paymentMethodId ?? req.body.payment_method_id;
     const transactionAmount = Number(req.body.transactionAmount ?? req.body.transaction_amount ?? 0);
-    const token             = req.body.token;
-    const installments      = Number(req.body.installments ?? 1);
-    const issuerId          = req.body.issuerId ?? req.body.issuer_id;
-    const description       = req.body.description || 'Compra Turin Transportes';
-    const payerIn           = req.body.payer || {};
-    const extRefIn          = req.body.external_reference;
+    const token = req.body.token;
+    const installments = Number(req.body.installments ?? 1);
+    const issuerId = req.body.issuerId ?? req.body.issuer_id;
+    const description = req.body.description || 'Compra Turin Transportes';
+    const payerIn = req.body.payer || {};
+    const extRefIn = req.body.external_reference;
 
     // idempotency key: header > body.external_reference > uuid
     const headerIdem = req.headers['x-idempotency-key'];
@@ -185,6 +185,5 @@ router.get('/payment/:id', async (req, res) => {
     res.status(400).json({ error: true, message: 'Falha ao consultar' });
   }
 });
-
 
 module.exports = router;
