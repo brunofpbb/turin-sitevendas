@@ -1301,28 +1301,57 @@ const mpRoutes = require('./mpRoutes');
 app.use('/api/mp', mpRoutes);
 
 
-// Espera o flush do agregador (Sheets + e-mail) para um paymentId (groupId)
 app.get('/api/mp/wait-flush', async (req, res) => {
   try {
     const paymentId = String(req.query.paymentId || '').trim();
-    if (!paymentId) return res.status(400).json({ ok: false, error: 'paymentId é obrigatório' });
+    if (!paymentId) {
+      return res.status(400).json({ ok: false, error: 'paymentId é obrigatório' });
+    }
 
-    // se não houver entrada no agregador, já flushei (ou não havia o que enviar)
-    const e = AGGR.get(paymentId);
-    if (!e || e.flushed) return res.json({ ok: true, flushed: true });
+    // garante que exista uma entrada no AGGR para poder pendurar "waiters"
+    let e = AGGR.get(paymentId);
+    if (!e) {
+      e = {
+        timer: null,
+        startedAt: Date.now(),
+        base: {},
+        bilhetes: [],
+        arquivos: [],
+        emailAttachments: [],
+        expected: 0,
+        flushed: false,
+        waiters: []
+      };
+      AGGR.set(paymentId, e);
+    }
 
-    // ainda pendente → aguarda com timeout
+    // se já flushei, não preciso esperar
+    if (e.flushed) {
+      return res.json({ ok: true, flushed: true });
+    }
+
+    // ainda pendente → aguarda o flush do agregador com timeout de segurança
     const TIMEOUT = Math.max(AGGR_MAX_WAIT_MS, AGGR_DEBOUNCE_MS + 5000); // ~40s
     await new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('timeout')), TIMEOUT);
-      e.waiters.push(() => { clearTimeout(t); resolve(); });
+      (e.waiters || (e.waiters = [])).push(() => {
+        try { clearTimeout(t); } catch {}
+        resolve();
+      });
     });
 
     return res.json({ ok: true, flushed: true });
   } catch (err) {
-    return res.status(200).json({ ok: true, flushed: false, note: 'fallback' }); // não bloqueia UX
+    console.warn('[AGGR] wait-flush erro:', err);
+    // fallback: não travar a UX, mas indicar que não temos certeza se flushei
+    return res.status(200).json({ ok: true, flushed: false, note: 'fallback' });
   }
 });
+
+
+
+
+
 
 
 
@@ -1355,6 +1384,15 @@ app.post('/api/mp/webhook', async (req, res) => {
       payment?.external_reference
     );
 
+        // Descobre método de pagamento
+    const mpType = String(payment?.payment_type_id || '').toLowerCase();
+    const mpMethod = String(
+      payment?.payment_method_id || payment?.payment_method?.id || ''
+    ).toLowerCase();
+
+    const isPix = mpMethod === 'pix';
+
+
     const extRef = payment?.external_reference || null;
     if (extRef) {
       // 1) Atualiza status de pagamento na pré-reserva
@@ -1364,7 +1402,7 @@ app.post('/api/mp/webhook', async (req, res) => {
     }
 
     // 2) Se estiver efetivamente pago (approved/accredited), dispara emissão
-    const status = String(payment?.status || '').toLowerCase();
+ /*   const status = String(payment?.status || '').toLowerCase();
     const pago =
       status === 'approved' ||
       status === 'accredited';
@@ -1379,6 +1417,35 @@ app.post('/api/mp/webhook', async (req, res) => {
     } else {
       console.log('[MP][Webhook] status ainda não pago, não emite. status=', status);
     }
+
+    */
+
+
+        const status = String(payment?.status || '').toLowerCase();
+    const pago =
+      status === 'approved' ||
+      status === 'accredited';
+
+    // A PARTIR DE AGORA:
+    // - PIX: emissão automática via webhook
+    // - Cartão (credit/debit): emissão feita no front (payment.js), webhook só atualiza Sheets
+    if (pago && isPix) {
+      try {
+        console.log('[MP][Webhook] pagamento PIX pago, emitindo bilhetes via webhook...');
+        await emitirBilhetesViaWebhook(payment);
+      } catch (err) {
+        console.error('[MP][Webhook] erro ao emitir bilhetes via webhook:', err?.message || err);
+      }
+    } else if (pago) {
+      console.log(
+        '[MP][Webhook] pagamento não-PIX pago (cartão). Emissão feita no front; webhook não chama Praxio.',
+        'payment_type_id=', mpType,
+        'method=', mpMethod
+      );
+    } else {
+      console.log('[MP][Webhook] status ainda não pago, não emite. status=', status);
+    }
+
 
     return res.status(200).json({ ok: true, processed: true });
   } catch (e) {
