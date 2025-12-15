@@ -1316,6 +1316,61 @@ const mpRoutes = require('./mpRoutes');
 app.use('/api/mp', mpRoutes);
 
 
+
+app.get('/api/mp/wait-flush', async (req, res) => {
+  try {
+    const paymentId = String(req.query.paymentId || '').trim();
+    if (!paymentId) return res.status(400).json({ ok: false, error: 'paymentId é obrigatório' });
+
+    // 1) se já flushou recentemente (AGGR deletado), responde ok imediatamente
+    if (AGGR_FLUSHED_RECENT.has(paymentId)) {
+      return res.json({ ok: true, flushed: true, note: 'recently_flushed' });
+    }
+
+    // 2) tenta achar a entrada; se não existir, espera um pouco para caso o webhook esteja começando agora
+    let e = AGGR.get(paymentId);
+    if (!e) {
+      const GIVE_TIME_MS = 3000;
+      const step = 150;
+      const t0 = Date.now();
+      while (!e && (Date.now() - t0) < GIVE_TIME_MS) {
+        await new Promise(r => setTimeout(r, step));
+        e = AGGR.get(paymentId);
+      }
+    }
+
+    // 3) se ainda não existe, não cria entrada vazia (isso gera timeout no PIX).
+    //    Aqui significa: ou já terminou e foi deletado, ou não temos nada pra esperar.
+    if (!e) {
+      return res.json({ ok: true, flushed: true, note: 'no_aggr_entry' });
+    }
+
+    // 4) se já flushei, devolve
+    if (e.flushed) return res.json({ ok: true, flushed: true });
+
+    // 5) aguarda flush real
+    const TIMEOUT = Math.max(AGGR_MAX_WAIT_MS, AGGR_DEBOUNCE_MS + 5000);
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), TIMEOUT);
+      (e.waiters || (e.waiters = [])).push(() => {
+        try { clearTimeout(t); } catch {}
+        resolve();
+      });
+    });
+
+    return res.json({ ok: true, flushed: true });
+  } catch (err) {
+    console.warn('[AGGR] wait-flush erro:', err);
+    return res.status(200).json({ ok: true, flushed: false, note: 'fallback' });
+  }
+});
+
+
+
+
+
+
+/*
 app.get('/api/mp/wait-flush', async (req, res) => {
   try {
     const paymentId = String(req.query.paymentId || '').trim();
@@ -1363,7 +1418,7 @@ app.get('/api/mp/wait-flush', async (req, res) => {
   }
 });
 
-
+*/
 
 
 
@@ -1985,8 +2040,23 @@ function normalizeHoraPartida(h) {
 // ==== Agregador por compra (webhook/e-mail/Sheets) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
+
+// guarda "flush recente" para o wait-flush não dar timeout quando o AGGR já foi deletado
+const AGGR_FLUSHED_RECENT = new Map(); // paymentId -> timestamp(ms)
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of AGGR_FLUSHED_RECENT.entries()) {
+    if (now - ts > 10 * 60 * 1000) AGGR_FLUSHED_RECENT.delete(k); // 10 min
+  }
+}, 60 * 1000);
+
+
+
 const AGGR_DEBOUNCE_MS = 11000;   // ⬅️ 8s para juntar múltiplas chamadas
 const AGGR_MAX_WAIT_MS = 120000;  // ⬅️ segurança 30s
+
+
 
 
 function queueUnifiedSend(groupId, fragment, doFlushCb) {
@@ -2046,6 +2116,7 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
     console.log(`[AGGR] flushing: expected=${e.expected} bilhetes=${e.bilhetes.length} anexos=${e.emailAttachments.length} waited=${waited}`);
     try { await doFlushCb({ ...e }); }
     finally {
+      AGGR_FLUSHED_RECENT.set(String(groupId), Date.now());
       (e.waiters || []).forEach(fn => { try { fn(); } catch { } });
       AGGR.delete(groupId);
     }
