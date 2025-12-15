@@ -1474,6 +1474,17 @@ app.post('/api/mp/webhook', async (req, res) => {
   try {
     console.log('[MP][Webhook] body:', JSON.stringify(req.body));
 
+
+    console.log('[MP][Webhook] HIT', {
+  host: req.headers.host,
+  xf_host: req.headers['x-forwarded-host'],
+  xf_proto: req.headers['x-forwarded-proto'],
+  url: req.originalUrl,
+  at: new Date().toISOString(),
+});
+
+    
+
     const topic = req.body?.type || req.query?.type;
     const action = req.body?.action || req.query?.action;
     const dataId =
