@@ -1201,9 +1201,24 @@ async function emitirBilhetesViaWebhook(payment) {
   const serverBase = `http://127.0.0.1:${PORT}`;
 
   const allEntries = entries;
-  const firstEntry = allEntries[0] || {};
+ /* const firstEntry = allEntries[0] || {};
   const userEmail = firstEntry.email || '';
-  const userPhone = firstEntry.telefone || '';
+  const userPhone = firstEntry.telefone || '';*/
+  const firstEntry = allEntries[0] || {};
+
+// ✅ começa pelo Sheets, mas completa com Mercado Pago se vier vazio
+const userEmail =
+  firstEntry.email ||
+  payment?.payer?.email ||
+  payment?.additional_info?.payer?.email ||
+  '';
+
+const userPhone =
+  firstEntry.telefone ||
+  payment?.payer?.phone?.number ||
+  payment?.additional_info?.payer?.phone?.number ||
+  '';
+
 
   for (const g of grupos.values()) {
     const totalAmount = g.passageiros.reduce((sum, p) => sum + (p.price || 0), 0)
@@ -2529,6 +2544,52 @@ app.post('/api/praxio/vender', async (req, res) => {
         return p.Sucesso === false || temTextoErro;
       });
 
+
+      if (errosPoltronas.length) {
+  // ✅ NOVO: permitir venda parcial (não derrubar tudo se pelo menos 1 bilhete saiu)
+  const okPoltronas = lista.filter(p => p?.Sucesso === true && Number(p?.NumPassagem || 0) > 0);
+  const badPoltronas = errosPoltronas;
+
+  if (okPoltronas.length > 0) {
+    console.warn('[Praxio][Venda] Venda parcial: algumas poltronas falharam:', badPoltronas.map(x => ({
+      poltrona: x?.Poltrona,
+      idErro: x?.IdErro,
+      msg: x?.Mensagem || x?.MensagemDetalhada
+    })));
+
+    // ⚠️ importantíssimo: continuar o fluxo (PDF/email/Sheets) APENAS com as poltronas OK
+    lista.length = 0;
+    lista.push(...okPoltronas);
+  } else {
+    // Se não saiu nenhum bilhete, mantém o comportamento atual (retry + falha)
+    console.log('[Praxio][Retry] Erro em poltronas. Checando Sheets...');
+    await new Promise(r => setTimeout(r, 2000));
+    const retryEntries = await checkSheetsForSeats();
+    if (retryEntries) {
+      const vRes = { Sucesso: true, ListaPassagem: retryEntries.map(e => ({ NumPassagem: e.numPassagem, Poltrona: e.poltrona })) };
+      const arqs = retryEntries.map(e => ({ numPassagem: e.numPassagem, pdfLocal: '', driveUrl: '' }));
+      return { status: 200, body: { ok: true, vendaResult: vRes, arquivos: arqs, recovered: true } };
+    }
+
+    const msgs = badPoltronas
+      .map(p => p.Mensagem || p.MensagemDetalhada)
+      .filter(Boolean)
+      .join(' | ');
+
+    throw new Error(
+      `Erro na venda de uma ou mais poltronas: ${msgs || 'motivo não informado'}`
+    );
+  }
+}
+
+
+
+
+
+
+
+      
+/*
       if (errosPoltronas.length) {
         // Retry logic para erro parcial (alguma poltrona falhou)?
         // Se falhou por indisponível, checa Sheets
@@ -2550,7 +2611,7 @@ app.post('/api/praxio/vender', async (req, res) => {
           `Erro na venda de uma ou mais poltronas: ${msgs || 'motivo não informado'}`
         );
       }
-
+*/
       // 5) Gerar PDFs (local) e subir no Drive
       const subDir = new Date().toISOString().slice(0, 10);
       const outDir = path.join(TICKETS_DIR, subDir);
@@ -2666,6 +2727,8 @@ app.post('/api/praxio/vender', async (req, res) => {
 
         // 1) E-MAIL único com todos os anexos
         const to = userEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
+        const emailForSheets = to || userEmail || '';
+
         if (to) {
           const appName = process.env.APP_NAME || 'Turin Transportes';
           const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
@@ -2774,7 +2837,7 @@ app.post('/api/praxio/vender', async (req, res) => {
           })),
           schedule,
           payment,
-          userEmail,
+          userEmail: emailForSheets,
           userPhone,
           idaVoltaDefault: idaVolta
         });
