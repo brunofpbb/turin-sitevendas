@@ -37,6 +37,23 @@ async function logVendaFalha(entry) {
 }
 
 
+const SUCCESS_LOG_FILE = path.join(ERROR_LOG_DIR, 'vendas-sucesso.log');
+
+async function logVendaSucesso(entry) {
+  try {
+    await fs.promises.mkdir(ERROR_LOG_DIR, { recursive: true });
+    const linha = JSON.stringify({
+      ts: new Date().toISOString(),
+      ...entry,
+    }) + '\n';
+    await fs.promises.appendFile(SUCCESS_LOG_FILE, linha, 'utf8');
+    console.log('[Venda][OK] registrado em log:', SUCCESS_LOG_FILE);
+  } catch (e) {
+    console.error('[Venda][OK] falha ao gravar log:', e?.message || e);
+  }
+}
+
+
 async function notifyAdminVendaFalha(entry) {
   try {
     const appName = process.env.APP_NAME || 'Turin Transportes';
@@ -2053,7 +2070,7 @@ setInterval(() => {
 
 
 
-const AGGR_DEBOUNCE_MS = 11000;   // ⬅️ 8s para juntar múltiplas chamadas
+const AGGR_DEBOUNCE_MS = 1500;   // ⬅️ 8s para juntar múltiplas chamadas
 const AGGR_MAX_WAIT_MS = 120000;  // ⬅️ segurança 30s
 
 
@@ -2912,6 +2929,30 @@ app.post('/api/praxio/vender', async (req, res) => {
           userPhone,
           idaVoltaDefault: idaVolta
         });
+
+        await logVendaSucesso({
+  mpPaymentId: String(payment?.id || ''),
+  external_reference: String(payment?.external_reference || ''),
+  status: String(payment?.status || ''),
+  payment_type_id: String(payment?.payment_type_id || ''),
+  payment_method_id: String(payment?.payment_method_id || payment?.payment_method?.id || ''),
+  userEmail: String(emailForSheets || userEmail || ''),
+  userPhone: String(userPhone || ''),
+  bilhetes: (bilhetes || []).map(b => ({
+    numPassagem: b.numPassagem,
+    poltrona: b.poltrona,
+    idViagem: b.idViagem,
+    dataViagem: b.dataViagem,
+    origem: b.origem,
+    destino: b.destino
+  })),
+  anexos: (arquivos || []).map(a => ({
+    numPassagem: a.numPassagem,
+    driveUrl: a.driveUrl || '',
+    pdfLocal: a.pdfLocal || ''
+  })),
+});
+
 
       });
 
