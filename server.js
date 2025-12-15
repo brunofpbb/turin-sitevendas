@@ -1256,7 +1256,9 @@ const userPhone =
 
     try {
       console.log('[Webhook][Emit] chamando /api/praxio/vender via webhook', body.schedule);
-      const r = await fetch(`${serverBase}/api/praxio/vender`, {
+     /*
+     
+     const r = await fetch(`${serverBase}/api/praxio/vender`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Source': 'mp-webhook' },
         body: JSON.stringify(body),
@@ -1266,6 +1268,32 @@ const userPhone =
       if (!r.ok || !j.ok) {
         console.error('[Webhook][Emit] Falha ao vender via webhook:', r.status, j);
       }
+
+      */
+
+      const r = await fetch(`${serverBase}/api/praxio/vender`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Source': 'mp-webhook' },
+  body: JSON.stringify(body),
+});
+
+// lê como texto primeiro (assim você sempre consegue logar algo)
+const raw = await r.text().catch(() => '');
+let j = {};
+try { j = raw ? JSON.parse(raw) : {}; } catch { j = {}; }
+
+console.log('[Webhook][Emit] /api/praxio/vender response', {
+  status: r.status,
+  ok: r.ok,
+  bodyOk: j?.ok,
+  bodySnippet: raw ? raw.slice(0, 250) : ''
+});
+
+if (!r.ok || !j.ok) {
+  console.error('[Webhook][Emit] Falha ao vender via webhook:', r.status, j);
+}
+
+      
     } catch (err) {
       console.error('[Webhook][Emit] Erro HTTP ao chamar /api/praxio/vender:', err);
     }
@@ -2346,6 +2374,19 @@ setInterval(() => {
 
 app.post('/api/praxio/vender', async (req, res) => {
   const { mpPaymentId, passengers } = req.body || {};
+
+
+  console.log('[Praxio][Venda] START', {
+  source: req.get('X-Source') || 'front',
+  mpPaymentId: req.body?.mpPaymentId,
+  extRef: req.body?.external_reference || req.body?.reference || null,
+  passageiros: Array.isArray(req.body?.passengers) ? req.body.passengers.length : 0,
+  poltronas: (req.body?.passengers || []).map(p => p.seatNumber || p.seat || p.poltrona).filter(Boolean),
+  userEmail: req.body?.userEmail || '',
+  userPhone: req.body?.userPhone || ''
+});
+
+  
 
   // 1) Gera chave GRANULAR: PaymentId + Poltronas
   // Evita que Item A devolva cache para Item B do mesmo pagamento
