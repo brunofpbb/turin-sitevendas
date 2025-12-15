@@ -1986,7 +1986,7 @@ function normalizeHoraPartida(h) {
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
 const AGGR_DEBOUNCE_MS = 11000;   // ⬅️ 8s para juntar múltiplas chamadas
-const AGGR_MAX_WAIT_MS = 60000;  // ⬅️ segurança 30s
+const AGGR_MAX_WAIT_MS = 120000;  // ⬅️ segurança 30s
 
 
 function queueUnifiedSend(groupId, fragment, doFlushCb) {
