@@ -430,18 +430,18 @@ async function sheetsAppendBilhetes({
           extRef,                                 // Referencia
           forma,                                  // Forma_Pagamento
           '',                                     // idUser (pode preencher depois se quiser)
-          dataViagem,                             // Data_Viagem
-          dataHoraViagem,                         // Data_Hora
+          b.dataViagem || dataViagem,             // Data_Viagem
+          (b.dataViagem && b.horaPartida) ? `${b.dataViagem} ${b.horaPartida.slice(0, 5)}` : (dataHoraViagem || ''), // Data_Hora
           b.origem || schedule?.originName || schedule?.origem || '',         // Origem
           b.destino || schedule?.destinationName || schedule?.destino || '',  // Destino
           '',                                     // Identificador
           payment?.id || '',                      // idPagamento
           b.driveUrl || '',                       // LinkBPE
           b.poltrona || '',                        // Poltrona
-          schedule?.idViagem || '',              // IdViagem  (nova)
-          schedule?.idOrigem || '',              // IdOrigem  (nova)
-          schedule?.idDestino || '',              // IdDestino (nova)
-          scheduleHora                               // Hora_Partida (nova)
+          b.idViagem || schedule?.idViagem || '',              // IdViagem  (nova)
+          b.idOrigem || schedule?.idOrigem || '',              // IdOrigem  (nova)
+          b.idDestino || schedule?.idDestino || '',              // IdDestino (nova)
+          (String(b.horaPartida || '') || scheduleHora).slice(0, 5) // Hora_Partida (nova)
         ];
       });
 
@@ -1016,7 +1016,16 @@ async function sheetsUpdatePaymentStatusByRef(externalReference, payment) {
 // === Helpers para trabalhar com a planilha BPE por "Referencia" ===
 async function sheetsFindByRef(externalRef) {
   const spreadsheetId = process.env.SHEETS_BPE_ID;
-  const range = process.env.SHEETS_BPE_RANGE || 'BPE!A:AK';
+
+  // [FIX] Força leitura até coluna BZ, pois env var pode estar desatualizado (ex: A:AK) e perdemos colunas novas
+  // Se o usuário tiver um nome de aba diferente em env, tentamos preservar a aba
+  let baseTab = 'BPE';
+  if (process.env.SHEETS_BPE_RANGE && process.env.SHEETS_BPE_RANGE.includes('!')) {
+    baseTab = process.env.SHEETS_BPE_RANGE.split('!')[0];
+  }
+  const range = `${baseTab}!A:BZ`;
+
+  console.log('[Sheets][Find] Usando range forçado:', range, '(ignorando env var limitado se houver)');
 
   const sheets = await sheetsAuthRW();
   const resp = await sheets.spreadsheets.values.get({
@@ -2839,13 +2848,19 @@ app.post('/api/praxio/vender', async (req, res) => {
           origemNome: ticket.origem || schedule?.originName || schedule?.origem || null,
           destinoNome: ticket.destino || schedule?.destinationName || schedule?.destino || null,
           poltrona: p.Poltrona || ticket.poltrona || null,
+          // FIX: Passando dados da viagem explicitamente para não perder no AGGR
+          idViagem: schedule?.idViagem || '',
+          idOrigem: schedule?.idOrigem || '',
+          idDestino: schedule?.idDestino || '',
+          dataViagem: schedule?.date || '',
+          horaPartida: schedule?.horaPartida || '',
+          sentido: sentido,
+
           nomeCliente: p.NomeCliente || ticket.nomeCliente || null,
           docCliente: p.DocCliente || ticket.docCliente || null,
           valor: p.ValorPgto ?? ticket.valor ?? null,
-
-          dataViagem: p.DataViagem || ticket.dataViagem || schedule?.date || schedule?.dataViagem || '',
-          horaPartida: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
-
+          dataViagemOriginal: p.DataViagem || ticket.dataViagem || schedule?.date || schedule?.dataViagem || '',
+          horaPartidaOriginal: p.HoraPartida || ticket.horaPartida || schedule?.horaPartida || schedule?.departureTime || '',
           idaVolta: sentido
         });
 
