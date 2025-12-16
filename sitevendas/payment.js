@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const bilhetes = [];
 
       order.forEach((it, idx) => {
-        const s = getScheduleFromItem(it) || {};
+       /* const s = getScheduleFromItem(it) || {};
         const paxList = getPassengersFromItem(it) || [];
         const idaVolta = inferLegType(it, idx, order);
 
@@ -274,7 +274,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const totalItem = itemSubtotal(it);
         const qtdPax = paxList.length || 1;
-        const valorPorPassageiro = totalItem / qtdPax;
+        const valorPorPassageiro = totalItem / qtdPax;*/
+
+              // schedule “raw” do item (porque ele pode ter nomes diferentes)
+      const sch = it.schedule || {};
+
+      // pega ids/horário com fallbacks fortes (para não ir vazio pro Sheets)
+      const idViagem =
+        pick(s.idViagem, sch.idViagem, sch.IdViagem, sch.id, sch.Id, sch.viagemId);
+
+      const idOrigem =
+        pick(s.idOrigem, sch.idOrigem, sch.IdOrigem, sch.originId, sch.CodigoOrigem);
+
+      const idDestino =
+        pick(s.idDestino, sch.idDestino, sch.IdDestino, sch.destinationId, sch.CodigoDestino);
+
+      // hora pode vir como "10:48" (front) ou "1048" (alguns retornos)
+      const horaPartida =
+        pick(s.horaPartida, sch.horaPartida, sch.departureTime, sch.HoraPartida);
+
+      const origemNome = pick(sch.originName, sch.origem, sch.origin, '');
+      const destinoNome = pick(sch.destinationName, sch.destino, sch.destination, '');
+
+      // data normalizada YYYY-MM-DD (pro webhook não “morrer” tentando reconstruir)
+      const dataViagem = toYMD(pick(sch.date, sch.dataViagem, sch.DataViagem, sch.data, ''));
+
 
         paxList.forEach(p => {
           bilhetes.push({
@@ -282,14 +306,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             nomeCliente: p.name,
             docCliente: p.document,
             valor: valorPorPassageiro,
+           /* dataViagem,
+            horaPartida: s.horaPartida,*/
             dataViagem,
-            horaPartida: s.horaPartida,
+            horaPartida,
             origemNome,
             destinoNome,
             idaVolta,
-            idViagem: s.idViagem,
+           /* idViagem: s.idViagem,
             idOrigem: s.idOrigem,
-            idDestino: s.idDestino
+            idDestino: s.idDestino*/
+            idViagem,
+            idOrigem,
+            idDestino
           });
         });
       });
