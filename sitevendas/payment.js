@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const bilhetes = [];
 
       order.forEach((it, idx) => {
-       /* const s = getScheduleFromItem(it) || {};
+       const s = getScheduleFromItem(it) || {};
         const paxList = getPassengersFromItem(it) || [];
         const idaVolta = inferLegType(it, idx, order);
 
@@ -274,8 +274,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const totalItem = itemSubtotal(it);
         const qtdPax = paxList.length || 1;
-        const valorPorPassageiro = totalItem / qtdPax;*/
-
+        const valorPorPassageiro = totalItem / qtdPax;
+/*
               // schedule “raw” do item (porque ele pode ter nomes diferentes)
       const sch = it.schedule || {};
 
@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const destinoNome = pick(sch.destinationName, sch.destino, sch.destination, '');
 
       // data normalizada YYYY-MM-DD (pro webhook não “morrer” tentando reconstruir)
-      const dataViagem = toYMD(pick(sch.date, sch.dataViagem, sch.DataViagem, sch.data, ''));
+      const dataViagem = toYMD(pick(sch.date, sch.dataViagem, sch.DataViagem, sch.data, ''));*/
 
 
         paxList.forEach(p => {
@@ -306,19 +306,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             nomeCliente: p.name,
             docCliente: p.document,
             valor: valorPorPassageiro,
-           /* dataViagem,
-            horaPartida: s.horaPartida,*/
             dataViagem,
-            horaPartida,
+            horaPartida: s.horaPartida,
+          /*  dataViagem,
+            horaPartida,*/
             origemNome,
             destinoNome,
             idaVolta,
-           /* idViagem: s.idViagem,
+            idViagem: s.idViagem,
             idOrigem: s.idOrigem,
-            idDestino: s.idDestino*/
-            idViagem,
+            idDestino: s.idDestino
+           /* idViagem,
             idOrigem,
-            idDestino
+            idDestino*/
           });
         });
       });
