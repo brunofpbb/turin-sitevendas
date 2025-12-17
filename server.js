@@ -1273,6 +1273,28 @@ async function emitirBilhetesViaWebhook(payment) {
     payment?.additional_info?.payer?.phone?.number ||
     '';
 
+  // Fallback: se userPhone vazio e temos passageiros no grupo, tenta pegar de lá
+  let finalUserPhone = userPhone;
+  if (!finalUserPhone && grupos.size > 0) {
+    for (const g of grupos.values()) {
+      const p = g.passageiros.find(x => x.phone);
+      if (p) {
+        finalUserPhone = p.phone;
+        break;
+      }
+    }
+  }
+
+  if (!userEmail) {
+    console.error('[CRITICAL] Comprador sem EMAIL. Venda pode ficar orfã de visualização no Profile.', { paymentId: payment.id });
+  }
+
+
+  // 1) Calcula o TOTAL de bilhetes esperados (soma de todos os passageiros de todos os grupos)
+  let totalTickets = 0;
+  for (const g of grupos.values()) {
+    totalTickets += (g.passageiros || []).length;
+  }
 
   for (const g of grupos.values()) {
     const totalAmount = g.passageiros.reduce((sum, p) => sum + (p.price || 0), 0)
@@ -1287,8 +1309,9 @@ async function emitirBilhetesViaWebhook(payment) {
       idEstabelecimentoTicket: g.schedule.agencia || '93',
       serieBloco: '93',
       userEmail,
-      userPhone,
+      userPhone: finalUserPhone || userPhone,
       idaVolta: g.idaVolta,
+      totalExpected: totalTickets // <--- Envia o total GLOBAL para o agregador
     };
 
     try {
@@ -1402,7 +1425,7 @@ app.get('/api/mp/wait-flush', async (req, res) => {
     // 2) tenta achar a entrada; se não existir, espera um pouco para caso o webhook esteja começando agora
     let e = AGGR.get(paymentId);
     if (!e) {
-      const GIVE_TIME_MS = 3000;
+      const GIVE_TIME_MS = 15000; // Aumentado para 15s para garantir captura do webhook
       const step = 150;
       const t0 = Date.now();
       while (!e && (Date.now() - t0) < GIVE_TIME_MS) {
@@ -2155,11 +2178,10 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
   // merge base (último vence)
   e.base = { ...e.base, ...(fragment.base || {}) };
 
-  // ❌ antes: if (fragment.expected > e.expected) e.expected = fragment.expected;
-  // ✅ agora: somar o total esperado deste fragmento (ida + volta, etc.)
-  // soma o esperado desta resposta (qtd de bilhetes)
-  const addExpected = Number(fragment?.expected || 0);
-  if (addExpected > 0) e.expected += addExpected;
+  // ✅ agora: considera o MAIOR valor reportado como total
+  // (se o back manda "2" na ida e "2" na volta, o esperado é 2, não 4)
+  const inc = Number(fragment?.expected || 0);
+  if (inc > e.expected) e.expected = inc;
 
   // acumula
   if (Array.isArray(fragment?.bilhetes)) e.bilhetes.push(...fragment.bilhetes);
@@ -2871,7 +2893,9 @@ app.post('/api/praxio/vender', async (req, res) => {
       const loginPhone = getLoginPhone(req, payment, vendaResult);
 
       // contagem esperada (qtd de bilhetes desta venda)
+      // Se vier totalExpected no body (webhook), usa ele pois é o GLOBAL (ida+volta)
       const expectedCount =
+        req.body?.totalExpected ||
         (vendaResult?.ListaPassagem?.length || 0) ||
         (passengers?.length || 0);
 
