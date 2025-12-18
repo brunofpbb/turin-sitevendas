@@ -141,11 +141,15 @@ function getMail(v) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s : null;
 }
 function normalizePhoneBR(v) {
-  // tira tudo que não for dígito; se tiver DDI/DDD ausente, add "55" só no Sheets
-  const d = (v ?? '').toString().replace(/\D+/g, '');
-  return d || ''; // ex.: "31999998888"
+  // tira tudo que não for dígito
+  let d = (v ?? '').toString().replace(/\D+/g, '');
+  if (!d) return '';
+  // Se tiver 10 ou 11 dígitos, assume BR sem DDI e adiciona 55
+  if (d.length >= 10 && d.length <= 11) {
+    d = '55' + d;
+  }
+  return d;
 }
-
 
 function getLoginEmail(req, payment, vendaResult) {
   const fromLogin =
@@ -358,8 +362,8 @@ async function sheetsAppendBilhetes({
         ? `${scheduleDate} ${scheduleHora}`
         : (scheduleDate || scheduleHora || '');
 
-    const userPhoneDigits = String(userPhone || '').replace(/\D/g, '');
-    const telefoneSheet = userPhoneDigits ? `${userPhoneDigits}` : '';
+    // Usa a mesma normalização (com 55 se precisar)
+    const telefoneSheet = normalizePhoneBR(userPhone);
 
     // ================================================================
     // 1) Lê o Sheets para tentar achar linhas da pré-reserva por Referencia
