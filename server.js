@@ -1377,25 +1377,37 @@ async function emitirBilhetesViaWebhook(payment) {
 ============================================================================ */
 function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
   const isMail = (v) => !!v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
-  const fromLogin =
-    req?.user?.email ||
-    req?.session?.user?.email ||
-    req?.headers?.['x-user-email'] ||
-    req?.body?.loginEmail ||
-    req?.body?.emailLogin ||
-    req?.body?.userEmail ||      // legado
-    req?.body?.user?.email;      // legado
 
-  if (isMail(fromLogin)) return String(fromLogin).trim();
+  const contenders = [
+    req?.user?.email,
+    req?.session?.user?.email,
+    req?.headers?.['x-user-email'],
+    req?.body?.loginEmail,
+    req?.body?.emailLogin,
+    req?.body?.userEmail,
+    req?.body?.user?.email,
+    payment?.payer?.email,
+    payment?.additional_info?.payer?.email,
+    req?.body?.email,
+    req?.body?.buyerEmail,
+    req?.body?.clienteEmail,
+    vendaResult?.Email,
+    vendaResult?.EmailCliente
+  ];
 
-  const fromMP = payment?.payer?.email || payment?.additional_info?.payer?.email;
-  if (isMail(fromMP)) return String(fromMP).trim();
+  // 1. Tenta achar um email VÁLIDO (prioridade)
+  for (const c of contenders) {
+    if (isMail(c)) return String(c).trim();
+  }
 
-  const fromReq = req?.body?.email || req?.body?.buyerEmail || req?.body?.clienteEmail;
-  if (isMail(fromReq)) return String(fromReq).trim();
-
-  const fromVenda = vendaResult?.Email || vendaResult?.EmailCliente;
-  if (isMail(fromVenda)) return String(fromVenda).trim();
+  // 2. Se não achou válido, retorna o PRIMEIRO não-vazio (Best Effort)
+  // Isso evita que um erro de digitação (ex: user@gmailcom) apague o dado.
+  for (const c of contenders) {
+    if (c && String(c).trim().length > 0) {
+      console.warn('[pickBuyerEmail] Email malformado aceito como fallback:', c);
+      return String(c).trim();
+    }
+  }
 
   return fallback || null;
 }
@@ -2499,8 +2511,10 @@ app.post('/api/praxio/vender', async (req, res) => {
 
       // TipoCartao: só faz sentido quando TipoPagamento=3 (cartão)
       const tipoCartao = isPix
-      ? '0'
-      : (mpType === 'debit_card' ? '1' : '0'); // 0=crédito | 1=débito
+        ? '0'
+        : (mpType === 'debit_card' ? '1' : '0'); // 0=crédito | 1=débito
+
+
 
       const parcelas = Number(payment?.installments || 1);
 
