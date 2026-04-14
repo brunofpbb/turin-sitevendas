@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         displayCodeEl.textContent = '';
       }
 
-      codeMsg.textContent = 'Código enviado. Confira sua caixa de entrada.';
+      codeMsg.textContent = 'Código enviado. Confira sua caixa de entrada e/ou SPAM.';
       codeInput.focus();
     } catch (err) {
       emailMsg.textContent = err.message || 'Não foi possível enviar o código.';
