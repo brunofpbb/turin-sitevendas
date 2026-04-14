@@ -1229,9 +1229,6 @@ async function sheetsDeleteRowsByRef(externalRef) {
   });
 }
 
-
-
-
 async function emitirBilhetesViaWebhook(payment) {
   const extRef = (payment?.external_reference || '').trim();
   if (!extRef) {
@@ -1627,7 +1624,6 @@ app.post('/api/mp/webhook', async (req, res) => {
 });
 
 
-
 // diagnóstico rápido
 app.get('/api/_diag', (_req, res) => {
   const at = process.env.MP_ACCESS_TOKEN || '';
@@ -1956,58 +1952,7 @@ app.post('/api/cancel-ticket', async (req, res) => {
 
 
 /* =================== SMTP / Brevo =================== */
-/*function createSSL() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: String(SMTP_SECURE || 'true') === 'true',
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-    tls: { rejectUnauthorized: false },
-    family: 4,
-    connectionTimeout: 3500,
-    greetingTimeout: 3500,
-    socketTimeout: 3500,
-  });
-}
-function createSTARTTLS() {
-  const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: 587,
-    secure: false,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-    tls: { rejectUnauthorized: false },
-    family: 4,
-    connectionTimeout: 3500,
-    greetingTimeout: 3500,
-    socketTimeout: 3500,
-  });
-}
-function verifyWithTimeout(transporter, ms = 3500) {
-  return Promise.race([
-    transporter.verify().then(() => ({ ok: true })),
-    new Promise(r => setTimeout(() => r({ ok: false, error: 'verify-timeout' }), ms + 200)),
-  ]).catch(e => ({ ok: false, error: e?.message || String(e) }));
-}
-async function ensureTransport() {
-  let t = createSSL();
-  if (t) {
-    const r = await verifyWithTimeout(t);
-    if (r.ok) return { transporter: t, mode: 'SSL(465)' };
-  }
-  t = createSTARTTLS();
-  if (t) {
-    const r = await verifyWithTimeout(t);
-    if (r.ok) return { transporter: t, mode: 'STARTTLS(587)' };
-    return { transporter: null, mode: null, error: r.error || 'falha STARTTLS' };
-  }
-  return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
-}*/
 
-// === Brevo API (primário) ===
 async function sendViaBrevoApi({ to, cc, subject, html, text, fromEmail, fromName, attachments = [] }) {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY ausente');
@@ -2042,13 +1987,6 @@ async function sendViaBrevoApi({ to, cc, subject, html, text, fromEmail, fromNam
       attachment: brevoAttachments.length ? brevoAttachments : undefined,
     }),
   });
-
-  /*  if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`Brevo API ${resp.status}: ${body.slice(0, 300)}`);
-    }
-    return resp.json();
-  }*/
 
   if (!resp.ok) {
     console.error('[Brevo] falhou:', resp.status, body?.slice?.(0, 300));
