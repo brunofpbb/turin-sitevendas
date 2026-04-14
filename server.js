@@ -1956,7 +1956,7 @@ app.post('/api/cancel-ticket', async (req, res) => {
 
 
 /* =================== SMTP / Brevo =================== */
-function createSSL() {
+/*function createSSL() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
   return nodemailer.createTransport({
@@ -2005,7 +2005,7 @@ async function ensureTransport() {
     return { transporter: null, mode: null, error: r.error || 'falha STARTTLS' };
   }
   return { transporter: null, mode: null, error: 'vars SMTP ausentes' };
-}
+}*/
 
 // === Brevo API (primário) ===
 async function sendViaBrevoApi({ to, cc, subject, html, text, fromEmail, fromName, attachments = [] }) {
