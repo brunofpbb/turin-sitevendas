@@ -121,11 +121,11 @@ app.use((req, res, next) => {
     "Content-Security-Policy",
     "default-src 'self'; " +
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://www.google.com https://www.gstatic.com https://http2.mlstatic.com https://secure-fields.mercadopago.com https://api.mercadopago.com; " +
-    "connect-src 'self' https://secure-fields.mercadopago.com https://api.mercadopago.com https://events.mercadopago.com https://secure-fields.mercadopago.com https://*.mercadolibre.com https://http2.mlstatic.com https://*.mercadopago.com; " +
+    "connect-src 'self' https://api.mercadopago.com https://events.mercadopago.com https://secure-fields.mercadopago.com https://*.mercadolibre.com https://http2.mlstatic.com https://*.mercadopago.com; " +
     "img-src 'self' data: https://*.mercadolibre.com https://http2.mlstatic.com https://*.mercadopago.com; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://http2.mlstatic.com; " +
     "font-src 'self' https://fonts.gstatic.com https://http2.mlstatic.com data:; " +
-    "frame-src 'self' https://secure-fields.mercadopago.com https://mpplayer.mercadopago.com https://www.mercadolibre.com.br https://*.mercadopago.com;"
+    "frame-src 'self' https://mpplayer.mercadopago.com https://www.mercadolibre.com.br https://*.mercadopago.com;"
   );
   next();
 });
