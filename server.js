@@ -114,7 +114,7 @@ const { generateTicketPdf } = require('./services/ticket/pdf');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
-
+/*
 // Middleware para CSP (Permitir Mercado Pago)
 app.use((req, res, next) => {
   res.setHeader(
@@ -129,6 +129,65 @@ app.use((req, res, next) => {
   );
   next();
 });
+*/
+
+/* =================== CSP Mercado Pago Bricks =================== */
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' " +
+        "https://sdk.mercadopago.com " +
+        "https://wallet.mercadopago.com " +
+        "https://http2.mlstatic.com",
+
+      "connect-src 'self' " +
+        "https://api.mercadopago.com " +
+        "https://wallet.mercadopago.com " +
+        "https://http2.mlstatic.com " +
+        "https://api-static.mercadopago.com " +
+        "https://secure-fields.mercadopago.com " +
+        "https://api.mercadolibre.com " +
+        "https://*.mercadolibre.com " +
+        "https://*.mercadolivre.com",
+
+      "img-src 'self' data: blob: " +
+        "https://*.mercadopago.com " +
+        "https://*.mpago.li " +
+        "https://http2.mlstatic.com " +
+        "https://*.mercadolibre.com " +
+        "https://*.mercadolivre.com",
+
+      "frame-src 'self' " +
+        "https://wallet.mercadopago.com " +
+        "https://secure-fields.mercadopago.com " +
+        "https://api.mercadopago.com " +
+        "https://api-static.mercadopago.com " +
+        "https://*.mercadolibre.com " +
+        "https://*.mercadolivre.com",
+
+      "child-src 'self' " +
+        "https://wallet.mercadopago.com " +
+        "https://secure-fields.mercadopago.com " +
+        "https://api.mercadopago.com " +
+        "https://api-static.mercadopago.com " +
+        "https://*.mercadolibre.com " +
+        "https://*.mercadolivre.com",
+
+      "style-src 'self' 'unsafe-inline'",
+      "font-src 'self' data:",
+      "worker-src 'self' blob:"
+    ].join('; ')
+  );
+
+  next();
+});
+
+
+
+
 
 const PUBLIC_DIR = path.join(__dirname, 'sitevendas');
 const TICKETS_DIR = path.join(__dirname, 'tickets');
