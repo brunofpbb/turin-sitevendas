@@ -5,7 +5,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const nodemailer = require('nodemailer');
+//const nodemailer = require('nodemailer');
 const { uploadPdfToDrive } = require('./drive');
 const fetch = require('node-fetch');                // se não existir ainda
 function fetchWithTimeout(url, opts = {}, ms = 10000) {
@@ -59,10 +59,11 @@ async function notifyAdminVendaFalha(entry) {
     const appName = process.env.APP_NAME || 'Turin Transportes';
     const fromName = process.env.SUPPORT_FROM_NAME || appName;
     const fromEmail =
-      process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
+      process.env.SUPPORT_FROM_EMAIL;
 
     const subject =
-      `[${appName}] Falha na emissão de bilhete (payment ${entry?.mpPaymentId || entry?.payment?.id || '—'})`;
+      `[${appName}] Falha na emissão de bilhete ` +
+      `(payment ${entry?.mpPaymentId || entry?.payment?.id || '—'})`;
 
     const body = [
       'Falha na emissão do bilhete após pagamento aprovado.',
@@ -70,40 +71,27 @@ async function notifyAdminVendaFalha(entry) {
       `Erro: ${entry.errorMessage || entry.error || '(sem mensagem)'}`,
       '',
       'Dados da venda/pagamento:',
-      JSON.stringify(entry, null, 2),
+      JSON.stringify(entry, null, 2)
     ].join('\n');
 
-    let sent = false;
-    try {
-      const got = await ensureTransport();
-      if (got.transporter) {
-        await got.transporter.sendMail({
-          from: `"${fromName}" <${fromEmail}>`,
-          to: ADMIN_ALERT_EMAIL,
-          subject,
-          text: body,
-        });
-        console.log('[Venda][Erro] alerta enviado via SMTP para', ADMIN_ALERT_EMAIL);
-        sent = true;
-      }
-    } catch (e) {
-      console.error('[Venda][Erro] falha ao enviar alerta via SMTP:', e?.message || e);
-    }
+    await sendViaBrevoApi({
+      to: ADMIN_ALERT_EMAIL,
+      subject,
+      html: body.replace(/\n/g, '<br>'),
+      text: body,
+      fromEmail,
+      fromName
+    });
 
-    // fallback Brevo
-    if (!sent) {
-      await sendViaBrevoApi({
-        to: ADMIN_ALERT_EMAIL,
-        subject,
-        html: body.replace(/\n/g, '<br>'),
-        text: body,
-        fromEmail,
-        fromName,
-      });
-      console.log('[Venda][Erro] alerta enviado via Brevo para', ADMIN_ALERT_EMAIL);
-    }
+    console.log(
+      '[Venda][Erro] alerta enviado via Brevo para',
+      ADMIN_ALERT_EMAIL
+    );
   } catch (e) {
-    console.error('[Venda][Erro] falha ao enviar e-mail de alerta:', e?.message || e);
+    console.error(
+      '[Venda][Erro] falha ao enviar e-mail de alerta:',
+      e?.message || e
+    );
   }
 }
 
@@ -114,22 +102,6 @@ const { generateTicketPdf } = require('./services/ticket/pdf');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
-/*
-// Middleware para CSP (Permitir Mercado Pago)
-app.use((req, res, next) => {
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://www.google.com https://www.gstatic.com https://http2.mlstatic.com https://secure-fields.mercadopago.com https://api.mercadopago.com; " +
-    "connect-src 'self' https://api.mercadopago.com https://events.mercadopago.com https://secure-fields.mercadopago.com https://*.mercadolibre.com https://http2.mlstatic.com https://*.mercadopago.com; " +
-    "img-src 'self' data: https://*.mercadolibre.com https://http2.mlstatic.com https://*.mercadopago.com; " +
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://http2.mlstatic.com; " +
-    "font-src 'self' https://fonts.gstatic.com https://http2.mlstatic.com data:; " +
-    "frame-src 'self' https://mpplayer.mercadopago.com https://www.mercadolibre.com.br https://*.mercadopago.com;"
-  );
-  next();
-});
-*/
 
 app.use((req, res, next) => {
   res.setHeader(
@@ -1508,25 +1480,6 @@ function pickBuyerEmail({ req, payment, vendaResult, fallback }) {
 }
 
 
-/* =================== CSP (Bricks) =================== *//*
-app.use((req, res, next) => {
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com",
-      "connect-src 'self' https://api.mercadopago.com https://wallet.mercadopago.com https://http2.mlstatic.com https://api-static.mercadopago.com https://api.mercadolibre.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      "img-src 'self' data: https://*.mercadopago.com https://*.mpago.li https://http2.mlstatic.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      "frame-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      "child-src https://wallet.mercadopago.com https://api.mercadopago.com https://api-static.mercadopago.com https://*.mercadolibre.com https://*.mercadolivre.com",
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:"
-    ].join('; ')
-  );
-  next();
-});
-*/
-
 /* =================== Middlewares =================== */
 
 app.use(express.static(PUBLIC_DIR));
@@ -2113,56 +2066,89 @@ setInterval(() => {
   for (const [k, v] of codes.entries()) if (v.expiresAt <= now) codes.delete(k);
 }, 60 * 1000);
 
+
 app.post('/api/auth/request-code', async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
+
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ ok: false, error: 'E-mail inválido.' });
+      return res.status(400).json({
+        ok: false,
+        error: 'E-mail inválido.'
+      });
     }
+
     const code = genCode();
     const expiresAt = Date.now() + CODE_TTL_MIN * 60 * 1000;
-    codes.set(email, { code, expiresAt, attempts: 0 });
+
+    codes.set(email, {
+      code,
+      expiresAt,
+      attempts: 0
+    });
 
     const appName = process.env.APP_NAME || 'Turin Transportes';
     const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
-    const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
-    const from = `"${fromName}" <${fromEmail}>`;
+    const fromEmail =
+      process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
     const html = `
       <div style="font-family:Arial,sans-serif;font-size:16px;color:#222">
         <p>Olá,</p>
+
         <p>Seu código de acesso ao <b>${appName}</b> é:</p>
-        <p style="font-size:28px;letter-spacing:3px;margin:16px 0"><b>${code}</b></p>
-        <p>Ele expira em ${CODE_TTL_MIN} minutos.</p>
-        <p style="color:#666;font-size:13px">Se não foi você, ignore este e-mail.</p>
+
+        <p style="font-size:30px;font-weight:bold;letter-spacing:4px">
+          ${code}
+        </p>
+
+        <p>Este código expira em ${CODE_TTL_MIN} minutos.</p>
+
+        <p style="font-size:13px;color:#777">
+          Se você não solicitou este código, ignore este e-mail.
+        </p>
       </div>
     `;
-    const text = `Seu código é: ${code} (expira em ${CODE_TTL_MIN} minutos).`;
 
-    try {
-      const got = await ensureTransport();
-      if (!got.transporter) throw new Error('smtp-indisponivel');
-      await got.transporter.sendMail({
-        from, to: email, replyTo: fromEmail,
-        subject: `Seu código de acesso (${appName})`,
-        html, text,
-      });
-    } catch {
-      await sendViaBrevoApi({ to: email, subject: `Seu código de acesso (${appName})`, html, text, fromEmail, fromName });
-    }
+    const text =
+      `Seu código de acesso é ${code}. ` +
+      `Ele expira em ${CODE_TTL_MIN} minutos.`;
 
-    const devPayload = process.env.NODE_ENV !== 'production' ? { demoCode: code } : {};
+    await sendViaBrevoApi({
+      to: email,
+      subject: `Seu código de acesso (${appName})`,
+      html,
+      text,
+      fromEmail,
+      fromName
+    });
 
-    // [LOG] Registro do envio do código (User Request)
+    const devPayload =
+      process.env.NODE_ENV !== 'production'
+        ? { demoCode: code }
+        : {};
+
     console.log(`[Auth][Code] Código enviado para: ${email} | Expires: ${new Date(expiresAt).toISOString()} | IP: ${req.ip || req.connection.remoteAddress}`);
 
-    return res.json({ ok: true, message: 'Código enviado.', ...devPayload });
+    return res.json({
+      ok: true,
+      message: 'Código enviado com sucesso.',
+      ...devPayload
+    });
 
   } catch (err) {
-    console.error('Erro ao enviar e-mail:', err?.message || err);
-    return res.status(500).json({ ok: false, error: 'Falha ao enviar e-mail.' });
+    console.error(
+      'Erro ao preparar/envio do e-mail:',
+      err?.message || err
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: 'Falha ao enviar e-mail.'
+    });
   }
 });
+
 
 app.post('/api/auth/verify-code', (req, res) => {
   const email = normalizeEmail(req.body?.email);
@@ -2385,46 +2371,248 @@ function nowWithTZOffsetISO(offsetMinutes = -(3 * 60)) {
 }
 
 /* =================== Partidas/Poltronas =================== */
+
 app.post('/api/partidas', async (req, res) => {
-  try {
-    const { origemId, destinoId, data } = req.body;
+  const PRAXIO_PARTIDAS_URL =
+    'https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas';
+
+  const wait = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function consultarPartidas(tentativa) {
+    // Gera uma sessão nova em toda tentativa
     const IdSessaoOp = await praxioLogin();
 
-    const partResp = await fetch('https://oci-parceiros2.praxioluna.com.br/Autumn/Partidas/Partidas', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        IdSessaoOp,
-        LocalidadeOrigem: origemId,
-        LocalidadeDestino: destinoId,
-        DataPartida: data,
-        SugestaoPassagem: '1',
-        ListarTodas: '1',
-        SomenteExtra: '0',
-        TempoPartida: 1,
-        IdEstabelecimento: '1',
-        DescontoAutomatico: 0,
-      }),
-    });
-    const partData = await partResp.json();
-
-    // [DEBUG] Log response to file
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const logDir = path.join(__dirname, 'logs');
-      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
-      fs.writeFileSync(path.join(logDir, 'debug_partidas.json'), JSON.stringify(partData, null, 2));
-      console.log('[DEBUG] Praxio response saved to logs/debug_partidas.json');
-    } catch (err) {
-      console.error('[DEBUG] Failed to save log:', err);
+    if (!IdSessaoOp) {
+      throw new Error(
+        `Praxio não retornou IdSessaoOp na tentativa ${tentativa}`
+      );
     }
 
-    res.json(partData);
+    const payload = {
+      IdSessaoOp,
+      LocalidadeOrigem: origemId,
+      LocalidadeDestino: destinoId,
+      DataPartida: data,
+      SugestaoPassagem: '1',
+      ListarTodas: '1',
+      SomenteExtra: '0',
+      TempoPartida: 1,
+      IdEstabelecimento: '1',
+      DescontoAutomatico: 0
+    };
+
+    const partResp = await fetchWithTimeout(
+      PRAXIO_PARTIDAS_URL,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(payload)
+      },
+      15000
+    );
+
+    /*
+     * Lemos primeiro como texto porque a Praxio pode retornar
+     * uma página HTML em caso de instabilidade.
+     */
+    const responseText = await partResp.text();
+
+    const contentType =
+      partResp.headers.get('content-type') || '';
+
+    let partData;
+
+    try {
+      partData = JSON.parse(responseText);
+    } catch {
+      const preview = responseText
+        .replace(/\s+/g, ' ')
+        .slice(0, 500);
+
+      console.warn(
+        `[Praxio][Partidas] resposta não JSON na tentativa ${tentativa}:`,
+        {
+          status: partResp.status,
+          statusText: partResp.statusText,
+          contentType,
+          preview
+        }
+      );
+
+      // Salva a resposta HTML para diagnóstico
+      try {
+        await fs.promises.mkdir(ERROR_LOG_DIR, {
+          recursive: true
+        });
+
+        const filename =
+          `debug_partidas_invalidas_${Date.now()}_tentativa_${tentativa}.html`;
+
+        await fs.promises.writeFile(
+          path.join(ERROR_LOG_DIR, filename),
+          responseText,
+          'utf8'
+        );
+
+        console.log(
+          '[DEBUG] Resposta inválida da Praxio salva em:',
+          path.join(ERROR_LOG_DIR, filename)
+        );
+      } catch (logError) {
+        console.error(
+          '[DEBUG] Não foi possível salvar resposta inválida:',
+          logError?.message || logError
+        );
+      }
+
+      const invalidJsonError = new Error(
+        `Praxio retornou conteúdo não JSON. HTTP ${partResp.status}`
+      );
+
+      invalidJsonError.code = 'PRAXIO_INVALID_JSON';
+      invalidJsonError.httpStatus = partResp.status;
+      invalidJsonError.responsePreview = preview;
+
+      throw invalidJsonError;
+    }
+
+    if (!partResp.ok) {
+      const mensagem =
+        partData?.Mensagem ||
+        partData?.MensagemDetalhada ||
+        `HTTP ${partResp.status}`;
+
+      const httpError = new Error(
+        `Falha ao consultar partidas na Praxio: ${mensagem}`
+      );
+
+      httpError.code = 'PRAXIO_HTTP_ERROR';
+      httpError.httpStatus = partResp.status;
+      httpError.praxioResponse = partData;
+
+      throw httpError;
+    }
+
+    /*
+     * Algumas respostas podem vir com HTTP 200,
+     * mas ainda indicar erro dentro do JSON.
+     */
+    if (partData?.IdErro) {
+      const mensagem =
+        partData?.MensagemDetalhada ||
+        partData?.Mensagem ||
+        partData.IdErro;
+
+      const apiError = new Error(
+        `Praxio retornou erro: ${mensagem}`
+      );
+
+      apiError.code = 'PRAXIO_API_ERROR';
+      apiError.praxioResponse = partData;
+
+      throw apiError;
+    }
+
+    return partData;
+  }
+
+  const { origemId, destinoId, data } = req.body || {};
+
+  if (!origemId || !destinoId || !data) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Origem, destino e data são obrigatórios.'
+    });
+  }
+
+  try {
+    let partData;
+    let ultimoErro;
+
+    // Primeira tentativa + uma nova tentativa
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      try {
+        console.log(
+          `[Praxio][Partidas] iniciando tentativa ${tentativa}/2`,
+          {
+            origemId,
+            destinoId,
+            data
+          }
+        );
+
+        partData = await consultarPartidas(tentativa);
+
+        console.log(
+          `[Praxio][Partidas] consulta concluída na tentativa ${tentativa}`
+        );
+
+        break;
+      } catch (error) {
+        ultimoErro = error;
+
+        console.error(
+          `[Praxio][Partidas] tentativa ${tentativa}/2 falhou:`,
+          error?.message || error
+        );
+
+        if (tentativa < 2) {
+          console.log(
+            '[Praxio][Partidas] aguardando 1 segundo e tentando novamente com nova sessão...'
+          );
+
+          await wait(1000);
+        }
+      }
+    }
+
+    if (!partData) {
+      throw ultimoErro || new Error(
+        'A Praxio não respondeu corretamente.'
+      );
+    }
+
+    // Mantém seu arquivo de debug com o JSON válido
+    try {
+      await fs.promises.mkdir(ERROR_LOG_DIR, {
+        recursive: true
+      });
+
+      await fs.promises.writeFile(
+        path.join(ERROR_LOG_DIR, 'debug_partidas.json'),
+        JSON.stringify(partData, null, 2),
+        'utf8'
+      );
+
+      console.log(
+        '[DEBUG] Praxio response saved to logs/debug_partidas.json'
+      );
+    } catch (debugError) {
+      console.error(
+        '[DEBUG] Failed to save log:',
+        debugError?.message || debugError
+      );
+    }
+
+    return res.json(partData);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Erro ao consultar partidas' });
+    console.error(
+      '[Praxio][Partidas] falha definitiva após duas tentativas:',
+      error?.message || error
+    );
+
+    return res.status(502).json({
+      ok: false,
+      error:
+        'O sistema de viagens está temporariamente indisponível. Tente novamente em alguns instantes.'
+    });
   }
 });
+
 
 app.post('/api/poltronas', async (req, res) => {
   try {
@@ -2937,6 +3125,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       // chave por compra
       const groupId = String(mpPaymentId || payment?.id || payment?.external_reference || computeGroupId(req, payment, schedule));
 
+        
       // enfileira; quando o AGGR perceber que chegou tudo (ou estourar timeout), ele dispara 1x
       queueUnifiedSend(groupId, fragment, async (bundle) => {
         const { base, bilhetes, arquivos, emailAttachments } = bundle;
@@ -3002,49 +3191,39 @@ app.post('/api/praxio/vender', async (req, res) => {
             ...bilhetes.map((b, i) => ` - ${b.numPassagem} (${(b.idaVolta || 'ida')}) ${b.origemNome || b.origem || ''} -> ${b.destinoNome || b.destino || ''} ${b.dataViagem || ''} ${b.horaPartida || ''}`)
           ].join('\n');
 
-          // usa os nomes já definidos (displayName)
-          const attachmentsSMTP = emailAttachments.map(a => ({
-            filename: a.filename,
-            content: a.buffer
-          }));
 
-          const attachmentsBrevo = emailAttachments.map(a => ({
-            filename: a.filename,       // <— usa filename (não “name”)
+          const attachmentsBrevo = emailAttachments.map((a) => ({
+            filename: a.filename,
             contentBase64: a.contentBase64
           }));
 
-
-          let sent = false;
           try {
-            const got = await ensureTransport();
-            if (got.transporter) {
-              await got.transporter.sendMail({
-                from: `"${fromName}" <${fromEmail}>`,
-                to,
-                cc: fromEmail, // <--- Cópia para o próprio envio (noreply)
-                subject: `Seus bilhetes – ${appName}`, html, text,
-                attachments: attachmentsSMTP,
-              });
-              sent = true;
-              console.log(`[Email] enviados ${attachmentsSMTP.length} anexos para ${to} via ${got.mode}`);
-            }
-          } catch (e) { console.warn('[Email SMTP] falhou, tentando Brevo...', e?.message || e); }
+            await sendViaBrevoApi({
+              to,
+              cc: fromEmail,
+              subject: `Seus bilhetes – ${appName}`,
+              html,
+              text,
+              fromEmail,
+              fromName,
+              attachments: attachmentsBrevo
+            });
 
-          if (!sent) {
-            try {
-              await sendViaBrevoApi({
-                to,
-                cc: fromEmail,
-                subject: `Seus bilhetes – ${appName}`, html, text, fromEmail, fromName, attachments: attachmentsBrevo
-              });
-              console.log(`[Email] enviados ${attachmentsBrevo.length} anexos para ${to} via Brevo API`);
-            } catch (err) {
-              console.error('[Email Brevo] CRITICAL falha ao enviar:', err.message || err);
-            }
+            console.log(
+              `[Email] enviados ${attachmentsBrevo.length} anexos para ${to} via Brevo API`
+            );
+          } catch (err) {
+            console.error(
+              '[Email Brevo] CRITICAL falha ao enviar:',
+              err?.message || err
+            );
           }
+
         } else {
           console.warn('[Email] comprador sem e-mail. Pulando envio.');
         }
+
+        // 2) SHEETS – agora limpa a pré-reserva da mesma Referencia
 
 
         // 2) SHEETS – agora limpa a pré-reserva da mesma Referencia
