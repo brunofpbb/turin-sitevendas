@@ -33,20 +33,6 @@
       overflow: hidden !important;
     }
 
-    /* Caixa do PIX 
-    #pix-box{
-      margin-top:16px; padding:14px; border:1px solid #e2e2e2; border-radius:10px;
-      background:#fff;
-    }
-    #pix-box h4{ margin:0 0 8px 0 }
-    #pix-box .pix-row{ display:flex; gap:8px; align-items:center; margin-top:8px }
-    #pix-code{ flex:1; padding:.6rem; border:1px solid #ccc; border-radius:6px }
-    #pix-copy{ padding:.6rem .9rem; border:0; border-radius:8px; cursor:pointer }
-    #pix-status{ margin-top:8px; color:#555 }
-    #pix-qr img{ max-width:220px; height:auto; }*/
-
-
-
     /* Caixa do PIX */
     #pix-box {
       margin-top: 16px;
@@ -63,9 +49,7 @@
     #pix-box .pix-row {
       display: flex;
       flex-direction: column;
-      /* empilha código + botão */
       align-items: center;
-      /* centraliza no eixo horizontal */
       justify-content: center;
       gap: 8px;
       margin-top: 8px;
@@ -96,12 +80,6 @@
       max-width: 220px;
       height: auto;
     }
-
-
-
-
-
-
 
     /* ===== Overlay de emissão do bilhete ===== */
     #issuance-overlay {
@@ -153,10 +131,20 @@
     }
   </style>
 
-  <!-- SDK do Mercado Pago deve vir antes do seu payment.js -->
+  <!-- Valida o carrinho antes de carregar o Mercado Pago -->
+  <script src="payment-guard.js?v=1"></script>
+
+  <!-- SDK do Mercado Pago deve vir antes do payment.js -->
   <script src="https://sdk.mercadopago.com/js/v2"></script>
-  <script defer src="main.js?v=3"></script>
-  <script defer src="payment.js?v=3"></script>
+  <script defer src="main.js?v=4"></script>
+  <script>
+    if (window.__PAYMENT_CART_VALID__) {
+      const paymentScript = document.createElement('script');
+      paymentScript.defer = true;
+      paymentScript.src = 'payment.js?v=4';
+      document.head.appendChild(paymentScript);
+    }
+  </script>
 
   <!-- JS utilitário: deixa as funções globais para o payment.js usar -->
   <script>
@@ -165,7 +153,6 @@
       if (!el) return;
       if (msg) el.querySelector('.io-title').textContent = msg;
       el.style.display = 'flex';
-      // evita scroll/duplo clique
       document.body.style.pointerEvents = 'none';
       document.body.style.overflow = 'hidden';
     }
@@ -176,9 +163,10 @@
       document.body.style.pointerEvents = '';
       document.body.style.overflow = '';
     }
-    // se a página for descarregada, garante que o overlay não "grude"
     window.addEventListener('beforeunload', () => hideIssuanceOverlay());
   </script>
+</head>
+<body>
   <!-- HEADER em GRID -->
   <header class="site-header">
     <div class="site-header-inner">
@@ -205,14 +193,14 @@
     <!-- Card central: Bricks -->
     <section class="content-card" id="bricks-card">
       <h2 class="step-title">Informações de Pagamento </h2>
-     <p class="mute"> Escolha abaixo a forma de pagamento </p> 
+      <p class="mute"> Escolha abaixo a forma de pagamento </p>
 
       <!-- Container do Brick -->
       <div id="payment-bricks" style="margin-top:12px;"></div>
 
       <!-- Resultado PIX (criado/atualizado pelo JS) -->
       <div id="pix-box" style="display:none">
-      <h4>Leia o QRCode ou copie o código PIX para realizar o pagamento </h4>
+        <h4>Leia o QRCode ou copie o código PIX para realizar o pagamento </h4>
 
         <div id="pix-qr"></div>
 
@@ -241,6 +229,6 @@
       <div class="io-sub">Estamos confirmando sua compra e gerando o DABP-e…</div>
     </div>
   </div>
-  </body>
+</body>
 
 </html>
