@@ -23,7 +23,20 @@
   }
 
   try {
-    const bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+    let bookings = JSON.parse(localStorage.getItem('bookings') || '[]');
+
+    // Replica a mesclagem feita no payment.js para não bloquear quem acabou de autenticar.
+    const pendingJson = localStorage.getItem('pendingPurchase');
+    if (pendingJson) {
+      const pending = JSON.parse(pendingJson);
+      if (pending && Array.isArray(pending.legs) && pending.legs.length > 0) {
+        const paidOnly = bookings.filter(item => item?.paid === true);
+        bookings = [...paidOnly, ...pending.legs];
+        localStorage.setItem('bookings', JSON.stringify(bookings));
+        localStorage.removeItem('pendingPurchase');
+      }
+    }
+
     const open = bookings.filter(item => item?.paid !== true);
     const invalid = open.length === 0 || open.some(item => itemTotal(item) <= 0);
     const total = open.reduce((sum, item) => sum + itemTotal(item), 0);
