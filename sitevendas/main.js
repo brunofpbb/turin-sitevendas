@@ -281,26 +281,120 @@ document.addEventListener('DOMContentLoaded', () => {
 
           const idViagem = linha.IdViagem || linha.CodViagem || 0;
           const idTipoVeiculo = linha.IdTipoVeiculo || linha.TipoVeiculo || linha.IdTipoOnibus || 0;
-          const disponiveis = linha.PoltronasDisponiveis || (linha.ViagemTFO && linha.ViagemTFO.PoltronasDisponiveis) || '';
-          const tipoHorario = linha.TipoHorario || (linha.ViagemTFO && linha.ViagemTFO.TipoHorario) || '';
-          const icons = tipoHorario && tipoHorario.toLowerCase().includes('execut') ? '❄️🛜🚻' : '';
+          const disponiveis = linha.PoltronasDisponiveis ?? linha.ViagemTFO?.PoltronasDisponiveis ?? null;
+          const capacidade = linha.ViagemTFO?.QtdPoltronas ?? linha.QtdPoltronas ?? linha.TotalPoltronas ?? linha.QuantidadePoltronas ?? null;
+          const tipoHorario = linha.TipoHorario || linha.ViagemTFO?.TipoHorario || '';
+          const dadosComodidades = { ...(linha.ViagemTFO || {}), ...linha };
+          const recurso = campos => campos.some(c => {
+            const v = dadosComodidades[c];
+            return v === true || v === 1 || (typeof v === 'string' && ['sim','s','true','1'].includes(v.trim().toLowerCase()));
+          });
+          // Regra operacional confirmada: categoria Executivo possui os três recursos.
+          const executivo = /executivo/i.test(String(tipoHorario).normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+          const ar = executivo || recurso(['ArCondicionado','PossuiArCondicionado','TemArCondicionado']);
+          const banheiro = executivo || recurso(['Banheiro','PossuiBanheiro','TemBanheiro']);
+          const wifi = executivo || recurso(['Wifi','WiFi','PossuiWifi','PossuiWiFi','TemWifi']);
 
-          const card = document.createElement('div'); card.className = 'schedule-card';
-          const header = document.createElement('div'); header.className = 'schedule-header';
-          header.innerHTML = `
-          <div><b>Saída:</b> ${saida || '00:00'}</div>
-          <div><b>Chegada:</b> ${chegada || '--'}</div>
-          <div><b>Tempo:</b> ${tempo || '--'}</div>
-          <div><b>R$ ${isNaN(parseFloat(tarifaRaw)) ? '0,00' : parseFloat(tarifaRaw).toFixed(2)}</b></div>
-        `;
-          const body = document.createElement('div'); body.className = 'schedule-body';
-          const parts = [];
-          if (disponiveis) parts.push(`<div><b>Poltronas Disponíveis:</b> ${disponiveis} 💺</div>`);
-          if (tipoHorario || icons) parts.push(`<div>${(tipoHorario || '') + ' ' + icons}</div>`);
-          body.innerHTML = parts.join('');
+          // Visual novo, conservando integralmente os dados e a seleção da viagem.
+          const card = document.createElement('article');
+          card.className = 'schedule-card trip-card';
 
-          const actions = document.createElement('div'); actions.className = 'schedule-actions'; actions.style.gridRow = '1 / -1';
-          const btn = document.createElement('button'); btn.className = 'btn btn-primary'; btn.textContent = 'Selecionar';
+          const details = document.createElement('div');
+          details.className = 'trip-details';
+          const times = document.createElement('div');
+          times.className = 'trip-times';
+          [
+            ['Saída', saida || '--:--', '🚌'],
+            ['Chegada', chegada || '--:--', '⚑'],
+            ['Duração', tempo || '--', '◷']
+          ].forEach(([label, value, symbol]) => {
+            const item = document.createElement('div');
+            item.className = 'trip-time-block';
+            const caption = document.createElement('span');
+            caption.className = 'trip-label';
+            caption.textContent = label;
+            const number = document.createElement('strong');
+            number.textContent = String(value);
+            const icon = document.createElement('span');
+            icon.className = 'trip-time-icon';
+            icon.textContent = symbol;
+            const valueRow = document.createElement('div');
+            valueRow.className = 'trip-time-value';
+            valueRow.append(icon, number);
+            item.append(caption, valueRow);
+            times.appendChild(item);
+          });
+          const extras = document.createElement('div');
+          extras.className = 'trip-extras';
+          const seats = document.createElement('div');
+          seats.className = 'trip-seats-highlight';
+          const seatInfo = document.createElement('div');
+          const seatIcon = document.createElement('span');
+          seatIcon.className = 'trip-seat-icon';
+          seatIcon.textContent = '💺';
+          const seatText = document.createElement('div');
+          const seatLabel = document.createElement('span');
+          seatLabel.className = 'trip-seats-label';
+          seatLabel.textContent = 'POLTRONAS DISPONÍVEIS';
+          const seatCount = document.createElement('strong');
+          seatCount.className = 'trip-seats-count';
+          seatCount.textContent = disponiveis !== null && disponiveis !== '' ? String(disponiveis) : '—';
+          if (capacidade !== null && capacidade !== '' && Number(capacidade) > 0) {
+            const total = document.createElement('small');
+            total.textContent = ' / ' + capacidade;
+            seatCount.appendChild(total);
+          }
+          seatText.append(seatLabel, seatCount);
+          seatInfo.className = 'trip-seats-info';
+          seatInfo.append(seatIcon, seatText);
+          seats.appendChild(seatInfo);
+          if (tipoHorario) {
+            const category = document.createElement('span');
+            category.className = 'trip-category';
+            category.textContent = String(tipoHorario);
+            seats.appendChild(category);
+          }
+          extras.appendChild(seats);
+          const amenities = document.createElement('div');
+          amenities.className = 'trip-amenities';
+          [['❄️', 'Ar-condicionado', ar], ['🚻', 'Banheiro', banheiro], ['📶', 'Wi-Fi', wifi]]
+            .forEach(([symbol, label, enabled]) => {
+              const item = document.createElement('span');
+              item.className = 'trip-amenity' + (enabled ? '' : ' trip-amenity-unconfirmed');
+              if (!enabled) item.title = 'Comodidade não confirmada nos dados desta viagem';
+              const icon = document.createElement('span');
+              icon.className = 'trip-amenity-icon';
+              icon.textContent = symbol;
+              const name = document.createElement('span');
+              name.textContent = label;
+              item.append(icon, name);
+              if (!enabled) {
+                const note = document.createElement('small');
+                note.textContent = 'Não informado';
+                item.appendChild(note);
+              }
+              amenities.appendChild(item);
+            });
+          if (amenities.childElementCount) extras.appendChild(amenities);
+          details.append(times, extras);
+
+          const actions = document.createElement('div');
+          actions.className = 'schedule-actions trip-price-box';
+          const valueLabel = document.createElement('span');
+          valueLabel.className = 'trip-price-label';
+          valueLabel.textContent = 'Passagem a partir de';
+          const price = document.createElement('strong');
+          price.className = 'trip-price';
+          const numericPrice = typeof window.normalizePrice === 'function'
+            ? window.normalizePrice(tarifaRaw)
+            : Number(String(tarifaRaw ?? 0).replace(',', '.'));
+          price.textContent = Number.isFinite(numericPrice)
+            ? numericPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            : 'Consulte o valor';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-primary select-btn';
+          btn.textContent = 'Selecionar viagem';
           btn.addEventListener('click', () => {
             const schedule = {
               idViagem,
@@ -319,10 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             onSelect && onSelect(schedule);
           });
-          actions.appendChild(btn);
-
-          header.style.gridColumn = '1 / 2'; actions.style.gridColumn = '2 / 3'; body.style.gridColumn = '1 / 2';
-          card.appendChild(header); card.appendChild(actions); card.appendChild(body);
+          actions.append(valueLabel, price, btn);
+          card.append(details, actions);
           list.appendChild(card);
         });
       })
@@ -427,11 +519,19 @@ function updateUserNav() {
     if (!nav) return;
 
     const user = JSON.parse(localStorage.getItem('user') || 'null');
+    const quickAccount = document.getElementById('mobile-account-link');
+    if (quickAccount) {
+      quickAccount.href = user?.email ? 'profile.html' : 'login.html';
+      quickAccount.textContent = user?.email ? 'Minhas compras' : 'Acessar conta';
+      quickAccount.onclick = user?.email ? null : () => {
+        localStorage.setItem('postLoginRedirect', 'index.html');
+      };
+    }
 
     // DESLOGADO
     if (!user || !user.email) {
       nav.innerHTML = `
-      <a class="pill cta-enter" href="login.html" id="nav-login">Entrar</a>
+      <a class="pill cta-enter" href="login.html" id="nav-login">Acessar conta</a>
     `;
 
       // guarda de onde o usuário veio, para voltar depois do login

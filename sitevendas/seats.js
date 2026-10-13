@@ -3,7 +3,7 @@
   // ====== Dimensões-base do layout (usadas para escalar) ======
   const BASE_IMG_WIDTH = 980;
   const BASE_TOP = 28;      // px (sobe/desce a grade sobre o bus-blank)
-  const BASE_LEFT = 105;     // px (empurra grade p/ direita/esquerda)
+  const BASE_LEFT = 220;     // início da cabine de passageiros, na escala base da imagem     // px (empurra grade p/ direita/esquerda)
   const BASE_CELL_W = 41;      // largura da célula (assento)
   const BASE_CELL_H = 36;      // altura da célula
   const BASE_GAP_X = 17;      // espaço horizontal entre assentos
@@ -43,12 +43,7 @@
 }
 
 
-/* Ajuste fino do ônibus no mobile: traz as poltronas um pouco pra esquerda */
-@media (max-width: 768px){
-  .seats-onepage .bus-grid{
-    transform: translateX(-90px);  /* teste -16, -18, -20 até encaixar */
-  }
-}
+/* A grade acompanha a imagem escalada sem deslocamentos fixos no mobile. */
 
 
 .seats-onepage .seat{
@@ -263,19 +258,27 @@
     const root = document.createElement('div');
     root.className = 'seats-onepage';
     root.innerHTML = `
-      <div class="bus-wrap">
-        <img src="bus-blank.png" alt="Layout do ônibus" class="bus-img" />
-        <div class="bus-grid" id="busGrid"></div>
+      <div class="seat-map-panel">
+        <div class="bus-wrap">
+          <img src="bus-blank.png" alt="Layout do ônibus" class="bus-img" />
+          <div class="bus-grid" id="busGrid"></div>
+        </div>
       </div>
 
-      <div class="legend">
+      <div class="legend" aria-label="Legenda das poltronas">
         <div class="i"><span class="sw free"></span> Disponível</div>
         <div class="i"><span class="sw sel"></span> Selecionado</div>
         <div class="i"><span class="sw occ"></span> Ocupado</div>
       </div>
 
-      <div class="info-line" id="tripInfo"></div>
-      <div class="counter">Poltronas selecionadas: <b id="selCount">0</b></div>
+      <div class="seat-trip-summary">
+        <span class="seat-summary-icon" aria-hidden="true">🚌</span>
+        <div class="info-line" id="tripInfo"></div>
+      </div>
+      <div class="seat-count-summary">
+        <span class="seat-summary-icon" aria-hidden="true">💺</span>
+        <div class="counter">Poltronas selecionadas: <b id="selCount">0</b></div>
+      </div>
 
       <div class="pax" id="paxBox">
         <div class="pax-list" id="paxList"></div>
@@ -502,11 +505,10 @@
       // limita só pra não ficar gigante em telas enormes
       if (scale > 1.5) scale = 1.5;
 
-      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      const baseLeft = BASE_LEFT; // mesma origem proporcional em todos os tamanhos
 
-      // pequeno ajuste só para mobile (puxa um pouco para a esquerda)
-      const baseLeft = isMobile ? (BASE_LEFT - 30) : BASE_LEFT;
-
+      // Mantém tipografia proporcional à imagem do ônibus em telas pequenas.
+      root.style.setProperty('--seat-font', Math.max(8, Math.min(13, 19 * scale)) + 'px');
       root.style.setProperty('--grid-top', (BASE_TOP * scale) + 'px');
       root.style.setProperty('--grid-left', (baseLeft * scale) + 'px');
       root.style.setProperty('--cell-w', (BASE_CELL_W * scale) + 'px');
