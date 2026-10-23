@@ -81,12 +81,21 @@ router.post('/pay', async (req, res) => {
       }
     };
 
+    // O teste utiliza seu próprio webhook, independentemente da configuração
+    // geral da conta Mercado Pago (que pode estar apontando para produção).
+    // Permite override por variável no Railway, sem usar Host informado pelo cliente.
+    const webhookUrl = process.env.MP_WEBHOOK_URL || 'https://vendas.turintransportes.com/api/mp/webhook';
+
     let body;
     if ((paymentMethodId || '').toLowerCase() === 'pix') {
+      if (!/^https:\/\/[a-z0-9.-]+\/api\/mp\/webhook$/.test(webhookUrl)) {
+        throw new Error('MP_WEBHOOK_URL inválida');
+      }
+      console.log('[MP][Pay][PIX] notification_url:', webhookUrl);
       if (!base.payer?.email) {
         return res.status(400).json({ error: true, message: 'E-mail obrigatório para Pix.' });
       }
-      body = { ...base, payment_method_id: 'pix' };
+      body = { ...base, payment_method_id: 'pix', notification_url: webhookUrl };
     } else {
       if (!token) {
         return res.status(400).json({ error: true, message: 'Token do cartão ausente.' });

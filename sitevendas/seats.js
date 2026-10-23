@@ -247,7 +247,7 @@
   }
 
   // ===== API pública =====
-  window.renderSeats = async function renderSeats(container, schedule, wayType) {
+  window.renderSeats = async function renderSeats(container, schedule, wayType, options = {}) {
     ensureStyles();
     if (!container) throw new Error('renderSeats: container inválido');
 
@@ -300,6 +300,11 @@
     const paxList = root.querySelector('#paxList');
     const btnConfirm = root.querySelector('#btnConfirm');
     const btnBack = root.querySelector('#btnBack');
+    if (options.recovery) {
+      btnConfirm.textContent = Number(options.recoveryCount||1)>1 ? 'Emitir bilhetes' : 'Emitir bilhete';
+      btnBack.textContent = 'Voltar às opções';
+    }
+
 
     // Cabeçalho
     const origin = pick(schedule?.originName, schedule?.origin, schedule?.origem, '');
@@ -329,7 +334,7 @@
       });
     }
 
-    const isReturn = state.type === 'volta';
+    const isReturn = state.type === 'volta' && !options.recovery;
     let maxSelectable = Infinity;
     let obPax = [];
     if (isReturn) {
@@ -369,8 +374,13 @@
             cpf: obPax[idx].cpf || '',
             phone: obPax[idx].phone || '',
           };
+        } else if (options.recovery && Array.isArray(options.passengers) && options.passengers[idx]) {
+          const original = options.passengers[idx];
+          state.pax[seatNum] = { name:String(original.name||''), cpf:String(original.cpf||original.document||''), phone:String(original.phone||'') };
         } else {
-          state.pax[seatNum] ||= { name: '', cpf: '', phone: '' };
+          state.pax[seatNum] ||= options.recovery
+            ? { name: String(options.passenger?.name || ''), cpf: String(options.passenger?.cpf || options.passenger?.document || ''), phone: String(options.passenger?.phone || '') }
+            : { name: '', cpf: '', phone: '' };
         }
 
         const v = state.pax[seatNum];
@@ -382,8 +392,11 @@
           <input type="text" class="form-control pax-phone" placeholder="Telefone"  ${isReturn ? 'readonly' : ''} ${!isReturn ? 'required' : ''} value="${v.phone || ''}">
         `;
 
+        // Na recuperação, dados do passageiro vêm da pré-reserva confirmada.
+        if (options.recovery) row.querySelectorAll('input').forEach(input => { input.readOnly = true; });
+
         // Bind
-        if (!isReturn) {
+        if (!isReturn && !options.recovery) {
           const [nameI, cpfI, phoneI] = row.querySelectorAll('input');
           nameI.addEventListener('input', () => { state.pax[seatNum].name = nameI.value; });
           cpfI.addEventListener('input', () => { state.pax[seatNum].cpf = cpfI.value; });
@@ -426,6 +439,10 @@
             seat.classList.remove('selected');
             delete state.pax[cell];
           } else {
+            if (options.recovery && state.seats.length >= Number(options.recoveryCount || 1)) {
+              alert('Escolha exatamente '+Number(options.recoveryCount || 1)+' poltrona(s) para a substituição.');
+              return;
+            }
             if (isReturn && state.seats.length >= maxSelectable) {
               alert(`Para a volta selecione exatamente ${maxSelectable} poltronas.`);
               return;
@@ -443,6 +460,10 @@
 
     // Botões
     btnConfirm.addEventListener('click', () => {
+      if (options.recovery && state.seats.length !== Number(options.recoveryCount || 1)) {
+        alert('Selecione '+Number(options.recoveryCount || 1)+' poltrona(s) para continuar.');
+        return;
+      }
       if (isReturn && isFinite(maxSelectable) && state.seats.length !== maxSelectable) {
         alert(`Selecione exatamente ${maxSelectable} poltronas para a volta.`);
         return;

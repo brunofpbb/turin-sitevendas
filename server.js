@@ -6,7 +6,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 //const nodemailer = require('nodemailer');
-const { uploadPdfToDrive } = require('./drive');
+const { uploadPdfToDrive, downloadPdfFromDrive } = require('./drive');
 const fetch = require('node-fetch');                // se não existir ainda
 function fetchWithTimeout(url, opts = {}, ms = 10000) {
   const ac = new AbortController();
@@ -558,6 +558,20 @@ async function sheetsAppendBilhetes({
         if (idxPoltrona >= 0 && seat) {
           if (String(row[idxPoltrona] || '').trim() !== seat) continue;
         }
+        // Uma compra pode conter ida e volta com a mesma poltrona. Além
+        // da referência, comparar a viagem real para não sobrescrever
+        // o bilhete de outro trecho.
+        const sameIfPresent = (index, value) => {
+          const desired = String(value || '').trim();
+          const actual = index >= 0 ? String(row[index] || '').trim() : '';
+          return !desired || !actual || actual === desired;
+        };
+        if (!sameIfPresent(idxIdViagem, b.idViagem || schedule?.idViagem) ||
+            !sameIfPresent(idxIdOrigem, b.idOrigem || schedule?.idOrigem) ||
+            !sameIfPresent(idxIdDestino, b.idDestino || schedule?.idDestino)) continue;
+        // Nunca substituir um bilhete já emitido por um número diferente.
+        if (idxNumPassagem >= 0 && String(row[idxNumPassagem] || '').trim() &&
+            String(row[idxNumPassagem]).trim() !== String(b.numPassagem || '').trim()) continue;
         // achou candidato
         usedRows.add(i);
         return i;
@@ -1139,6 +1153,7 @@ async function sheetsFindByRef(externalRef) {
     formaPag: idx('Forma_Pagamento'),
     ref: idx('Referencia'),
     numPassagem: idx('NumPassagem'),
+    linkBpe: idx('LinkBPE'),
     seriePassagem: idx('SeriePassagem'),
     origem: idx('Origem'),
     destino: idx('Destino'),
@@ -1177,6 +1192,7 @@ async function sheetsFindByRef(externalRef) {
       status: col.status >= 0 ? norm(row[col.status]) : '',
       statusPag: col.statusPag >= 0 ? norm(row[col.statusPag]) : '',
       numPassagem: col.numPassagem >= 0 ? norm(row[col.numPassagem]) : '',
+      linkBpe: col.linkBpe >= 0 ? norm(row[col.linkBpe]) : '',
       nome: col.nome >= 0 ? norm(row[col.nome]) : '',
       cpf: col.cpf >= 0 ? norm(row[col.cpf]) : '',
       telefone: col.telefone >= 0 ? norm(row[col.telefone]) : '',
@@ -1261,6 +1277,29 @@ async function sheetsDeleteRowsByRef(externalRef) {
   });
 }
 
+// Remove SOMENTE pré-reservas de poltronas efetivamente emitidas.
+// As linhas com erro permanecem disponíveis para o recovery do grupo.
+async function sheetsDeleteIssuedPreReservations(externalRef, issuedSeats) {
+  if (!externalRef || !issuedSeats?.length) return;
+  const { entries } = await sheetsFindByRef(externalRef);
+  const seats = new Set(issuedSeats.map(x => String(x)));
+  const found = entries.filter(e => seats.has(String(e.poltrona)) && !e.numPassagem);
+  if (found.length !== seats.size) {
+    throw new Error('Pré-reservas emitidas não coincidem com o retorno da Praxio; bloqueando exclusão');
+  }
+  const sheets = await sheetsAuthRW();
+  const meta = await sheets.spreadsheets.get({spreadsheetId:process.env.SHEETS_BPE_ID});
+  const tab = (process.env.SHEETS_BPE_RANGE || 'BPE!A:AK').split('!')[0];
+  const sheet = (meta.data.sheets || []).find(x=>x.properties?.title===tab);
+  if(!sheet) throw new Error('Aba de pré-reservas não encontrada');
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId:process.env.SHEETS_BPE_ID,
+    requestBody:{requests:found.map(e=>e.rowIndex-1).sort((a,b)=>b-a).map(i=>({
+      deleteDimension:{range:{sheetId:sheet.properties.sheetId,dimension:'ROWS',startIndex:i,endIndex:i+1}}
+    }))}
+  });
+}
+
 async function emitirBilhetesViaWebhook(payment) {
   const extRef = (payment?.external_reference || '').trim();
   if (!extRef) {
@@ -1271,6 +1310,12 @@ async function emitirBilhetesViaWebhook(payment) {
   const { entries } = await sheetsFindByRef(extRef);
   if (!entries || !entries.length) {
     console.log('[Webhook][Emit] nenhuma linha encontrada no Sheets para', extRef);
+    return;
+  }
+
+  // Recuperações em andamento não podem ser reprocessadas pelo webhook PIX.
+  if (entries.some(e => /^(poltrona indisponível|reemissão em andamento|reembolso em processamento|reembolsado integralmente|análise manual)$/i.test(String(e.status || '').trim()))) {
+    console.log('[Webhook][Emit] recuperação em andamento; não tentar nova emissão automática', extRef);
     return;
   }
 
@@ -1494,6 +1539,54 @@ const mpRoutes = require('./mpRoutes');
 app.use('/api/mp', mpRoutes);
 
 
+
+// Finalização de cartão: a emissão ocorre item a item no frontend.
+// A confirmação só é aceita quando todos os assentos da pré-reserva
+// estão OU comprovadamente indisponíveis OU já constam no agregador.
+// Assim uma falha conhecida não prende a emissão dos demais por 120 segundos.
+app.post('/api/mp/card-issuance-finished', async (req, res) => {
+  try {
+    const paymentId = String(req.body?.paymentId || '').trim();
+    const reference = String(req.body?.reference || '').trim();
+    if (!/^\d{6,25}$/.test(paymentId) || !reference)
+      return res.status(400).json({ok:false,error:'Identificação do pagamento incompleta'});
+    const payment = await mpGetPayment(paymentId);
+    if (!['approved','accredited'].includes(String(payment?.status || '')) ||
+        String(payment.external_reference || '') !== reference ||
+        String(payment.payment_method_id || '').toLowerCase() === 'pix')
+      return res.status(403).json({ok:false,error:'Pagamento não autorizado para finalizar vendas de cartão'});
+
+    const {entries} = await sheetsFindByRef(reference);
+    if (!entries.length) return res.status(409).json({ok:false,error:'Pré-reservas não encontradas'});
+    const aggr = AGGR.get(paymentId);
+    const complete = AGGR_FLUSHED_RECENT.has(paymentId);
+    const issued = aggr?.bilhetes || [];
+    const key = (v) => [v.idViagem,v.idOrigem,v.idDestino,v.poltrona].map(x=>String(x || '').trim()).join('|');
+    const issuedKeys = new Set(issued.map(key));
+    const failed = entries.filter(e=>String(e.status || '').trim().toLowerCase() === 'poltrona indisponível');
+    const settled = entries.every(e => {
+      const status = String(e.status || '').trim().toLowerCase();
+      return status === 'poltrona indisponível' || (!!e.numPassagem && status==='emitido') ||
+        issuedKeys.has(key(e));
+    });
+    if (!settled) {
+      console.warn('[Card][Finalize] Existem poltronas sem resultado confirmado', { paymentId, count:entries.length, failed:failed.length, staged:issued.length });
+      return res.status(409).json({ok:false,error:'Ainda existem poltronas sem resultado confirmado'});
+    }
+    if (!aggr) {
+      if (complete || entries.every(e => String(e.status || '').toLowerCase()==='poltrona indisponível' || !!e.numPassagem))
+        return res.json({ok:true,staged:0,failed:failed.length,flushed:complete});
+      return res.status(409).json({ok:false,error:'Emissão em conciliação, aguarde'});
+    }
+    if (!issued.length) return res.status(409).json({ok:false,error:'Agregador sem bilhetes emitidos'});
+    aggr.expected = issued.length;
+    console.log('[Card][Finalize] Lote confirmado', {paymentId,items:entries.length,issued:issued.length,failed:failed.length});
+    return res.json({ok:true,staged:issued.length,failed:failed.length,flushed:false});
+  } catch (error) {
+    console.error('[Card][Finalize] Não foi possível confirmar lote:', error?.message || error);
+    return res.status(502).json({ok:false,error:'Não foi possível concluir a conciliação. Não tente comprar novamente.'});
+  }
+});
 
 app.get('/api/mp/wait-flush', async (req, res) => {
   try {
@@ -2178,6 +2271,167 @@ function normalizeHoraPartida(h) {
 }
 
 
+// Monta uma única comunicação contendo todos os bilhetes da compra depois
+// da recuperação. Não altera a emissão nem o estado do pagamento.
+function storedDriveFileId(url) {
+  try {
+    const u = new URL(String(url || ''));
+    if (!['drive.google.com','docs.google.com'].includes(u.hostname)) return null;
+    return u.pathname.match(/\/d\/([a-zA-Z0-9_-]{10,})/)?.[1]
+      || (/^[a-zA-Z0-9_-]{10,}$/.test(u.searchParams.get('id') || '') ? u.searchParams.get('id') : null);
+  } catch (_) { return null; }
+}
+
+async function readPreviouslyIssuedPdf(link) {
+  const id = storedDriveFileId(link);
+  if (id) return downloadPdfFromDrive(id);
+  // Railway pode manter arquivo local enquanto não houver novo deploy.
+  // Essa é uma alternativa; o Drive continua sendo o armazenamento durável.
+  const local = String(link || '');
+  if (/^\/tickets\/[a-zA-Z0-9_./-]+\.pdf$/i.test(local)) {
+    const full = path.resolve(TICKETS_DIR, '.' + local.slice('/tickets'.length));
+    const root = path.resolve(TICKETS_DIR);
+    if (full.startsWith(root + path.sep)) {
+      const buf = await fs.promises.readFile(full);
+      if (buf.subarray(0,5).toString('ascii') === '%PDF-') return buf;
+    }
+  }
+  throw new Error('PDF anterior sem endereço válido do Drive ou arquivo local acessível');
+}
+
+async function resolvePurchaseEmailBundle({payment, bilhetes, arquivos, emailAttachments, recoveryIssue, allowRefunded=false}) {
+  const reference=String(payment?.external_reference||'').trim();
+  if (!reference) throw new Error('E-mail: pagamento sem referência da compra');
+  const {entries}=await sheetsFindByRef(reference);
+  if (!entries.length) throw new Error('E-mail: compra sem bilhetes no Sheets');
+
+  const emitted=entries.filter(t=>String(t.status||'').trim().toLowerCase()==='emitido' && String(t.numPassagem||'').trim());
+  // Só encaminhar e-mail de bilhetes quando TODOS estiverem emitidos. Em
+  // compras parcialmente emitidas, aguardar a recuperação ou decisão posterior.
+  const normalizedStatus = (value) => String(value||'').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+  if(allowRefunded) {
+    // No reembolso parcial, somente os efetivamente emitidos são anexados.
+    // A notificação só pode ocorrer quando as outras linhas já tiverem
+    // o reembolso confirmado e nenhuma emissão/cancelamento estiver pendente.
+    const ready=entries.every(t=>{
+      const status=normalizedStatus(t.status);
+      return status==='emitido' || status==='reembolsado integralmente';
+    });
+    if(!ready || !entries.some(t=>normalizedStatus(t.status)==='reembolsado integralmente'))
+      throw new Error('E-mail parcial bloqueado: existem passageiros sem resolução definitiva');
+    if(!emitted.length) return null;
+  } else if(emitted.length!==entries.length) {
+    console.log('[Email][Group] aguardando recuperação, não enviar mensagem incompleta', {
+      paymentId:payment.id, issued:emitted.length, total:entries.length
+    });
+    return null;
+  }
+  const originalIds=new Set((bilhetes||[]).map(x=>String(x.numPassagem||'')));
+  const allIds=new Set(emitted.map(x=>String(x.numPassagem||'')));
+  if(allIds.size!==emitted.length)
+    throw new Error('E-mail: bilhetes duplicados na compra');
+  if(!recoveryIssue && (originalIds.size!==allIds.size || [...allIds].some(n=>!originalIds.has(n)))) {
+    // O agregador inicial pode disparar depois do recovery. Não enviar um
+    // segundo e-mail incompleto com somente os bilhetes da primeira tentativa.
+    console.log('[Email][Group] lote original incompleto; email consolidado será enviado pelo recovery', {paymentId:payment.id});
+    return null;
+  }
+
+  if(!recoveryIssue) {
+    if(emailAttachments.length !== emitted.length)
+      throw new Error('E-mail: quantidade de PDFs diferente dos bilhetes da compra');
+    return {bilhetes,arquivos,emailAttachments};
+  }
+
+  const byNumber=new Map((bilhetes||[]).map(t=>[String(t.numPassagem),t]));
+  const fileByNumber=new Map((arquivos||[]).map(f=>[String(f.numPassagem),f]));
+  const originals=Array.isArray(emailAttachments)?emailAttachments:[];
+  const fullBilhetes=[],fullArquivos=[],fullAnexos=[];
+  for(const e of emitted) {
+    const number=String(e.numPassagem);
+    const current=byNumber.get(number);
+    const registeredLink=String(e.linkBpe||'');
+    fullBilhetes.push(current || {
+      numPassagem:number, poltrona:e.poltrona,nomeCliente:e.nome,
+      origem:e.origem,destino:e.destino,origemNome:e.origem,destinoNome:e.destino,
+      dataViagem:e.dataViagem,horaPartida:e.horaPartida,
+      idaVolta:String(e.sentido||'').toLowerCase()==='volta'?'Volta':'Ida'
+    });
+    const file=fileByNumber.get(number);
+    fullArquivos.push(file || {numPassagem:number,driveUrl:registeredLink});
+    // O nome do PDF gerado contém '_NUMPASSAGEM_Ida.pdf', mas o nome do
+    // passageiro é variável. Não depender da ordem do array.
+    const currentAttachment=originals.find(a=>String(a.filename||'').includes('_'+number+'_'));
+    let contentBase64=currentAttachment?.contentBase64;
+    if(!contentBase64) {
+      const buf=await readPreviouslyIssuedPdf(registeredLink);
+      contentBase64=buf.toString('base64');
+    }
+    fullAnexos.push({filename:currentAttachment?.filename || 'bilhete_'+number+'.pdf',contentBase64});
+  }
+  if(fullAnexos.length!==emitted.length)
+    throw new Error('E-mail: um ou mais PDFs não puderam ser recuperados');
+  return {bilhetes:fullBilhetes,arquivos:fullArquivos,emailAttachments:fullAnexos};
+}
+
+// Notificação de reembolso parcial: os bilhetes já emitidos continuam
+// válidos e devem ser enviados mesmo que outra poltrona da compra tenha
+// sido reembolsada. Nunca aciona uma nova venda Praxio ou novo estorno.
+async function sendIssuedTicketsAfterPartialRefund({payment, reference, buyerEmail, refundedAmount}) {
+  const {entries}=await sheetsFindByRef(reference);
+  const normalize=v=>String(v||'').trim().toLowerCase();
+  const email=normalize(buyerEmail);
+  const emails=new Set(entries.map(e=>normalize(e.email)).filter(Boolean));
+  if(!email || !emails.has(email))
+    throw new Error('E-mail do reembolso difere do registrado na compra');
+  const emailBundle=await resolvePurchaseEmailBundle({
+    payment, bilhetes:[], arquivos:[], emailAttachments:[],
+    recoveryIssue:true,allowRefunded:true
+  });
+  if(!emailBundle) {
+    console.log('[Email][PartialRefund] nenhum bilhete ativo para enviar', {paymentId:payment.id});
+    return {sent:false,reason:'no-active-tickets'};
+  }
+  const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+  const brl=value=>Number(value||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const {bilhetes,arquivos,emailAttachments}=emailBundle;
+  const list=bilhetes.map(b=>{
+    const file=arquivos.find(a=>String(a.numPassagem)===String(b.numPassagem));
+    const href=String(file?.driveUrl||file?.pdfLocal||'');
+    const safeLink=/^https:\/\/drive\.google\.com\//.test(href)
+      ? '<a href="'+escapeHtml(href)+'">Consultar PDF</a>' : '';
+    return '<li><strong>Bilhete '+escapeHtml(b.numPassagem)+'</strong> — Poltrona '+
+      escapeHtml(b.poltrona||'—')+', passageiro '+escapeHtml(b.nomeCliente||'')+
+      '<div>'+escapeHtml(b.origemNome||b.origem||'')+' → '+escapeHtml(b.destinoNome||b.destino||'')+
+      ' • '+escapeHtml(b.dataViagem||'')+' '+escapeHtml(b.horaPartida||'')+' '+safeLink+'</div></li>';
+  }).join('');
+  const fromEmail=process.env.SUPPORT_FROM_EMAIL||process.env.SMTP_USER;
+  const fromName=process.env.SUPPORT_FROM_NAME||'Turin Transportes';
+  const html='<div style="font-family:Arial,sans-serif;font-size:15px;color:#173a2b">'+
+    '<h2>Seus bilhetes confirmados</h2>'+
+    '<p>A solicitação de reembolso da passagem que não pôde ser emitida foi processada.'+
+    ' Os bilhetes abaixo continuam válidos e seguem anexos.</p>'+
+    '<p><strong>Reembolso solicitado:</strong> '+brl(refundedAmount)+'</p>'+
+    '<p><strong>Bilhetes válidos ('+bilhetes.length+'):</strong></p><ul>'+list+'</ul>'+
+    '<p>Você pode consultar sua compra no site Turin Transportes.</p></div>';
+  const attachments=emailAttachments.map(a=>({filename:a.filename,contentBase64:a.contentBase64}));
+  if(attachments.length!==bilhetes.length)
+    throw new Error('E-mail parcial: quantidade de PDFs divergente dos bilhetes ativos');
+  await sendViaBrevoApi({
+    to:email,cc:fromEmail,fromEmail,fromName,
+    subject:'Seus bilhetes confirmados e reembolso parcial – Turin Transportes',
+    html,text:'Os bilhetes válidos estão anexos. Reembolso da passagem não emitida: '+brl(refundedAmount),
+    attachments
+  });
+  console.log('[Email][PartialRefund] bilhetes enviados', {
+    paymentId:payment.id,ticketCount:bilhetes.length,attachments:attachments.length
+  });
+  return {sent:true,count:bilhetes.length};
+}
+
 // ==== Agregador por compra (webhook/e-mail/Sheets) ====
 // groupId -> { timer, startedAt, base, bilhetes:[], arquivos:[], emailAttachments:[], expected, flushed }
 const AGGR = new Map();
@@ -2674,6 +2928,13 @@ setInterval(() => {
   }
 }, 60000);
 
+// Recuperação assistida: habilitada somente neste ambiente de testes.
+const seatRecovery = require('./seatRecovery')({
+  app, sheetsFindByRef, sheetsAuthRW, mpGetPayment, mpRefund, fetch,
+  logVendaFalha, notifyAdminVendaFalha, sendIssuedTicketsAfterPartialRefund,
+  praxioLogin, praxioVerificaDevolucao, praxioGravaDevolucao
+});
+
 app.post('/api/praxio/vender', async (req, res) => {
   const { mpPaymentId, passengers } = req.body || {};
 
@@ -2906,6 +3167,12 @@ app.post('/api/praxio/vender', async (req, res) => {
           return { status: 200, body: { ok: true, vendaResult: vRes, arquivos: arqs, recovered: true } };
         }
 
+        // Só a indisponibilidade confirmada oferece autoatendimento.
+        if (seatRecovery.isSeatError(praxioErr.message)) {
+          const recoverable = (await seatRecovery.markUnavailable(payment, passengers, praxioErr.message, { recovery: req.get('X-Source') === 'recovery' })) || req.get('X-Source') === 'recovery';
+          if (recoverable) return { status:409, body:{ok:false,code:'SEAT_UNAVAILABLE',error:'A poltrona ficou indisponível antes da emissão.'} };
+        }
+
         // Se continuou sem bilhete, relança o erro original
         throw praxioErr;
       }
@@ -2948,6 +3215,11 @@ app.post('/api/praxio/vender', async (req, res) => {
           errorMessage: msgPraxi,
         };
 
+        if (seatRecovery.isSeatError(msgPraxi)) {
+          const recoverable = (await seatRecovery.markUnavailable(payment, passengers, msgPraxi, { recovery: req.get('X-Source') === 'recovery' })) || req.get('X-Source') === 'recovery';
+          if (recoverable) return { status:409, body:{ok:false,code:'SEAT_UNAVAILABLE',error:'A poltrona ficou indisponível antes da emissão.'} };
+        }
+
         await logVendaFalha(erroEntry);
         await notifyAdminVendaFalha(erroEntry);
 
@@ -2977,17 +3249,35 @@ app.post('/api/praxio/vender', async (req, res) => {
       });
 
 
+      let partialIssueSeats = [];
       if (errosPoltronas.length) {
         // ✅ NOVO: permitir venda parcial (não derrubar tudo se pelo menos 1 bilhete saiu)
         const okPoltronas = lista.filter(p => p?.Sucesso === true && Number(p?.NumPassagem || 0) > 0);
         const badPoltronas = errosPoltronas;
 
         if (okPoltronas.length > 0) {
+          partialIssueSeats = okPoltronas.map(p=>String(p.Poltrona));
           console.warn('[Praxio][Venda] Venda parcial: algumas poltronas falharam:', badPoltronas.map(x => ({
             poltrona: x?.Poltrona,
             idErro: x?.IdErro,
             msg: x?.Mensagem || x?.MensagemDetalhada
           })));
+
+          // Persiste a falha das poltronas NÃO emitidas para permitir recovery.
+          // Preserva as emitidas; o cliente poderá continuar ou reembolsar o grupo.
+          const failureText = badPoltronas.map(p => `Poltrona ${p.Poltrona || p.NumeroPoltrona || ''} Motivo: ${p.Mensagem || p.MensagemDetalhada || 'Poltrona indisponível'}`).join('; ');
+          if (seatRecovery.isSeatError(failureText)) {
+            try {
+              const marked = await seatRecovery.markUnavailable(payment, passengers, failureText, { recovery: req.get('X-Source') === 'recovery' });
+              console.log('[Recovery][Partial] poltronas indisponíveis registradas:', marked);
+            } catch (e) {
+              console.error('[Recovery][Partial] falha ao persistir indisponibilidade:', e.message);
+              await notifyAdminVendaFalha({
+                stage: 'partial-seat-recovery', mpPaymentId,
+                userEmail, errorMessage: e.message, passengers, schedule
+              });
+            }
+          }
 
           // ⚠️ importantíssimo: continuar o fluxo (PDF/email/Sheets) APENAS com as poltronas OK
           lista.length = 0;
@@ -3008,6 +3298,11 @@ app.post('/api/praxio/vender', async (req, res) => {
             .filter(Boolean)
             .join(' | ');
 
+          // Não converter essa condição conhecida em erro HTTP 500 genérico.
+          if (seatRecovery.isSeatError(msgs)) {
+            const recoverable = (await seatRecovery.markUnavailable(payment, passengers, msgs, { recovery: req.get('X-Source') === 'recovery' })) || req.get('X-Source') === 'recovery';
+            if (recoverable) return { status:409, body:{ok:false,code:'SEAT_UNAVAILABLE',error:'A poltrona ficou indisponível antes da emissão.'} };
+          }
           throw new Error(
             `Erro na venda de uma ou mais poltronas: ${msgs || 'motivo não informado'}`
           );
@@ -3102,6 +3397,42 @@ app.post('/api/praxio/vender', async (req, res) => {
 
       }
 
+      // REGISTRO DA EMISSÃO: persistir ANTES de responder HTTP 200.
+      // A Praxio já vendeu; o Sheets precisa refletir a emissão sem depender
+      // do agregador de email, dos anexos ou de um futuro timeout.
+      const persistence = await sheetsAppendBilhetes({
+        bilhetes: bilhetesPayload.map(b=>({
+          ...b,
+          driveUrl: arquivos.find(a=>String(a.numPassagem)===String(b.numPassagem))?.driveUrl
+            || arquivos.find(a=>String(a.numPassagem)===String(b.numPassagem))?.pdfLocal || ''
+        })),
+        schedule,
+        payment,
+        userEmail: getLoginEmail(req,payment,vendaResult) || userEmail,
+        userPhone,
+        idaVoltaDefault: idaVolta
+      });
+      if (!persistence?.ok ||
+          Number(persistence.updated || 0) + Number(persistence.appended || 0) !== bilhetesPayload.length) {
+        const errText='Bilhete emitido na Praxio, mas não conciliado no Sheets: '+JSON.stringify(persistence);
+        console.error('[Sheets][Issue] CRITICAL',errText);
+        await notifyAdminVendaFalha({
+          stage:'ticket-issued-unreconciled',mpPaymentId,userEmail,userPhone,
+          errorMessage:errText,
+          bilhetes:bilhetesPayload.map(b=>({numPassagem:b.numPassagem,poltrona:b.poltrona}))
+        });
+        // A venda NÃO deve ser repetida automaticamente após um resultado
+        // incerto na conciliação. O suporte precisa reconciliar o bilhete.
+        return {status:502,body:{
+          ok:false,code:'ISSUED_UNRECONCILED',
+          error:'A Praxio emitiu o bilhete, mas o registro ainda precisa de conferência. Não repita a compra.'
+        }};
+      }
+      console.log('[Sheets][Issue] emissão conciliada antes da resposta', {
+        mpPaymentId, tickets:bilhetesPayload.map(b=>b.numPassagem),
+        updated:persistence.updated, appended:persistence.appended
+      });
+
       // --- FRAGMENTO a enfileirar no agregador ---
       const loginEmail = getLoginEmail(req, payment, vendaResult);
       const loginPhone = getLoginPhone(req, payment, vendaResult);
@@ -3109,7 +3440,7 @@ app.post('/api/praxio/vender', async (req, res) => {
       // contagem esperada (qtd de bilhetes desta venda)
       // Se vier totalExpected no body (webhook), usa ele pois é o GLOBAL (ida+volta)
       const expectedCount =
-        req.body?.totalExpected ||
+        (partialIssueSeats.length ? partialIssueSeats.length : Number(req.body?.totalExpected || 0)) ||
         (vendaResult?.ListaPassagem?.length || 0) ||
         (passengers?.length || 0);
 
@@ -3123,7 +3454,14 @@ app.post('/api/praxio/vender', async (req, res) => {
       };
 
       // chave por compra
-      const groupId = String(mpPaymentId || payment?.id || payment?.external_reference || computeGroupId(req, payment, schedule));
+      // Uma recuperação utiliza o pagamento original, mas é uma emissão DISTINTA.
+      // O agregador original já foi finalizado e não pode bloquear o novo bilhete.
+      const originalGroupId = String(mpPaymentId || payment?.id || payment?.external_reference || computeGroupId(req, payment, schedule));
+      const recoveryIssue = req.get('X-Source') === 'recovery';
+      const recoverySeats = [...new Set(bilhetesPayload.map(b => String(b.poltrona || '').trim()))].sort();
+      const groupId = recoveryIssue
+        ? originalGroupId + ':recovery:' + recoverySeats.join('-')
+        : originalGroupId;
 
         
       // enfileira; quando o AGGR perceber que chegou tudo (ou estourar timeout), ele dispara 1x
@@ -3132,35 +3470,53 @@ app.post('/api/praxio/vender', async (req, res) => {
         const { payment, schedule, userEmail, userPhone, idaVolta } = base;
 
         // trava para evitar e-mail/Sheets duplicados por pagamento
-        if (!guardOnce(String(payment?.id || groupId))) {
-          console.warn('[Idem] envio já realizado para', payment?.id || groupId);
+        // A compra original e cada recuperação possuem chaves separadas;
+        // uma nova poltrona não reutiliza a trava de emissão do pagamento.
+        if (!guardOnce(groupId)) {
+          console.warn('[Idem] finalização já realizada para', groupId);
           return;
         }
 
-        // 1) E-MAIL único com todos os anexos
+        // Para uma recuperação, juntar os PDFs da compra original (arquivados
+        // no Drive) aos PDFs emitidos agora, antes de notificar o comprador.
+        // Não enviar e-mail parcial enquanto existir poltrona não resolvida.
+        let emailBundle=null;
+        try {
+          emailBundle=await resolvePurchaseEmailBundle({
+            payment,bilhetes,arquivos,emailAttachments,recoveryIssue
+          });
+        } catch(error) {
+          console.error('[Email][Group] não foi possível preparar todos os PDFs:',error.message);
+          await notifyAdminVendaFalha({
+            stage:'purchase-email-consolidation',mpPaymentId:payment.id,
+            errorMessage:error.message,
+            tickets:bilhetes.map(b=>b.numPassagem)
+          }).catch(()=>{});
+        }
         const to = userEmail || pickBuyerEmail({ req, payment, vendaResult, fallback: null });
         const emailForSheets = to || userEmail || '';
 
-        if (to) {
+        if (to && emailBundle) {
+          const {bilhetes:emailBilhetes,arquivos:emailArquivos,emailAttachments:emailAnexos}=emailBundle;
           const appName = process.env.APP_NAME || 'Turin Transportes';
           const fromName = process.env.SUPPORT_FROM_NAME || 'Turin Transportes';
           const fromEmail = process.env.SUPPORT_FROM_EMAIL || process.env.SMTP_USER;
 
           // Descobre se há múltiplas rotas
-          const pairs = new Set(bilhetes.map(b => `${b.origemNome || b.origem || ''}→${b.destinoNome || b.destino || ''}`));
-          const headerRoute = (pairs.size === 1 && bilhetes.length)
+          const pairs = new Set(emailBilhetes.map(b => `${b.origemNome || b.origem || ''}→${b.destinoNome || b.destino || ''}`));
+          const headerRoute = (pairs.size === 1 && emailBilhetes.length)
             ? [...pairs][0]
             : 'Múltiplas rotas (veja por bilhete)';
 
           const valorTotalBRL = (Number(payment?.transaction_amount || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
           // lista <li> com rota/data/hora por bilhete e link
-          const listaHtml = bilhetes.map((b, i) => {
+          const listaHtml = emailBilhetes.map((b, i) => {
             const sentido = b?.idaVolta || (String(idaVolta).toLowerCase() === 'volta' ? 'Volta' : 'Ida');
             const rotaStr = `${b.origemNome || b.origem || '—'} → ${b.destinoNome || b.destino || '—'}`;
             const nome = (b?.nomeCliente || '').toString().trim() || '(passageiro não informado)';
-            const link = (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
-              || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
+            const link = (emailArquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
+              || (emailArquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
               || '';
             const linkHtml = link ? `<div style="margin:2px 0"><a href="${link}" target="_blank" rel="noopener">Abrir bilhete ${i + 1}</a></div>` : '';
             return `<li style="margin:10px 0">
@@ -3188,11 +3544,11 @@ app.post('/api/praxio/vender', async (req, res) => {
             'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
             `Rota(s): ${headerRoute}`, `Valor total: ${valorTotalBRL}`,
             '', 'Bilhetes:',
-            ...bilhetes.map((b, i) => ` - ${b.numPassagem} (${(b.idaVolta || 'ida')}) ${b.origemNome || b.origem || ''} -> ${b.destinoNome || b.destino || ''} ${b.dataViagem || ''} ${b.horaPartida || ''}`)
+            ...emailBilhetes.map((b, i) => ` - ${b.numPassagem} (${(b.idaVolta || 'ida')}) ${b.origemNome || b.origem || ''} -> ${b.destinoNome || b.destino || ''} ${b.dataViagem || ''} ${b.horaPartida || ''}`)
           ].join('\n');
 
 
-          const attachmentsBrevo = emailAttachments.map((a) => ({
+          const attachmentsBrevo = emailAnexos.map((a) => ({
             filename: a.filename,
             contentBase64: a.contentBase64
           }));
@@ -3217,43 +3573,19 @@ app.post('/api/praxio/vender', async (req, res) => {
               '[Email Brevo] CRITICAL falha ao enviar:',
               err?.message || err
             );
+            await notifyAdminVendaFalha({
+              stage:'purchase-email-delivery',mpPaymentId:payment.id,
+              errorMessage:err.message,
+              bilhetes:emailBilhetes.map(b=>b.numPassagem)
+            }).catch(()=>{});
           }
 
         } else {
-          console.warn('[Email] comprador sem e-mail. Pulando envio.');
+          console.warn('[Email] envio adiado ou sem destinatário.');
         }
 
-        // 2) SHEETS – agora limpa a pré-reserva da mesma Referencia
-
-
-        // 2) SHEETS – agora limpa a pré-reserva da mesma Referencia
-        try {
-          const ref = payment?.external_reference || null;
-          if (ref) {
-            console.log('[Sheets] limpando pré-reservas da referência', ref);
-            await sheetsDeleteRowsByRef(ref);
-          }
-        } catch (err) {
-          console.error('[Sheets] erro ao limpar pré-reserva:', err?.message || err);
-        }
-
-        // 3) SHEETS – 1 linha por bilhete (como já fazia, reaproveitando a função existente)
-        await sheetsAppendBilhetes({
-          spreadsheetId: process.env.SHEETS_BPE_ID,
-          range: process.env.SHEETS_BPE_RANGE || 'BPE!A:AK',
-          bilhetes: bilhetes.map(b => ({
-            ...b,
-            driveUrl: (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.driveUrl)
-              || (arquivos.find(a => String(a.numPassagem) === String(b.numPassagem))?.pdfLocal)
-              || ''
-          })),
-          schedule,
-          payment,
-          userEmail: emailForSheets,
-          userPhone,
-          idaVoltaDefault: idaVolta
-        });
-
+        // A emissão já foi persistida sincronicamente antes da resposta da
+        // Praxio. O agregador processa somente o email e o log consolidado.
         await logVendaSucesso({
           mpPaymentId: String(payment?.id || ''),
           external_reference: String(payment?.external_reference || ''),
