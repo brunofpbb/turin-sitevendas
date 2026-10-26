@@ -391,14 +391,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           external_reference: externalReference,
           userEmail,
           userPhone,
-          bilhetes
+          bilhetes,
+          expectedTotal: Number(cartTotal().toFixed(2))
         })
       });
       const result=await response.json().catch(()=>({}));
-      if (!response.ok || result.ok!==true || Number(result.appended)!==bilhetes.length)
+      if (!response.ok || result.ok!==true || Number(result.appended)!==bilhetes.length) {
+        if ([409,422].includes(response.status)) {
+          const validationError = new Error(String(result.error || 'Confira os dados da viagem e tente novamente.'));
+          validationError.checkoutValidation = true;
+          throw validationError;
+        }
         throw new Error('Falha ao registrar os bilhetes antes do pagamento.');
+      }
     } catch (error) {
       console.error('[pre-reserva] pagamento não será iniciado:',error);
+      if (error?.checkoutValidation) throw error;
       throw new Error('Não foi possível preparar a compra. Nenhum pagamento foi iniciado. Tente novamente em instantes.');
     }
   }
@@ -437,6 +445,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Falha de comunicação/resultado incerto, porém, interrompe o fluxo para
   // evitar qualquer possibilidade de segunda emissão.
   async function venderPraxioApósAprovado(paymentId) {
+    const issueStartedAt=performance.now();
+    console.log('[Card][RecoveryTiming] Início da emissão por passageiro', {paymentId});
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const results = [];
     const failedSeats = [];
@@ -457,11 +467,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         idaVolta:inferLegType(it,i,order),totalExpected
       };
       let response, result;
+      const requestStartedAt=performance.now();
+      console.log('[Card][RecoveryTiming] Iniciando bilhete', {trecho:body.idaVolta,indice:i+1,total:order.length});
       try {
         response=await fetch('/api/praxio/vender',{
           method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
         });
         result=await response.json();
+        console.log('[Card][RecoveryTiming] Resposta da emissão', {trecho:body.idaVolta,indice:i+1,ms:Math.round(performance.now()-requestStartedAt),http:response.status,code:result?.code||null});
       } catch(error) {
         uncertain={seat,reason:error?.message || 'Falha de comunicação'};
         console.error('[Card][Issue] Resultado inconclusivo; interrompendo demais vendas:',uncertain);
@@ -795,8 +808,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (data.status === 'approved') {
               showOverlayOnce('Pagamento confirmado!', 'Conferindo as poltronas e emitindo bilhetes…');
               const paymentId=String(data.id||data?.payment?.id||'');
+              const recoveryFlowStart=performance.now();
+              const flowCheckpoint=(stage)=>console.info('[Card][RecoveryTiming]',stage,Math.round(performance.now()-recoveryFlowStart)+'ms',{paymentId});
               try {
                 const venda=await venderPraxioApósAprovado(paymentId);
+                flowCheckpoint('Emissão Praxio + PDF/Drive + Sheets concluída');
                 if(venda.uncertain){
                   console.error('[Card] Resultado incerto; não concluir automaticamente:',venda.uncertain);
                 } else {
@@ -807,9 +823,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     body:JSON.stringify({paymentId,reference:idem})
                   });
                   const finishData=await finishResponse.json().catch(()=>({}));
+                  flowCheckpoint('Conciliação do lote consultada');
                   if(!finishResponse.ok||!finishData.ok)
                     console.error('[Card] Conciliação incompleta; manter acompanhamento:',finishData);
-                  if(venda.issuedCount>0 && finishResponse.ok){
+                  // Em emissão parcial, as linhas já estão conciliadas para o recovery.
+                  // Não prender o cliente aguardando PDFs/e-mail do lote emitido.
+                  if(venda.issuedCount>0 && finishResponse.ok && !venda.failedSeats?.length){
                     const flush=await fetch('/api/mp/wait-flush?paymentId='+encodeURIComponent(paymentId));
                     const status=await flush.json().catch(()=>({}));
                     if(!status.flushed)console.warn('[Card] Aguardando conciliação final:',status);
@@ -823,6 +842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     body:JSON.stringify({paymentId,reference:idem,email:body.payer.email})
                   });
                   if(r.ok)state=await r.json();
+                  flowCheckpoint('Estado de recovery consultado');
                 }catch(error){console.warn('[Card] Consulta do estado falhou:',error);}
 
                 hideOverlayIfShown();
