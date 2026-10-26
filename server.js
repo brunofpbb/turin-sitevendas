@@ -659,7 +659,46 @@ async function sheetsAppendBilhetes({
 
 // === Pré-reserva no Sheets (1 linha por bilhete, antes do pagamento) ===
 // [REFACTORED] Agora usa Mapeamento Dinâmico de Colunas para evitar erros se a planilha mudar
+// Evita append duplicado quando o navegador repete a pré-reserva da mesma
+// compra. A fila é por referência, não bloqueia compradores diferentes.
+// Se houver múltiplas réplicas, migrar esse lock para transação com índice
+// único no armazenamento persistente (Sheets não fornece unicidade).
+const preReservaLocks = new Map();
+async function serializePreReserva(ref, run) {
+  const prior = preReservaLocks.get(ref) || Promise.resolve();
+  let unlock;
+  const current = new Promise(resolve => { unlock = resolve; });
+  preReservaLocks.set(ref, current);
+  await prior;
+  try { return await run(); }
+  finally {
+    unlock();
+    if (preReservaLocks.get(ref) === current) preReservaLocks.delete(ref);
+  }
+}
+
+function preReservaDepartureMs(dateInput, timeInput) {
+  const input = String(dateInput || '').trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(input)
+    ? input
+    : (/^\d{2}\/\d{2}\/\d{4}$/.test(input)
+      ? input.slice(6)+'-'+input.slice(3,5)+'-'+input.slice(0,2) : '');
+  const time = String(timeInput || '').trim();
+  const matched = time.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/) || time.match(/^(\d{2})(\d{2})$/);
+  if (!date || !matched) return NaN;
+  const hour = Number(matched[1]), minute = Number(matched[2]);
+  if (hour > 23 || minute > 59) return NaN;
+  const timestamp = Date.parse(date+'T'+String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0')+':00-03:00');
+  if (!Number.isFinite(timestamp)) return NaN;
+  // Não aceitar datas normalizadas automaticamente (ex.: 31 de fevereiro).
+  const local = new Date(timestamp - 3 * 3600000);
+  if (local.toISOString().slice(0,10) !== date) return NaN;
+  return timestamp;
+}
+
 app.post('/api/sheets/pre-reserva', async (req, res) => {
+  const reference = String(req.body?.external_reference || '').trim();
+  return serializePreReserva(reference || 'sem-referencia', async () => {
   try {
     const {
       external_reference,
@@ -772,6 +811,63 @@ app.post('/api/sheets/pre-reserva', async (req, res) => {
       return row;
     });
 
+    // Validar o horário real da partida no servidor ANTES de permitir criar
+    // o pagamento. O frontend só validava a data, não a hora.
+    for (const ticket of bilhetes) {
+      const departure = preReservaDepartureMs(ticket.dataViagem || ticket.date, ticket.horaPartida);
+      if (!Number.isFinite(departure)) {
+        return res.status(422).json({ok:false,error:'Não foi possível confirmar o horário de embarque. Selecione novamente a viagem.'});
+      }
+      // Ônibus em trânsito: permitir iniciar a compra até 10 minutos após
+      // o horário programado de embarque da localidade do passageiro.
+      // A igualdade com o limite ainda é permitida.
+      const SELLING_GRACE_PERIOD_MS = 10 * 60 * 1000;
+      if (Date.now() > departure + SELLING_GRACE_PERIOD_MS) {
+        return res.status(409).json({ok:false,error:'O prazo de venda desta viagem terminou (10 minutos após o horário de embarque). Selecione outra viagem antes de pagar.'});
+      }
+    }
+
+    const expectedTotal = Number(req.body?.expectedTotal);
+    const actualTotal = bilhetes.reduce((n,b)=>n+Number(String(b.valor ?? b.price ?? 0).replace(',','.')),0);
+    if (!Number.isFinite(actualTotal) || actualTotal<=0 ||
+        (req.body?.expectedTotal != null && (!Number.isFinite(expectedTotal) || Math.abs(actualTotal-expectedTotal)>0.01))) {
+      return res.status(409).json({ok:false,error:'O valor dos bilhetes não corresponde ao valor da compra. Atualize a página e tente novamente.'});
+    }
+
+    // Duas pessoas podem escolher a mesma numeração somente em viagens
+    // diferentes (ida e volta). Mesmo trecho + poltrona nunca pode repetir.
+    const reservationKey = b => [
+      b.idViagem, b.idOrigem, b.idDestino, b.dataViagem || b.date,
+      String(b.horaPartida || '').slice(0,5), b.poltrona || b.seatNumber
+    ].map(v=>String(v ?? '').trim()).join('|');
+    const incomingKeys = bilhetes.map(reservationKey);
+    if (new Set(incomingKeys).size !== incomingKeys.length) {
+      return res.status(409).json({ok:false,error:'A mesma poltrona foi incluída duas vezes na mesma viagem. Revise sua seleção.'});
+    }
+
+    // Retry com a mesma referência não pode gerar novas linhas. Comparar
+    // TODOS os dados relevantes, para não misturar duas compras diferentes.
+    const rowsResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId, range: `${baseTab}!A:BZ`
+    });
+    const existingRows = (rowsResponse.data.values || []).slice(1)
+      .filter(row => col.ref>=0 && String(row[col.ref] || '').trim()===String(external_reference).trim());
+    if (existingRows.length) {
+      const rowIdentity = row => [
+        col.idViagem, col.idOrigem, col.idDestino, col.dataViagem,
+        col.horaPartida, col.poltrona, col.cpf, col.valor
+      ].map(idx => String(idx>=0?row[idx]??'':'').trim()).join('|');
+      const valid = existingRows.length===newRows.length &&
+        existingRows.map(rowIdentity).sort().every((id,i)=>
+          id===newRows.map(rowIdentity).sort()[i]);
+      if (valid) {
+        console.log('[Sheets][pre-reserva] referência já registrada; evitando append duplicado');
+        return res.json({ok:true,appended:newRows.length,reused:true});
+      }
+      console.error('[Sheets][pre-reserva] referência existente divergente; operação bloqueada', {rows:existingRows.length,expected:newRows.length});
+      return res.status(409).json({ok:false,error:'Já existe um registro divergente para esta compra. Nenhuma nova cobrança foi iniciada; entre em contato com o suporte.'});
+    }
+
     // 3) Append (usando dynamic rows)
     await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -791,6 +887,7 @@ app.post('/api/sheets/pre-reserva', async (req, res) => {
       error: e?.message || String(e)
     });
   }
+  });
 });
 
 
@@ -1310,6 +1407,39 @@ async function emitirBilhetesViaWebhook(payment) {
   const { entries } = await sheetsFindByRef(extRef);
   if (!entries || !entries.length) {
     console.log('[Webhook][Emit] nenhuma linha encontrada no Sheets para', extRef);
+    return;
+  }
+
+  // Verificação defensiva antes da emissão: nunca multiplicar passageiros
+  // por pré-reservas idênticas, nem tentar emitir valor superior ao pagamento.
+  // Em caso de inconsistência, parar e solicitar conciliação humana. Nunca
+  // apagar/alterar automaticamente linhas ou pedir novo pagamento ao cliente.
+  const preReservaIdentity = e => [e.idViagem,e.idOrigem,e.idDestino,e.dataViagem,
+    e.horaPartida,e.poltrona].map(v=>String(v ?? '').trim()).join('|');
+  const identities = entries.map(preReservaIdentity);
+  const duplicateSeats = new Set(identities).size !== identities.length;
+  const paidAmount = Math.round(Number(payment.transaction_amount || 0)*100);
+  const sheetAmounts = entries.map(e=>Number(String(e.valor||'0').trim().replace(',','.')));
+  const totalSeatsAmount = Math.round(sheetAmounts.reduce((sum,v)=>sum+v,0)*100);
+  const totalsMismatch = sheetAmounts.some(v=>!Number.isFinite(v)||v<=0)
+    || !Number.isFinite(paidAmount) || paidAmount<=0 || totalSeatsAmount!==paidAmount;
+  if (duplicateSeats || totalsMismatch) {
+    const errorMessage = 'Pagamento aprovado sem emissão: pré-reserva duplicada ou valor inconsistente; exige conciliação manual';
+    console.error('[Webhook][Emit][Conciliação] BLOQUEADO', {
+      paymentId:String(payment.id),reference:extRef,rows:entries.length,
+      duplicateSeats,paidAmount:paidAmount/100,rowsTotal:totalSeatsAmount/100
+    });
+    // Travar novo processamento do webhook para evitar alertas repetidos.
+    // Não altera valor pago nem números de bilhetes existentes.
+    for (const entry of entries.filter(e=>!e.numPassagem)) {
+      try { await sheetsUpdateStatus(entry.rowIndex - 1,'Análise manual'); }
+      catch (error) { console.error('[Webhook][Conciliação] não foi possível sinalizar linha:',error?.message||error); }
+    }
+    const report = {mpPaymentId:String(payment.id),externalReference:extRef,
+      errorMessage,duplicateSeats,rows:entries.length,
+      paidAmount:paidAmount/100,rowsTotal:totalSeatsAmount/100};
+    await logVendaFalha(report);
+    await notifyAdminVendaFalha(report);
     return;
   }
 
@@ -2497,7 +2627,33 @@ function queueUnifiedSend(groupId, fragment, doFlushCb) {
     const haveAllBilhetes = e.expected > 0 && e.bilhetes.length >= e.expected;
     const haveAllAnexos = e.expected > 0 && e.emailAttachments.length >= e.expected;
 
-    if (!waited && !(haveAllBilhetes && haveAllAnexos)) return;
+    if (!waited && !(haveAllBilhetes && haveAllAnexos)) {
+      // Uma compra parcialmente emitida nunca produzirá anexos para os trechos
+      // com SEAT_UNAVAILABLE. Conferir o estado persistido antes de ajustar
+      // o lote; não confundir poltronas idênticas de ida e volta.
+      if (e.base?.payment?.external_reference && e.bilhetes.length && e.emailAttachments.length >= e.bilhetes.length) {
+        try {
+          const {entries} = await sheetsFindByRef(String(e.base.payment.external_reference));
+          const statusOf = row => String(row.status || '').trim().toLowerCase();
+          const settled = entries.length >= e.expected && entries.every(row =>
+            statusOf(row) === 'poltrona indisponível' ||
+            (statusOf(row) === 'emitido' && String(row.numPassagem || '').trim())
+          );
+          const failed = entries.some(row => statusOf(row) === 'poltrona indisponível');
+          if (settled && failed && entries.filter(row => statusOf(row) === 'emitido').length === e.bilhetes.length) {
+            console.log('[AGGR] lote parcial confirmado; liberando conciliação sem aguardar bilhetes impossíveis', {expected:e.expected,issued:e.bilhetes.length});
+            e.expected = e.bilhetes.length;
+          }
+        } catch (error) {
+          console.warn('[AGGR] consulta de lote parcial indisponível:', error.message);
+        }
+      }
+      if (Date.now() - e.startedAt < AGGR_MAX_WAIT_MS &&
+          !(e.expected > 0 && e.bilhetes.length >= e.expected && e.emailAttachments.length >= e.expected)) {
+        e.timer = setTimeout(tryFlush, AGGR_DEBOUNCE_MS);
+        return;
+      }
+    }
 
     e.flushed = true;
     clearTimeout(e.timer); e.timer = null;
@@ -3542,14 +3698,24 @@ app.post('/api/praxio/vender', async (req, res) => {
        </p>
        <p><b>Bilhetes:</b></p>
        <ul style="margin-top:8px">${listaHtml}</ul>
-       <p style="color:#666;font-size:12px;margin-top:16px">Este é um e-mail automático. Em caso de dúvidas, responda a esta mensagem.</p>
+       <div style="margin-top:18px;padding-top:14px;border-top:1px solid #ddd;font-size:13px;line-height:1.5;text-align:center">
+         <p style="margin:0 0 8px"><b>Informações importantes — Política de Cancelamento</b></p>
+         <p>Em Minas Gerais, para os usuários do transporte intermunicipal, a Lei estadual 13.655, de 2000, e o Decreto 44.603, de 2007, estipulam o prazo de até <b>12 horas antes do embarque</b> para que o passageiro cancele e tenha direito ao reembolso ou remarque sua passagem.</p>
+         <p><b>Para solicitar o cancelamento do seu bilhete, observada a política acima, acesse:</b></p>
+         <p><b><a href="https://vendas.turintransportes.com/" style="color:#005b28;text-decoration:underline">https://vendas.turintransportes.com/</a></b></p>
+         <p><b>Entre com seu e-mail e, em Minhas compras, selecione o bilhete que deseja cancelar.</b></p>
+       </div>
      </div>`;
 
           const text = [
             'Olá,', `Recebemos seu pagamento em ${appName}. Bilhetes anexos.`,
             `Rota(s): ${headerRoute}`, `Valor total: ${valorTotalBRL}`,
             '', 'Bilhetes:',
-            ...emailBilhetes.map((b, i) => ` - ${b.numPassagem} (${(b.idaVolta || 'ida')}) ${b.origemNome || b.origem || ''} -> ${b.destinoNome || b.destino || ''} ${b.dataViagem || ''} ${b.horaPartida || ''}`)
+            ...emailBilhetes.map((b, i) => ` - ${b.numPassagem} (${(b.idaVolta || 'ida')}) ${b.origemNome || b.origem || ''} -> ${b.destinoNome || b.destino || ''} ${b.dataViagem || ''} ${b.horaPartida || ''}`),
+            '', 'Informações importantes — Política de Cancelamento:',
+            'Em Minas Gerais, a Lei estadual 13.655/2000 e o Decreto 44.603/2007 estipulam o prazo de até 12 horas antes do embarque para cancelar com direito ao reembolso ou remarcar a passagem.',
+            'Para solicitar o cancelamento, observada a política acima, acesse https://vendas.turintransportes.com/',
+            'Entre com seu e-mail e, em Minhas compras, selecione o bilhete que deseja cancelar.'
           ].join('\n');
 
 
