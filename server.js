@@ -3850,6 +3850,74 @@ app.get('*', (req, res, next) => {
   next();
 });
 
+// Conciliação periódica dos PIX que podem ter perdido o webhook.
+// Por segurança, inicia em modo diagnóstico: nenhuma venda Praxio ou
+// reembolso é realizado enquanto a verificação de idempotência persistente
+// e eventual emissão anterior não forem comprovadas.
+// RECON_PIX_ENABLED=false desliga inclusive as consultas.
+if (String(process.env.RECON_PIX_ENABLED || 'true').toLowerCase() === 'true') {
+  const createPixReconciler = require('./reconciliation/pixReconciliation');
+  const pixRecon = createPixReconciler({
+    sheets: sheetsAuthRW,
+    spreadsheetId: process.env.SHEETS_BPE_ID,
+    sheetTab: (process.env.SHEETS_BPE_RANGE || '').split('!')[0] || 'BPE',
+    fetch,
+    accessToken: process.env.MP_ACCESS_TOKEN,
+    intervalMs: 2 * 60 * 1000,
+    lookbackHours: 72,
+    maxRefs: 40,
+    // Intencionalmente bloqueado até existir garantia de idempotência
+    // persistente e verificação de emissão anterior na Praxio.
+    autoIssue: false,
+    processPayment: emitirBilhetesViaWebhook,
+    onApproved: async ({reference,payment,rows}) => {
+      // Mesmo sem emissão, a planilha deve refletir o pagamento real.
+      // O status do bilhete permanece pendente, sem inventar NumPassagem.
+      const updated=await sheetsUpdatePaymentStatusByRef(reference,payment);
+      if (!updated?.ok || updated.updated === 0)
+        throw new Error('Não foi possível registrar aprovação financeira no Sheets');
+      console.warn('[PIX][Recon] PIX pago e sem bilhete; necessita conferência Praxio', {
+        reference, paymentId:String(payment.id), seats:rows.length
+      });
+      try {
+        await notifyAdminVendaFalha({
+          stage:'pix-reconciliation-manual',
+          mpPaymentId:String(payment.id),
+          externalReference:reference,
+          errorMessage:'PIX aprovado e sem NumPassagem no Sheets; conferir emissão anterior na Praxio antes de reemitir',
+          expectedTickets:rows.length
+        });
+      } catch (error) {
+        console.error('[PIX][Recon] falha no alerta ao suporte',error?.message||error);
+      }
+    }
+  });
+  pixRecon.start();
+
+  // Disparo manual opcional para casos antigos (não expor sem segredo robusto).
+  if (process.env.RECON_PIX_ADMIN_TOKEN && process.env.RECON_PIX_ADMIN_TOKEN.length >= 32) {
+    app.post('/api/internal/pix-reconcile', async (req,res) => {
+      const crypto=require('crypto');
+      const given=String(req.headers['x-recon-token']||'');
+      const secret=process.env.RECON_PIX_ADMIN_TOKEN;
+      const provided=Buffer.from(given);
+      const expected=Buffer.from(secret);
+      if(provided.length!==expected.length || !crypto.timingSafeEqual(provided,expected))
+        return res.status(403).json({ok:false,error:'forbidden'});
+      const reference=String(req.body?.reference||'').trim();
+      if(!/^[A-Za-z0-9_-]{8,64}$/.test(reference))
+        return res.status(400).json({ok:false,error:'Referência inválida'});
+      try {
+        const report=await pixRecon.scan({onlyReference:reference});
+        return res.json({ok:true,reference,report});
+      }catch(error){
+        console.error('[PIX][Recon] erro manual:',error);
+        return res.status(500).json({ok:false,error:'Falha na conciliação'});
+      }
+    });
+  }
+}
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[server] rodando em http://localhost:${PORT} | publicDir: ${PUBLIC_DIR}`);
 });
