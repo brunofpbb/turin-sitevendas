@@ -1397,6 +1397,30 @@ async function sheetsDeleteIssuedPreReservations(externalRef, issuedSeats) {
   });
 }
 
+// Serializa webhook e conciliação para a mesma referência nesta instância.
+// Não substitui idempotência distribuída entre réplicas ou após crash.
+const PIX_PROCESSING_LOCKS = new Map();
+async function processPixPaymentOnce(payment, origin='webhook') {
+  const ref=String(payment?.external_reference || '').trim();
+  if (!ref) throw new Error('PIX sem external_reference');
+  if (PIX_PROCESSING_LOCKS.has(ref)) {
+    console.log('[PIX][Process] outro processamento em andamento', {reference:ref,origin});
+    return PIX_PROCESSING_LOCKS.get(ref);
+  }
+  const task=(async()=>{
+    const latest=await mpGetPayment(String(payment.id));
+    if (String(latest.external_reference||'')!==ref ||
+        !['approved','accredited'].includes(String(latest.status).toLowerCase()) ||
+        String(latest.payment_method_id).toLowerCase()!=='pix')
+      throw new Error('Status/referência/método PIX não confirmados');
+    const fin=await sheetsUpdatePaymentStatusByRef(ref,latest);
+    if (!fin?.ok || !fin.updated) throw new Error('Falha ao conciliar status financeiro');
+    return emitirBilhetesViaWebhook(latest);
+  })();
+  PIX_PROCESSING_LOCKS.set(ref,task);
+  try {return await task;} finally {PIX_PROCESSING_LOCKS.delete(ref);}
+}
+
 async function emitirBilhetesViaWebhook(payment) {
   const extRef = (payment?.external_reference || '').trim();
   if (!extRef) {
@@ -1604,11 +1628,14 @@ async function emitirBilhetesViaWebhook(payment) {
 
       if (!r.ok || !responseJson.ok) {
         console.error('[Webhook][Emit] Falha ao vender via webhook:', r.status, responseJson);
+        if(responseJson?.code !== 'SEAT_UNAVAILABLE')
+          throw new Error('Praxio HTTP '+r.status+' '+String(responseJson?.error||'falha desconhecida'));
       }
 
 
     } catch (err) {
       console.error('[Webhook][Emit] Erro HTTP ao chamar /api/praxio/vender:', err);
+      throw err;
     }
   }
 }
@@ -1835,7 +1862,7 @@ app.post('/api/mp/webhook', async (req, res) => {
     if (pago && isPix) {
       try {
         console.log('[MP][Webhook] pagamento PIX pago, emitindo bilhetes via webhook...');
-        await emitirBilhetesViaWebhook(payment);
+        await processPixPaymentOnce(payment,'webhook');
       } catch (err) {
         console.error('[MP][Webhook] erro ao emitir bilhetes via webhook:', err?.message || err);
       }
@@ -3868,8 +3895,21 @@ if (String(process.env.RECON_PIX_ENABLED || 'true').toLowerCase() === 'true') {
     maxRefs: 40,
     // Intencionalmente bloqueado até existir garantia de idempotência
     // persistente e verificação de emissão anterior na Praxio.
-    autoIssue: false,
-    processPayment: emitirBilhetesViaWebhook,
+    // Ativação explícita somente após validar o cenário de interrupção
+    // entre venda Praxio e persistência no Sheets.
+    autoIssue: process.env.RECON_PIX_AUTO_ISSUE === 'true',
+    processPayment: payment => processPixPaymentOnce(payment,'reconciliation'),
+    beforeIssue: async ({reference,rows}) => {
+      // Revalidar o Sheets no instante anterior à emissão.
+      const current=(await sheetsFindByRef(reference)).entries;
+      if (current.length !== rows.length ||
+          current.some(e=>e.numPassagem ||
+            !/^(pendente|aguardando pagamento)$/i.test(String(e.status || '').trim()))) {
+        console.warn('[PIX][Recon] estado mudou; emissão automática impedida',reference);
+        return false;
+      }
+      return true;
+    },
     onApproved: async ({reference,payment,rows}) => {
       // Mesmo sem emissão, a planilha deve refletir o pagamento real.
       // O status do bilhete permanece pendente, sem inventar NumPassagem.
